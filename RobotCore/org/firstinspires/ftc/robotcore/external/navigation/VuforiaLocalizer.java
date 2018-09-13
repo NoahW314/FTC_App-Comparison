@@ -32,14 +32,29 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package org.firstinspires.ftc.robotcore.external.navigation;
 
+import static org.firstinspires.ftc.robotcore.internal.system.AppUtil.WEBCAM_CALIBRATIONS_DIR;
+
 import android.app.Activity;
+import android.graphics.Bitmap;
 import android.support.annotation.IdRes;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.support.annotation.XmlRes;
 import android.view.ViewGroup;
 
+import com.qualcomm.robotcore.R;
 import com.vuforia.CameraCalibration;
 import com.vuforia.CameraDevice;
 import com.vuforia.Frame;
 
+import org.firstinspires.ftc.robotcore.external.ClassFactory;
+import org.firstinspires.ftc.robotcore.external.function.Consumer;
+import org.firstinspires.ftc.robotcore.external.function.Continuation;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.Camera;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.CameraName;
+
+import java.io.File;
+import java.util.Arrays;
 import java.util.concurrent.BlockingQueue;
 
 /**
@@ -82,6 +97,18 @@ public interface VuforiaLocalizer
     VuforiaTrackables loadTrackablesFromFile(String absoluteFileName);
 
     /**
+     * Provides access to the {@link Camera} used by Vuforia. Will be null if a built-in camera
+     * is in use. Note that Vuforia is usually actively interacting with this {@link Camera}; users
+     * should on their own not initiate streaming, close the camera, or the like.
+     */
+    @Nullable Camera getCamera();
+
+    /**
+     * Provides access to the name of the camera used by Vuforia.
+     */
+    @NonNull CameraName getCameraName();
+
+    /**
      * (Advanced) Returns information about Vuforia's knowledge of the camera that it is using.
      * @return information about Vuforia's knowledge of the camera that it is using.
      *
@@ -118,11 +145,11 @@ public interface VuforiaLocalizer
     BlockingQueue<CloseableFrame> getFrameQueue();
 
     /**
-     * Sets the maximum number of {@link Frame}s that will simultaneously be stored in the
+     * (Advanced) Sets the maximum number of {@link Frame}s that will simultaneously be stored in the
      * frame queue. If the queue is full and new {@link Frame}s become available, older frames
      * will be discarded. The frame queue initially has a capacity of zero.
      *
-     * <p>Note that calling this method invalidates any frame queue retreived previously
+     * <p>Note that calling this method invalidates any frame queue retrieved previously
      * through {@link #getFrameQueue()}.</p>
      *
      * @param capacity the maximum number of items that may be stored in the frame queue
@@ -132,12 +159,30 @@ public interface VuforiaLocalizer
     void setFrameQueueCapacity(int capacity);
 
     /**
-     * Returns the current capacity of the frame queue.
+     * (Advanced) Returns the current capacity of the frame queue.
      * @return the current capacity of the frame queue.
      * @see #setFrameQueueCapacity(int)
      * @see #getFrameQueue()
      */
     int getFrameQueueCapacity();
+
+    /**
+     * (Advanced) Calls the indicated code with a frame from the video stream, exactly once.
+     * @param frameConsumer the code to call with the to-be-processed frame.
+     */
+    void getFrameOnce(Continuation<? extends Consumer<Frame>> frameConsumer);
+
+    /**
+     * (Advanced) Ensures that Vuforia exposes necessary data formats in {@link Frame}s that allows
+     * {@link #convertFrameToBitmap(Frame)} to function
+     */
+    void enableConvertFrameToBitmap();
+
+    /**
+     * (Advanced) A helper utility that converts a Vuforia {@link Frame} into an Android {@link Bitmap}.
+     */
+    @Nullable Bitmap convertFrameToBitmap(Frame frame);
+
 
     /** {@link CloseableFrame} exposes a close() method so that one can proactively
      * reduce memory pressure when we're done with a Frame */
@@ -155,19 +200,60 @@ public interface VuforiaLocalizer
         }
 
     /**
-     * {@link CameraDirection} enumerates the identities of the cameras that Vuforia can use.
+     * {@link CameraDirection} enumerates the identities of the builtin phone cameras that Vuforia can use.
+     * @see Parameters#cameraName
      * @see Parameters#cameraDirection
      */
     enum CameraDirection
         {
-        BACK(CameraDevice.CAMERA_DIRECTION.CAMERA_DIRECTION_BACK),
-        FRONT(CameraDevice.CAMERA_DIRECTION.CAMERA_DIRECTION_FRONT);
+        //------------------------------------------------------------------------------------------
+        // Values
+        //------------------------------------------------------------------------------------------
 
-        public final int direction;
+        BACK(CameraDevice.CAMERA_DIRECTION.CAMERA_DIRECTION_BACK),
+        FRONT(CameraDevice.CAMERA_DIRECTION.CAMERA_DIRECTION_FRONT),
+
+        /** Using {@link #BACK} or {@link #FRONT} is a better choice than {@link #DEFAULT} */
+        DEFAULT(CameraDevice.CAMERA_DIRECTION.CAMERA_DIRECTION_DEFAULT),
+
+        /** A direction whose particulars are not actually known */
+        UNKNOWN(-1);
+
+        //------------------------------------------------------------------------------------------
+        // State
+        //------------------------------------------------------------------------------------------
+
+        protected final int direction;
+
+        public int getDirection()
+            {
+            if (this==UNKNOWN)
+                {
+                throw new IllegalArgumentException("%s has no actual 'direction' value");
+                }
+            return direction;
+            }
+
+        //------------------------------------------------------------------------------------------
+        // Construction
+        //------------------------------------------------------------------------------------------
 
         CameraDirection(int direction)
             {
             this.direction = direction;
+            }
+
+        /** Converts a string to the corresponding camera direction. Returns UNKNOWN on failure. */
+        public static @NonNull CameraDirection from(String string)
+            {
+            for(CameraDirection direction : values())
+                {
+                if (direction.toString().equals(string))
+                    {
+                    return direction;
+                    }
+                }
+            return UNKNOWN;
             }
         };
 
@@ -191,8 +277,37 @@ public interface VuforiaLocalizer
         public String vuforiaLicenseKey = "<visit https://developer.vuforia.com/license-manager to obtain a license key>";
 
         /**
-         * Indicates the camera which Vuforia should use.
-         * @see CameraDirection
+         * If non-null, then this indicates the {@link Camera} to use with Vuforia. Otherwise,
+         * the camera is determined using {@link #cameraName} and {@link #cameraDirection}.
+         *
+         * @see #cameraName
+         * @see #cameraDirection
+         */
+        public @Nullable Camera camera = null;
+
+        /**
+         * If {@link #camera} is non-null, this value is ignored.
+         *
+         * Otherwise, if this value is neither null nor the 'unknown' camera name, the it indicates
+         * the name of the camera to use with Vuforia. It will be opened as needed.
+         *
+         * Otherwise, if this value is the 'unknown' camera name, then this value is ignored and
+         * {@link #cameraDirection} is used to indicate the camera.
+         *
+         * Otherwise, this value is null, and an error has occurred.
+         *
+         * @see #camera
+         * @see #cameraDirection
+         */
+        public @Nullable CameraName cameraName = ClassFactory.getInstance().getCameraManager().nameForUnknownCamera();
+
+        /**
+         * If {@link #camera} is null and {@link #cameraName} is the 'unknown' camera name, then
+         * this value is used to indicate the camera to use with Vuforia. Note that this value
+         * can only indicate the use of built-in cameras found on a phone.
+         *
+         * @see #camera
+         * @see #cameraName
          */
         public CameraDirection cameraDirection = CameraDirection.BACK;
 
@@ -260,7 +375,61 @@ public interface VuforiaLocalizer
          */
         public Activity activity = null;
 
+        /**
+         * The resources (if any, may be empty or null) used to provide additional camera calibration data for
+         * webcams used with Vuforia. Using calibrated camera helps increase the accuracy of
+         * Vuforia image target tracking. Calibration for several cameras is built into the FTC SDK;
+         * the optional resources here provides a means for teams to provide calibrations beyond this
+         * built-in set.
+         *
+         * The format required of the XML resource is indicated in the teamwebcamcalibrations
+         * resource provided.
+         *
+         * @see #webcamCalibrationFiles
+         */
+        public @XmlRes int[] webcamCalibrationResources = new int[] { R.xml.teamwebcamcalibrations };
+
+        /**
+         * Camera calibrations resident in files instead of resources.
+         * @see #webcamCalibrationResources
+         */
+        public File[] webcamCalibrationFiles = new File[] {};
+
+        /**
+         * Controls the aspect ratios used with webcams. Webcams whose aspect ratio (defined as
+         * width / height) is larger than this value will not be used unless no other viable options exist.
+         *
+         * Example values of some utility include 1920.0 / 1080.0, 640.0 / 480.0, and the like.
+         *
+         * @see #minWebcamAspectRatio
+         */
+        public double maxWebcamAspectRatio = Double.MAX_VALUE;
+
+        /**
+         * Controls the aspect ratios used with webcams. Webcams whose aspect ratio (defined as
+         * width / height) is smaller than this value will not be used unless no other viable options exist.
+         *
+         * @see #maxWebcamAspectRatio
+         */
+        public double minWebcamAspectRatio = 0;
+
+        /**
+         * How long to wait for USB permissions when connecting to a webcam.
+         */
+        public int secondsUsbPermissionTimeout = 30;
+
         public Parameters() {}
         public Parameters(@IdRes int cameraMonitorViewIdParent) { this.cameraMonitorViewIdParent = cameraMonitorViewIdParent; }
+
+        public void addWebcamCalibrationFile(String name)
+            {
+            addWebcamCalibrationFile(new File(WEBCAM_CALIBRATIONS_DIR, name));
+            }
+
+        public void addWebcamCalibrationFile(File file)
+            {
+            webcamCalibrationFiles = Arrays.copyOf(webcamCalibrationFiles, webcamCalibrationFiles.length + 1);
+            webcamCalibrationFiles[webcamCalibrationFiles.length - 1] = file;
+            }
         }
     }

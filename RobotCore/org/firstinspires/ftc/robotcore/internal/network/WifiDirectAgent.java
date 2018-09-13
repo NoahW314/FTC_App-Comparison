@@ -100,6 +100,7 @@ import java.util.List;
     protected boolean                           isWifiP2pEnabled = false;
     protected WifiState                         wifiState = WifiState.UNKNOWN;
     protected NetworkInfo.State                 wifiP2pState = NetworkInfo.State.UNKNOWN;
+    protected IntentFilter                      intentFilter;
 
     //----------------------------------------------------------------------------------------------
     // Construction
@@ -114,6 +115,16 @@ import java.util.List;
         wifiP2pManager          = (WifiP2pManager) context.getSystemService(Context.WIFI_P2P_SERVICE);
         wifiP2pChannel          = wifiP2pManager.initialize(context, looper.getLooper(), channelListener); // note threading
         wifiBroadcastReceiver   = new WifiBroadcastReceiver();
+
+        intentFilter = new IntentFilter();
+        intentFilter.addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION);
+        intentFilter.addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION);
+        intentFilter.addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION);
+        intentFilter.addAction(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION);
+        intentFilter.addAction(WifiP2pManager.WIFI_P2P_DISCOVERY_CHANGED_ACTION);
+        intentFilter.addAction(WifiDirectPersistentGroupManager.WIFI_P2P_PERSISTENT_GROUPS_CHANGED_ACTION);
+        intentFilter.addAction(WifiManager.WIFI_STATE_CHANGED_ACTION);
+
         }
 
     //----------------------------------------------------------------------------------------------
@@ -125,16 +136,7 @@ import java.util.List;
         {
         boolean localSuccess = true;
 
-        IntentFilter intentFilter = new IntentFilter();
-        intentFilter.addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION);
-        intentFilter.addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION);
-        intentFilter.addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION);
-        intentFilter.addAction(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION);
-        intentFilter.addAction(WifiP2pManager.WIFI_P2P_DISCOVERY_CHANGED_ACTION);
-        intentFilter.addAction(WifiDirectPersistentGroupManager.WIFI_P2P_PERSISTENT_GROUPS_CHANGED_ACTION);
-        intentFilter.addAction(WifiManager.WIFI_STATE_CHANGED_ACTION);
-
-        context.registerReceiver(wifiBroadcastReceiver, intentFilter, null, looper.getHandler()); // note threading
+        doListen();
 
         new WifiDirectPersistentGroupManager(this).requestPersistentGroups(new WifiDirectPersistentGroupManager.PersistentGroupInfoListener()
             {
@@ -153,7 +155,17 @@ import java.util.List;
     @Override
     protected void doStop()
         {
+        doNotListen();
+        }
+
+    public void doNotListen()
+        {
         context.unregisterReceiver(wifiBroadcastReceiver);
+        }
+
+    public void doListen()
+        {
+        context.registerReceiver(wifiBroadcastReceiver, intentFilter, null, looper.getHandler()); // note threading
         }
 
     //----------------------------------------------------------------------------------------------
@@ -202,29 +214,28 @@ import java.util.List;
     // Not really wifi-*direct*-related, per se, but it's handy and convenient to locate there here
     //----------------------------------------------------------------------------------------------
 
+    @Deprecated
     public boolean isAirplaneModeOn()
         {
-        return Settings.Global.getInt(context.getContentResolver(), Settings.Global.AIRPLANE_MODE_ON, 0) != 0;
+        return WifiUtil.isAirplaneModeOn();
         }
 
+    @Deprecated
     public boolean isBluetoothOn()
         {
-        return BluetoothAdapter.getDefaultAdapter() != null && BluetoothAdapter.getDefaultAdapter().isEnabled();
+        return WifiUtil.isBluetoothOn();
         }
 
+    @Deprecated
     public boolean isWifiEnabled()
         {
-        return getWifiState().isEnabled();
+        return WifiUtil.isWifiEnabled();
         }
 
+    @Deprecated
     public boolean isWifiConnected()
         {
-        WifiManager m = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-        SupplicantState s = m.getConnectionInfo().getSupplicantState();
-        NetworkInfo.DetailedState state = WifiInfo.getDetailedStateOf(s);
-
-        return (state == NetworkInfo.DetailedState.CONNECTED ||
-                state == NetworkInfo.DetailedState.OBTAINING_IPADDR);
+        return WifiUtil.isWifiConnected();
         }
 
     public boolean isWifiDirectConnected()
@@ -293,7 +304,7 @@ import java.util.List;
      */
     public void setWifiP2pChannels(int lc, int oc, WifiP2pManager.ActionListener listener)
         {
-        Method method = ClassUtil.getHiddenMethod(this.getWifiP2pManager(), "setWifiP2pChannels",
+        Method method = ClassUtil.getDeclaredMethod(this.getWifiP2pManager().getClass(), "setWifiP2pChannels",
                             WifiP2pManager.Channel.class,
                             int.class,
                             int.class,

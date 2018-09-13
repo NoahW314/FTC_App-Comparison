@@ -39,6 +39,7 @@ import android.view.View;
 
 import com.qualcomm.ftccommon.R;
 import com.qualcomm.robotcore.hardware.DeviceManager;
+import com.qualcomm.robotcore.hardware.ScannedDevices;
 import com.qualcomm.robotcore.hardware.configuration.ConfigurationType;
 import com.qualcomm.robotcore.hardware.configuration.ControllerConfiguration;
 import com.qualcomm.robotcore.util.SerialNumber;
@@ -158,10 +159,10 @@ public class EditUSBDeviceActivity extends EditActivity
             }
 
         boolean isFixable = false;
-        DeviceManager.DeviceType deviceType = controllerConfiguration.toUSBDeviceType();
+        DeviceManager.UsbDeviceType deviceType = controllerConfiguration.toUSBDeviceType();
 
         // Match up extraDevices by type
-        for (Map.Entry<SerialNumber,DeviceManager.DeviceType> pair : extraUSBDevices.entrySet())
+        for (Map.Entry<SerialNumber,DeviceManager.UsbDeviceType> pair : extraUSBDevices.entrySet())
             {
             if (pair.getValue() == deviceType)
                 {

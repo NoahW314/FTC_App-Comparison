@@ -47,8 +47,8 @@ import com.qualcomm.robotcore.hardware.I2cWaitControl;
 import com.qualcomm.robotcore.hardware.IntegratingGyroscope;
 import com.qualcomm.robotcore.hardware.TimestampedData;
 import com.qualcomm.robotcore.hardware.TimestampedI2cData;
-import com.qualcomm.robotcore.hardware.configuration.I2cSensor;
-import com.qualcomm.robotcore.hardware.configuration.UserConfigurationType;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.UserConfigurationType;
+import com.qualcomm.robotcore.hardware.configuration.annotations.I2cDeviceType;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.ReadWriteFile;
 import com.qualcomm.robotcore.util.ThreadPool;
@@ -142,7 +142,7 @@ public abstract class BNO055IMUImpl extends I2cDeviceSynchDeviceWithParameters<I
     /**
      * This constructor is used by {@link UserConfigurationType#createInstance(I2cController, int)}
      * @see UserConfigurationType#createInstance(I2cController, int)
-     * @see I2cSensor
+     * @see I2cDeviceType
      */
     public BNO055IMUImpl(I2cDeviceSynch deviceClient)
         {

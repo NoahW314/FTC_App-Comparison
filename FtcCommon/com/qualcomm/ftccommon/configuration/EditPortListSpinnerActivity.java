@@ -37,20 +37,26 @@ import android.widget.EditText;
 import android.widget.Spinner;
 import android.widget.TextView;
 
+import com.qualcomm.robotcore.hardware.ControlSystem;
 import com.qualcomm.robotcore.hardware.configuration.ConfigurationType;
+import com.qualcomm.robotcore.hardware.configuration.ConfigurationTypeManager;
 import com.qualcomm.robotcore.hardware.configuration.DeviceConfiguration;
+
+import java.util.List;
 
 /**
  * EditPortListSpinnerActivity provides a template-driven editing of a list of spinner list items
  */
-public class EditPortListSpinnerActivity<ITEM_T extends DeviceConfiguration> extends EditPortListActivity<ITEM_T>
+public abstract class EditPortListSpinnerActivity<ITEM_T extends DeviceConfiguration> extends EditPortListActivity<ITEM_T>
     {
+    protected abstract ConfigurationType.DeviceFlavor getDeviceFlavorBeingConfigured();
+
     //----------------------------------------------------------------------------------------------
     // State
     //----------------------------------------------------------------------------------------------
 
-	@Override public String getTag() { return this.getClass().getSimpleName(); }
     protected int idItemSpinner;
+	protected ControlSystem controlSystem;
 
     //----------------------------------------------------------------------------------------------
     // Construction
@@ -61,6 +67,13 @@ public class EditPortListSpinnerActivity<ITEM_T extends DeviceConfiguration> ext
         }
 
     @Override
+    protected void deserialize(EditParameters parameters)
+        {
+        super.deserialize(parameters);
+        this.controlSystem = parameters.getControlSystem();
+        }
+
+    @Override
     protected View createItemViewForPort(int portNumber)
         {
         View itemView = super.createItemViewForPort(portNumber);
@@ -68,12 +81,16 @@ public class EditPortListSpinnerActivity<ITEM_T extends DeviceConfiguration> ext
         return itemView;
         }
 
+    /**
+     * Override if you need the 3-parameter variant of getApplicableConfigTypes()
+     */
     protected void localizeSpinner(View itemView)
         {
-        // We assume here that the spinner already contains ConfigurationType names. If that's not
-        // the case, override this method and call a different form of localizeConfigTypeSpinner().
         Spinner spinner = (Spinner) itemView.findViewById(idItemSpinner);
-        localizeConfigTypeSpinner(ConfigurationType.DisplayNameFlavor.Normal, spinner);
+        List<ConfigurationType> deviceTypes =
+                ConfigurationTypeManager.getInstance().getApplicableConfigTypes(getDeviceFlavorBeingConfigured(), controlSystem);
+
+        localizeConfigTypeSpinnerTypes(ConfigurationType.DisplayNameFlavor.Normal, spinner, deviceTypes);
         }
 
     @Override

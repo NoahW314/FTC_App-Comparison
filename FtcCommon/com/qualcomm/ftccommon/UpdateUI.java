@@ -45,11 +45,12 @@ import com.qualcomm.robotcore.util.Dimmer;
 import com.qualcomm.robotcore.util.RobotLog;
 import com.qualcomm.robotcore.util.ThreadPool;
 import com.qualcomm.robotcore.wifi.NetworkConnection;
-import com.qualcomm.robotcore.wifi.WifiDirectAssistant;
 
 import org.firstinspires.ftc.ftccommon.external.RobotStateMonitor;
+import org.firstinspires.ftc.robotcore.internal.network.DeviceNameListener;
+import org.firstinspires.ftc.robotcore.internal.network.DeviceNameManagerFactory;
 import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
-import org.firstinspires.ftc.robotcore.internal.network.DeviceNameManager;
+import org.firstinspires.ftc.robotcore.internal.network.WifiDirectDeviceNameManager;
 import org.firstinspires.ftc.robotcore.internal.network.NetworkStatus;
 import org.firstinspires.ftc.robotcore.internal.network.PeerStatus;
 
@@ -66,11 +67,11 @@ public class UpdateUI {
     DeviceNameManagerCallback deviceNameManagerCallback = new DeviceNameManagerCallback();
 
     public Callback() {
-      DeviceNameManager.getInstance().registerCallback(deviceNameManagerCallback);
+      DeviceNameManagerFactory.getInstance().registerCallback(deviceNameManagerCallback);
     }
 
     public void close() {
-      DeviceNameManager.getInstance().unregisterCallback(deviceNameManagerCallback);
+      DeviceNameManagerFactory.getInstance().unregisterCallback(deviceNameManagerCallback);
     }
 
     public RobotStateMonitor getStateMonitor() {
@@ -127,7 +128,7 @@ public class UpdateUI {
       });
     }
 
-    public void networkConnectionUpdate(final WifiDirectAssistant.Event event) {
+    public void networkConnectionUpdate(final NetworkConnection.NetworkEvent event) {
 
       switch (event) {
         case UNKNOWN:
@@ -154,7 +155,7 @@ public class UpdateUI {
       }
     }
 
-    protected class DeviceNameManagerCallback implements DeviceNameManager.Callback {
+    protected class DeviceNameManagerCallback implements DeviceNameListener {
     @Override public void onDeviceNameChanged(String newDeviceName) {
       displayDeviceName(newDeviceName);
       }
@@ -212,6 +213,7 @@ public class UpdateUI {
         }
       });
     }
+
 
     public void updateRobotStatus(@NonNull final RobotStatus status) {
       robotStatus = status;

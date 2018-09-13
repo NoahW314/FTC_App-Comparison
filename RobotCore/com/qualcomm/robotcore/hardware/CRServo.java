@@ -32,9 +32,15 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package com.qualcomm.robotcore.hardware;
 
+import com.qualcomm.robotcore.hardware.configuration.ServoFlavor;
+import com.qualcomm.robotcore.hardware.configuration.annotations.DeviceProperties;
+import com.qualcomm.robotcore.hardware.configuration.annotations.ServoType;
+
 /**
  * CRServo is the central interface supported by continuous rotation servos
  */
+@ServoType(flavor = ServoFlavor.CONTINUOUS)
+@DeviceProperties(name = "@string/configTypeContinuousRotationServo", xmlTag = "ContinuousRotationServo", builtIn = true)
 public interface CRServo extends DcMotorSimple
     {
     /**

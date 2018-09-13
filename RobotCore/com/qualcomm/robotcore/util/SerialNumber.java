@@ -31,19 +31,41 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. */
 
 package com.qualcomm.robotcore.util;
 
-import android.content.Context;
+import android.hardware.usb.UsbDevice;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.text.TextUtils;
 
-import java.io.Serializable;
-import java.util.UUID;
-
+import com.google.gson.TypeAdapter;
+import com.google.gson.annotations.JsonAdapter;
+import com.google.gson.stream.JsonReader;
+import com.google.gson.stream.JsonWriter;
 import com.qualcomm.robotcore.R;
+import com.qualcomm.robotcore.hardware.ScannedDevices;
 import com.qualcomm.robotcore.hardware.configuration.ControllerConfiguration;
 
+import org.firstinspires.ftc.robotcore.internal.system.Misc;
+import org.firstinspires.ftc.robotcore.internal.usb.EmbeddedSerialNumber;
+import org.firstinspires.ftc.robotcore.internal.usb.FakeSerialNumber;
+import org.firstinspires.ftc.robotcore.internal.usb.LynxModuleSerialNumber;
+import org.firstinspires.ftc.robotcore.internal.usb.UsbSerialNumber;
+import org.firstinspires.ftc.robotcore.internal.usb.VendorProductSerialNumber;
+
+import java.io.IOException;
+import java.io.Serializable;
+import java.util.HashMap;
+import java.util.UUID;
+
 /**
- * Instances of {@link SerialNumber} represent serial numbers of devices on the USB bus.
+ * Instances of {@link SerialNumber} represent serial number indentifiers of hardware devices. For
+ * USB-attached devices, these are usually the low-level USB serial number (see {@link UsbDevice#getSerialNumber()},
+ * but that is not required. Rather, the notion of {@link SerialNumber} is a general purpose one
+ * representing a user-visible digital identity for a particular device instance.
+ *
  * 'Fake' serial numbers are serial numbers that will *never* appear for a real device; they
  * are useful, for example, as the serial number of a {@link ControllerConfiguration} that
- * has not yet been associated with a actual USB controller device.
+ * has not yet been associated with a actual controller device. Fake serial numbers are never
+ * shown to users.
  *
  * Note that *all* serial numbers loaded in memory at any given instant are guaranteed unique and
  * different, even the fake ones; this allows code that processes USB-device-bound {@link
@@ -54,56 +76,152 @@ import com.qualcomm.robotcore.hardware.configuration.ControllerConfiguration;
  * appeared int the form of "-1" or "N/A". When loaded from persistent storage, such legacy
  * fake serial numbers are converted to unique ones to maintain the uniqueness guarantee.
  */
-public class SerialNumber implements Serializable {
+@SuppressWarnings("WeakerAccess")
+@JsonAdapter(SerialNumber.GsonTypeAdapter.class)
+public abstract class SerialNumber implements Serializable {
 
-  private final String serialNumber;
-  private static final String fakePrefix = "FakeUSB:";
+  //------------------------------------------------------------------------------------------------
+  // State
+  //------------------------------------------------------------------------------------------------
 
-  /**
-   * Constructs a new unique, fake serial number
-   */
-  public SerialNumber() {
-    serialNumber = generateFake();
-  }
+  protected static final String fakePrefix = "FakeUSB:";
+  protected static final String vendorProductPrefix = "VendorProduct:";
+  protected static final String lynxModulePrefix = "ExpHub:";
+  protected static final String embedded = "(embedded)";
 
-  private static String generateFake() {
-    return fakePrefix + UUID.randomUUID().toString();
-  }
+  protected final String serialNumberString;
+
+  //------------------------------------------------------------------------------------------------
+  // Construction
+  //------------------------------------------------------------------------------------------------
 
   /**
    * Constructs a serial number using the supplied initialization string. If the initialization
    * string is a legacy form of fake serial number, a unique fake serial number is created.
    *
-   * @param initializer the initialization string for the serial number.
+   * @param serialNumberString the initialization string for the serial number.
    */
-  public SerialNumber(String initializer) {
-    this.serialNumber = isLegacyFake(initializer) ? generateFake() : initializer;
+  protected SerialNumber(String serialNumberString) {
+    this.serialNumberString = serialNumberString;
+  }
+
+  public static @NonNull SerialNumber createFake() {
+    return new FakeSerialNumber();
+  }
+
+  public static @NonNull SerialNumber createEmbedded() {
+    return new EmbeddedSerialNumber();
+  }
+
+  public static @NonNull SerialNumber fromString(@Nullable String serialNumberString) {
+    if (FakeSerialNumber.isLegacyFake(serialNumberString)) {
+      return createFake();
+    } else if (serialNumberString.startsWith(fakePrefix)) {
+      return new FakeSerialNumber(serialNumberString);
+    } else if (serialNumberString.startsWith(vendorProductPrefix)) {
+      return new VendorProductSerialNumber(serialNumberString);
+    } else if (serialNumberString.startsWith(lynxModulePrefix)) {
+      return new LynxModuleSerialNumber(serialNumberString);
+    } else if (serialNumberString.equals(embedded)) {
+      return createEmbedded();
+    } else {
+      return new UsbSerialNumber(serialNumberString);
+    }
+  }
+
+  public static @Nullable SerialNumber fromStringOrNull(@Nullable String serialNumberString) {
+    if (!TextUtils.isEmpty(serialNumberString)) {
+      return fromString(serialNumberString);
+    }
+    return null;
+  }
+
+  public static @Nullable SerialNumber fromUsbOrNull(@Nullable String serialNumberString) {
+    if (UsbSerialNumber.isValidUsbSerialNumber(serialNumberString)) {
+      return fromString(serialNumberString);
+    }
+    return null;
+  }
+
+  /** Makes up a serial-number-like-thing for USB devices that internally lack a serial number. */
+  public static SerialNumber fromVidPid(int vid, int pid, String connectionPath) {
+    return new VendorProductSerialNumber(vid, pid, connectionPath);
+  }
+
+  //------------------------------------------------------------------------------------------------
+  // Gson
+  //------------------------------------------------------------------------------------------------
+
+  static class GsonTypeAdapter extends TypeAdapter<SerialNumber> {
+    @Override public void write(JsonWriter writer, SerialNumber serialNumber) throws IOException {
+      if (serialNumber==null) {
+        writer.nullValue();
+      } else {
+        writer.value(serialNumber.getString());
+      }
+    }
+
+    @Override public SerialNumber read(JsonReader reader) throws IOException {
+      return SerialNumber.fromStringOrNull(reader.nextString());
+    }
+  }
+
+  //------------------------------------------------------------------------------------------------
+  // Accessing
+  //------------------------------------------------------------------------------------------------
+
+  public boolean isVendorProduct() {
+    return false;
   }
 
   /**
-   * Returns whether or not this serial number is a fake one or not
-   * @return whether or not this serial number is a fake one or not
+   * Returns whether the indicated serial number is one of the legacy
+   * fake serial number forms or not.
+   * @return whether the the serial number is a legacy fake form of serial number
    */
   public boolean isFake() {
-    return serialNumber.startsWith(fakePrefix) || isLegacyFake(serialNumber);
+    return false;
   }
 
   /**
-   * Returns whether or not this serial number is a real one or not
-   * @return whether or not this serial number is a real one or not
+   * Returns whether the serial number is one of an actual USB device.
    */
-  public boolean isReal() {
-    return !isFake();
+  public boolean isUsb() {
+    return false;
   }
 
   /**
-   * Returns whether the indicated serial number initialization string is one of the legacy
-   * fake serial number forms or not.
-   * @param initializer the serial number initialization string to test
-   * @return whether the the serial number initialization string is a legacy fake form of serial number
+   * Returns whether the serial number is the one used for the embedded 
+   * Expansion Hub inside a Rev Control Hub.
    */
-  public static boolean isLegacyFake(String initializer) {
-    return initializer==null || initializer.equals("-1") || initializer.equalsIgnoreCase("N/A") || initializer.trim().isEmpty();
+  public boolean isEmbedded() {
+    return false;
+  }
+
+  /**
+   * Returns the string contents of the serial number. Result is not intended to be
+   * displayed to humans.
+   * @see #toString() 
+   */
+  public String getString() {
+    return serialNumberString;
+  }
+
+
+  /**
+   * Returns the {@link SerialNumber} of the device associated with this one that would appear
+   * in a {@link ScannedDevices}.
+   */
+  public SerialNumber getScannableDeviceSerialNumber() {
+    return this;
+  }
+
+  //------------------------------------------------------------------------------------------------
+  // Comparison
+  //------------------------------------------------------------------------------------------------
+
+  public boolean matches(Object pattern) {
+    return this.equals(pattern);
   }
 
   @Override
@@ -112,33 +230,46 @@ public class SerialNumber implements Serializable {
     if (object == this) return true;
 
     if (object instanceof SerialNumber) {
-      return serialNumber.equals(((SerialNumber) object).serialNumber);
+      return serialNumberString.equals(((SerialNumber) object).serialNumberString);
     }
 
     if (object instanceof String) {
-      return serialNumber.equals(object);
+      return this.equals((String)object);
     }
 
     return false;
   }
 
+  // separate method to avoid annoying Android Studio inspection warnings when comparing SerialNumber against String
+  public boolean equals(String string) {
+    return serialNumberString.equals(string);
+  }
+
   @Override
   public int hashCode() {
-    return serialNumber.hashCode();
+    return serialNumberString.hashCode() ^ 0xabcd9873;
   }
 
-  @Override
-  public String toString() {
-    return serialNumber;
+  //------------------------------------------------------------------------------------------------
+  // Serial number display name management
+  //------------------------------------------------------------------------------------------------
+
+  protected static final HashMap<String,String> deviceDisplayNames = new HashMap<String, String>();
+
+  public static void noteSerialNumberType(SerialNumber serialNumber, String typeName) {
+    synchronized (deviceDisplayNames) {
+      deviceDisplayNames.put(serialNumber.getString(), Misc.formatForUser("%s [%s]", typeName, serialNumber));
+    }
   }
 
-  public String toString(Context context) {
-    return isFake() ? context.getString(R.string.noSerialNumber) : serialNumber;
+  public static String getDeviceDisplayName(SerialNumber serialNumber) {
+    synchronized (deviceDisplayNames) {
+      String result = deviceDisplayNames.get(serialNumber.getString());
+      if (result == null) {
+        result = Misc.formatForUser(R.string.deviceDisplayNameUnknownUSBDevice, serialNumber);
+      }
+      return result;
+    }
   }
 
-  /** @deprecated no need to use; use toString() if string form is sought */
-  @Deprecated
-  public String getSerialNumber() {
-    return serialNumber;
-  }
 }

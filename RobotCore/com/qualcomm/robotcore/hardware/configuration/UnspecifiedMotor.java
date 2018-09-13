@@ -32,11 +32,15 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package com.qualcomm.robotcore.hardware.configuration;
 
+import com.qualcomm.robotcore.hardware.configuration.annotations.DeviceProperties;
+
+
 /**
  * {@link UnspecifiedMotor} is a motor type which represents a motor whose type is not indicated.
  * For historical reasons, the motor type data used is that of the Tetrix motor.
  */
-@MotorType(xmlTag="Motor", name="Unspecified Motor", ticksPerRev=1440, gearing=52, maxRPM=165)
+@com.qualcomm.robotcore.hardware.configuration.annotations.MotorType(ticksPerRev=1440, gearing=52, maxRPM=165)
+@DeviceProperties(xmlTag="Motor", name="Unspecified Motor", builtIn = true)
 public interface UnspecifiedMotor
     {
     }

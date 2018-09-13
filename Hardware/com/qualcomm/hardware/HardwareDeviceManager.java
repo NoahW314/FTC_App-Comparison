@@ -32,6 +32,9 @@ package com.qualcomm.hardware;
 
 import android.content.Context;
 import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+import android.text.TextUtils;
+import android.util.Pair;
 
 import com.qualcomm.hardware.adafruit.AdafruitI2cColorSensor;
 import com.qualcomm.hardware.hitechnic.HiTechnicNxtAccelerationSensor;
@@ -46,27 +49,24 @@ import com.qualcomm.hardware.hitechnic.HiTechnicNxtTouchSensor;
 import com.qualcomm.hardware.hitechnic.HiTechnicNxtTouchSensorMultiplexer;
 import com.qualcomm.hardware.hitechnic.HiTechnicNxtUltrasonicSensor;
 import com.qualcomm.hardware.lynx.LynxI2cColorRangeSensor;
-import com.qualcomm.hardware.lynx.LynxI2cDeviceSynch;
 import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.hardware.lynx.LynxUsbDevice;
 import com.qualcomm.hardware.lynx.LynxUsbDeviceImpl;
 import com.qualcomm.hardware.lynx.LynxUsbUtil;
 import com.qualcomm.hardware.lynx.commands.core.LynxFirmwareVersionManager;
-import com.qualcomm.hardware.modernrobotics.ModernRoboticsAnalogOpticalDistanceSensor;
-import com.qualcomm.hardware.modernrobotics.ModernRoboticsTouchSensor;
 import com.qualcomm.hardware.modernrobotics.ModernRoboticsI2cColorSensor;
 import com.qualcomm.hardware.modernrobotics.ModernRoboticsI2cGyro;
 import com.qualcomm.hardware.modernrobotics.ModernRoboticsI2cIrSeekerSensorV3;
+import com.qualcomm.hardware.modernrobotics.ModernRoboticsTouchSensor;
 import com.qualcomm.hardware.modernrobotics.ModernRoboticsUsbDcMotorController;
 import com.qualcomm.hardware.modernrobotics.ModernRoboticsUsbDevice;
 import com.qualcomm.hardware.modernrobotics.ModernRoboticsUsbDeviceInterfaceModule;
 import com.qualcomm.hardware.modernrobotics.ModernRoboticsUsbLegacyModule;
 import com.qualcomm.hardware.modernrobotics.ModernRoboticsUsbServoController;
 import com.qualcomm.hardware.modernrobotics.comm.ModernRoboticsUsbUtil;
-import com.qualcomm.robotcore.eventloop.EventLoopManager;
+import com.qualcomm.robotcore.eventloop.SyncdDevice;
 import com.qualcomm.robotcore.exception.RobotCoreException;
 import com.qualcomm.robotcore.hardware.AccelerationSensor;
-import com.qualcomm.robotcore.hardware.AnalogInput;
 import com.qualcomm.robotcore.hardware.AnalogInputController;
 import com.qualcomm.robotcore.hardware.AnalogOutput;
 import com.qualcomm.robotcore.hardware.AnalogOutputController;
@@ -81,9 +81,7 @@ import com.qualcomm.robotcore.hardware.DcMotorImpl;
 import com.qualcomm.robotcore.hardware.DcMotorImplEx;
 import com.qualcomm.robotcore.hardware.DeviceInterfaceModule;
 import com.qualcomm.robotcore.hardware.DeviceManager;
-import com.qualcomm.robotcore.hardware.DigitalChannel;
 import com.qualcomm.robotcore.hardware.DigitalChannelController;
-import com.qualcomm.robotcore.hardware.DigitalChannelImpl;
 import com.qualcomm.robotcore.hardware.GyroSensor;
 import com.qualcomm.robotcore.hardware.HardwareDevice;
 import com.qualcomm.robotcore.hardware.I2cController;
@@ -97,28 +95,32 @@ import com.qualcomm.robotcore.hardware.IrSeekerSensor;
 import com.qualcomm.robotcore.hardware.LED;
 import com.qualcomm.robotcore.hardware.LegacyModule;
 import com.qualcomm.robotcore.hardware.LightSensor;
-import com.qualcomm.robotcore.hardware.OpticalDistanceSensor;
 import com.qualcomm.robotcore.hardware.PWMOutput;
 import com.qualcomm.robotcore.hardware.PWMOutputController;
 import com.qualcomm.robotcore.hardware.PWMOutputImpl;
-import com.qualcomm.robotcore.hardware.PWMOutputImplEx;
 import com.qualcomm.robotcore.hardware.RobotCoreLynxModule;
 import com.qualcomm.robotcore.hardware.RobotCoreLynxUsbDevice;
+import com.qualcomm.robotcore.hardware.ScannedDevices;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.hardware.ServoController;
+import com.qualcomm.robotcore.hardware.ServoControllerEx;
 import com.qualcomm.robotcore.hardware.ServoImpl;
 import com.qualcomm.robotcore.hardware.ServoImplEx;
 import com.qualcomm.robotcore.hardware.TouchSensor;
 import com.qualcomm.robotcore.hardware.TouchSensorMultiplexer;
 import com.qualcomm.robotcore.hardware.UltrasonicSensor;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.AnalogSensorConfigurationType;
 import com.qualcomm.robotcore.hardware.configuration.DeviceConfiguration;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.DigitalIoDeviceConfigurationType;
 import com.qualcomm.robotcore.hardware.configuration.LynxConstants;
-import com.qualcomm.robotcore.hardware.configuration.MotorConfigurationType;
-import com.qualcomm.robotcore.hardware.configuration.UserI2cSensorType;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.MotorConfigurationType;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.ServoConfigurationType;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.I2cDeviceConfigurationType;
 import com.qualcomm.robotcore.hardware.usb.RobotUsbDevice;
 import com.qualcomm.robotcore.hardware.usb.RobotUsbDeviceImplBase;
 import com.qualcomm.robotcore.hardware.usb.RobotUsbManager;
 import com.qualcomm.robotcore.hardware.usb.RobotUsbManagerCombining;
+import com.qualcomm.robotcore.hardware.usb.RobotUsbModule;
 import com.qualcomm.robotcore.hardware.usb.ftdi.RobotUsbManagerFtdi;
 import com.qualcomm.robotcore.hardware.usb.serial.RobotUsbManagerTty;
 import com.qualcomm.robotcore.util.ElapsedTime;
@@ -126,18 +128,26 @@ import com.qualcomm.robotcore.util.RobotLog;
 import com.qualcomm.robotcore.util.SerialNumber;
 import com.qualcomm.robotcore.util.ThreadPool;
 
+import org.firstinspires.ftc.robotcore.external.ClassFactory;
 import org.firstinspires.ftc.robotcore.external.Func;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.CameraManager;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
+import org.firstinspires.ftc.robotcore.internal.camera.CameraManagerInternal;
+import org.firstinspires.ftc.robotcore.internal.hardware.UserNameable;
+import org.firstinspires.ftc.robotcore.internal.hardware.usb.ArmableUsbDevice;
 import org.firstinspires.ftc.robotcore.internal.system.Assert;
+import org.firstinspires.ftc.robotcore.internal.usb.VendorProductSerialNumber;
 import org.firstinspires.ftc.robotcore.internal.usb.exception.RobotUsbException;
 
-import java.lang.reflect.InvocationTargetException;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Scan for, and create instances of, Modern Robotics USB devices
+ * Scan for, and create instances of, hardware devices
  */
 @SuppressWarnings("WeakerAccess")
 public class HardwareDeviceManager implements DeviceManager {
@@ -152,7 +162,7 @@ public class HardwareDeviceManager implements DeviceManager {
   public  final static Object     scanDevicesLock = new Object();
 
   private       RobotUsbManager   usbManager;
-  private final EventLoopManager  manager;
+  private final SyncdDevice.Manager manager;
   private final Context           context;
 
   //------------------------------------------------------------------------------------------------
@@ -166,7 +176,7 @@ public class HardwareDeviceManager implements DeviceManager {
    * @throws RobotCoreException if unable to open FTDI D2XX manager
    */
    @SuppressWarnings("ConstantConditions")
-   public HardwareDeviceManager(Context context, EventLoopManager manager) throws RobotCoreException {
+   public HardwareDeviceManager(Context context, SyncdDevice.Manager manager) throws RobotCoreException {
     this.context = context;
     this.manager = manager;
     this.usbManager = createUsbManager(context);
@@ -187,39 +197,40 @@ public class HardwareDeviceManager implements DeviceManager {
   // Scanning
   //------------------------------------------------------------------------------------------------
 
-  /* (non-Javadoc)
-   * @see com.qualcomm.hardware.DeviceManager#scanForUsbDevices()
-   *
-   * Returns a map from serial number to DeviceType
+  /**
+   * Returns a map from serial number to UsbDeviceType
    */
   @Override
-  public Map<SerialNumber, DeviceType> scanForUsbDevices() throws RobotCoreException {
+  public ScannedDevices scanForUsbDevices() throws RobotCoreException {
     synchronized (scanDevicesLock) {
       long start = System.nanoTime();
-      final Map<SerialNumber, DeviceType> deviceMap = new ConcurrentHashMap<SerialNumber, DeviceType>();
-      int devCount = usbManager.scanForDevices();
+      final ScannedDevices deviceMap = new ScannedDevices();
+
+      // Enquire of the system as to what is actually out there right now
+      List<SerialNumber> serialNumbers = usbManager.scanForDevices();
+      int devCount = serialNumbers.size();
 
       RobotLog.vv(TAG_USB_SCAN, "device count=%d", devCount);
       if (devCount > 0) {
         // Open all the USB devices attached to the robot controller. We do this in parallel so as to minimize latency to the user.
+        // 2018.06.20: latency less significant now; parallelism might no longer be justified
         ExecutorService executorService = ThreadPool.newFixedThreadPool(devCount, "hw mgr usb scan");
         final ConcurrentHashMap<SerialNumber, RobotUsbDevice> newlyFoundDevices = new ConcurrentHashMap<SerialNumber, RobotUsbDevice>();
         try {
-          for (int id = 0; id < devCount; id++) {
-            final SerialNumber serialNumber = usbManager.getDeviceSerialNumberByIndex(id);
+          for (final SerialNumber serialNumber : serialNumbers) {
             executorService.execute(new Runnable() {
               @Override public void run() {
                   try {
                     RobotLog.vv(TAG_USB_SCAN, "opening %s...", serialNumber);
-                    //
-                    // It turns out that ModernRoboticsUsbUtil.openUsbDevice doesn't contain any
+
+                    // It turns out that ModernRoboticsUsbUtil.openRobotUsbDevice doesn't contain any
                     // logic that is specific to ModernRobotics, but rather is generic, and so
-                    // can be used even on Lynx devices
-                    RobotUsbDevice device = ModernRoboticsUsbUtil.openUsbDevice(false, usbManager, serialNumber);
+                    // can be used even on Lynx devices (for discovery purposes)
+                    RobotUsbDevice device = ModernRoboticsUsbUtil.openRobotUsbDevice(false, usbManager, serialNumber);
                     newlyFoundDevices.put(serialNumber, device);
                     //
                   } catch (Exception e) {
-                    RobotLog.vv(TAG_USB_SCAN, "%s(%s) exception while opening %s", e.getClass().getSimpleName(), e.getMessage(), serialNumber.toString());
+                    RobotLog.vv(TAG_USB_SCAN, "%s(%s) exception while opening %s", e.getClass().getSimpleName(), e.getMessage(), serialNumber);
                   } finally {
                     RobotLog.vv(TAG_USB_SCAN, "... done opening %s", serialNumber);
                   }
@@ -237,13 +248,14 @@ public class HardwareDeviceManager implements DeviceManager {
             determineDeviceType(pair.getValue(), pair.getKey(), deviceMap);
           }
 
-          // Also consider devices that are already open
+          // Also consider devices that are already open: though perhaps / likely enumerated above
+          // they probably can't be opened a second time and thus weren't included.
           for (RobotUsbDevice existingDevice : RobotUsbDeviceImplBase.getExtantDevices()) {
             SerialNumber serialNumber = existingDevice.getSerialNumber();
             if (!newlyFoundDevices.containsKey(serialNumber)) {
-              DeviceType deviceType = existingDevice.getDeviceType();
-              if (deviceType != DeviceType.FTDI_USB_UNKNOWN_DEVICE) {
-                RobotLog.vv(TAG_USB_SCAN, "added extant device %s type=%s", serialNumber.toString(), deviceType.toString());
+              UsbDeviceType deviceType = existingDevice.getDeviceType();
+              if (deviceType != UsbDeviceType.FTDI_USB_UNKNOWN_DEVICE) {
+                RobotLog.vv(TAG_USB_SCAN, "added extant device %s type=%s", serialNumber, deviceType.toString());
                 deviceMap.put(serialNumber, deviceType);
               }
             }
@@ -258,33 +270,97 @@ public class HardwareDeviceManager implements DeviceManager {
         }
       }
 
+      // Also include any cameras we might find
+      scanForWebcams(deviceMap);
+
       long end = System.nanoTime();
       RobotLog.vv(TAG_USB_SCAN, "scanForUsbDevices() took %dms count=%d", (int)((end-start) / ElapsedTime.MILLIS_IN_NANO), deviceMap.size());
       return deviceMap;
     }
   }
 
-  void determineDeviceType(RobotUsbDevice dev, SerialNumber serialNumber, Map<SerialNumber, DeviceType> deviceMap) {
+  Integer countVidPid(Map<Pair<Integer,Integer>, Integer> map, VendorProductSerialNumber vendorProduct) {
+    Pair<Integer,Integer> pair = new Pair<>(vendorProduct.getVendorId(), vendorProduct.getProductId());
+    Integer count = map.get(pair);
+    if (count != null) {
+      return count;
+    }
+    return 0;
+  }
+
+  void addVidPid(Map<Pair<Integer,Integer>, Integer> map, VendorProductSerialNumber vendorProduct, int delta) {
+    int count = countVidPid(map, vendorProduct);
+    Pair<Integer,Integer> pair = new Pair<>(vendorProduct.getVendorId(), vendorProduct.getProductId());
+    map.put(pair, count + delta);
+  }
+
+  protected void scanForWebcams(ScannedDevices scannedDevices) {
+    synchronized (scanDevicesLock) {
+      CameraManager cameraManager = ClassFactory.getInstance().getCameraManager();
+      List<WebcamName> webcams = cameraManager.getAllWebcams();
+
+      /** Inventory our webcams */
+      Map<Pair<Integer,Integer>, Integer> vidpidConnections = new HashMap<>();
+      Map<Pair<Integer,Integer>, Integer> vidpidConnectionless = new HashMap<>();
+      for (WebcamName webcamName : webcams) {
+        SerialNumber serialNumber = webcamName.getSerialNumber();
+        if (serialNumber.isVendorProduct()) {
+          VendorProductSerialNumber vendorProduct = (VendorProductSerialNumber)serialNumber;
+          if (TextUtils.isEmpty(vendorProduct.getConnectionPath())) {
+            addVidPid(vidpidConnectionless, vendorProduct, 1);
+          } else {
+            addVidPid(vidpidConnections, vendorProduct, 1);
+          }
+        }
+      }
+
+      /** Do we have any unique {@link VendorProductSerialNumber}s? For each such unique guys, forget about the connection path.
+       * Instead, use a variation that will serve as a 'wildcard' matching the (vid,pid) pair on *any* connection. */
+      for (WebcamName webcamName : webcams) {
+        SerialNumber serialNumber = webcamName.getSerialNumber();
+        if (serialNumber.isVendorProduct()) {
+          VendorProductSerialNumber vendorProduct = (VendorProductSerialNumber)serialNumber;
+
+          // If there's more than one connectionless with the same vid/pid, we don't know which is which, so omit
+          // This will only happen on Nougat and beyond, where we can't read sysfs.
+          int count = countVidPid(vidpidConnectionless, vendorProduct);
+          if (count > 1) {
+            RobotLog.ee(TAG, "%d serialnumless webcams w/o connection info; ignoring", count, vendorProduct);
+            continue;
+          }
+
+          if (countVidPid(vidpidConnectionless, vendorProduct) == 0 && countVidPid(vidpidConnections, vendorProduct) == 1) {
+            // We don't need the connection to keep track of this guy, as he's unambignous. So let him move around.
+            serialNumber = SerialNumber.fromVidPid(vendorProduct.getVendorId(), vendorProduct.getProductId(), "");
+          }
+        }
+        RobotLog.vv(TAG, "scanned webcam serial=%s", serialNumber);
+        scannedDevices.put(serialNumber, UsbDeviceType.WEBCAM);
+      }
+    }
+  }
+
+  void determineDeviceType(RobotUsbDevice dev, SerialNumber serialNumber, ScannedDevices deviceMap) {
 
     // Have we seen this guy before? A given serial number won't change its device type, so
     // we can use use a cached value if we have it
-    DeviceType deviceType = RobotUsbDeviceImplBase.getDeviceType(serialNumber);
+    UsbDeviceType usbDeviceType = RobotUsbDeviceImplBase.getDeviceType(serialNumber);
 
     // If not, then open the indicated device by serial number in order to determine its device type
-    if (deviceType == DeviceType.UNKNOWN_DEVICE) {
+    if (usbDeviceType == UsbDeviceType.UNKNOWN_DEVICE) {
       RobotUsbDevice.USBIdentifiers ids = dev.getUsbIdentifiers();
       if (ids.isModernRoboticsDevice()) {
         try {
           RobotLog.vv(TAG_USB_SCAN, "getting MR device device header %s ...", serialNumber);
-          deviceType = getModernRoboticsDeviceType(dev);
-          RobotLog.vv(TAG_USB_SCAN, "... done getting MR device device header %s type=%s", serialNumber, deviceType);
+          usbDeviceType = getModernRoboticsDeviceType(dev);
+          RobotLog.vv(TAG_USB_SCAN, "... done getting MR device device header %s type=%s", serialNumber, usbDeviceType);
         } catch (RobotCoreException ignored) {
           RobotLog.vv(TAG_USB_SCAN, "exception retrieving MR device device header %s", serialNumber);
           return;
         }
       } else if (ids.isLynxDevice()) {
         RobotLog.vv(TAG_USB_SCAN, "%s is a lynx device", serialNumber);
-        deviceType = getLynxDeviceType(dev);
+        usbDeviceType = getLynxDeviceType(dev);
       } else {
         // we can't figure this guy out; ignore
         return;
@@ -292,25 +368,25 @@ public class HardwareDeviceManager implements DeviceManager {
     }
 
     // Record the type in the device map
-    deviceMap.put(serialNumber, deviceType);
+    deviceMap.put(serialNumber, usbDeviceType);
   }
 
-  DeviceType getLynxDeviceType(RobotUsbDevice dev) {
-    DeviceType deviceType = DeviceType.LYNX_USB_DEVICE;
-    dev.setDeviceType(deviceType);
-    return deviceType;
+  UsbDeviceType getLynxDeviceType(RobotUsbDevice dev) {
+    UsbDeviceType usbDeviceType = UsbDeviceType.LYNX_USB_DEVICE;
+    dev.setDeviceType(usbDeviceType);
+    return usbDeviceType;
   }
 
-  DeviceType getModernRoboticsDeviceType(RobotUsbDevice dev) throws RobotCoreException {
+  UsbDeviceType getModernRoboticsDeviceType(RobotUsbDevice dev) throws RobotCoreException {
     byte[] modernRoboticsDeviceHeader = getModernRoboticsDeviceHeader(dev);
     return getModernRoboticsDeviceType(dev, modernRoboticsDeviceHeader);
   }
 
-  DeviceType getModernRoboticsDeviceType(RobotUsbDevice dev, byte[] modernRoboticsDeviceHeader) throws RobotCoreException {
-    DeviceType deviceType = ModernRoboticsUsbUtil.getDeviceType(modernRoboticsDeviceHeader);
+  UsbDeviceType getModernRoboticsDeviceType(RobotUsbDevice dev, byte[] modernRoboticsDeviceHeader)  {
+    UsbDeviceType usbDeviceType = ModernRoboticsUsbUtil.getDeviceType(modernRoboticsDeviceHeader);
     // Record the device type so we can retreive it later w/o needing to open USB again
-    dev.setDeviceType(deviceType);
-    return deviceType;
+    dev.setDeviceType(usbDeviceType);
+    return usbDeviceType;
   }
 
   byte[] getModernRoboticsDeviceHeader(RobotUsbDevice dev) throws RobotCoreException {
@@ -330,19 +406,19 @@ public class HardwareDeviceManager implements DeviceManager {
    * the device is already open (in which case it will return a new delegate to the existing
    * instance).
    */
-  @Override public RobotCoreLynxUsbDevice createLynxUsbDevice(final SerialNumber serialNumber, String name) throws RobotCoreException, InterruptedException {
+  @Override public RobotCoreLynxUsbDevice createLynxUsbDevice(final SerialNumber serialNumber, @Nullable String name) throws RobotCoreException, InterruptedException {
     HardwareFactory.noteSerialNumberType(context, serialNumber, context.getString(R.string.moduleDisplayNameLynxUsbDevice));
     RobotLog.v("Creating %s", HardwareFactory.getDeviceDisplayName(context, serialNumber));
 
     ModernRoboticsUsbDevice.OpenRobotUsbDevice openRobotUsbDevice = new ModernRoboticsUsbDevice.OpenRobotUsbDevice() {
-      @Override public RobotUsbDevice open() throws RobotCoreException, InterruptedException {
+      @Override public RobotUsbDevice open() throws RobotCoreException {
           RobotUsbDevice dev = null;
           try {
-            dev = LynxUsbUtil.openUsbDevice(usbManager, serialNumber);
+            dev = LynxUsbUtil.openUsbDevice(true, usbManager, serialNumber);
             if (!dev.getUsbIdentifiers().isLynxDevice()) {
               closeAndThrowOnFailedDeviceTypeCheck(dev, serialNumber);
             }
-            DeviceType type = getLynxDeviceType(dev); Assert.assertTrue(type == DeviceType.LYNX_USB_DEVICE);
+            UsbDeviceType type = getLynxDeviceType(dev); Assert.assertTrue(type == UsbDeviceType.LYNX_USB_DEVICE);
           } catch (RobotCoreException|RuntimeException e) {
             if (dev != null) dev.close(); // avoid leakage of open FT_Devices
             throw e;
@@ -365,14 +441,14 @@ public class HardwareDeviceManager implements DeviceManager {
     RobotLog.v("Creating %s", HardwareFactory.getDeviceDisplayName(context, serialNumber));
 
     ModernRoboticsUsbDevice.OpenRobotUsbDevice openRobotUsbDevice = new ModernRoboticsUsbDevice.OpenRobotUsbDevice() {
-      @Override public RobotUsbDevice open() throws RobotCoreException, InterruptedException {
+      @Override public RobotUsbDevice open() throws RobotCoreException {
           RobotUsbDevice dev = null;
           try {
-            dev = ModernRoboticsUsbUtil.openUsbDevice(true, usbManager, serialNumber);
+            dev = ModernRoboticsUsbUtil.openRobotUsbDevice(true, usbManager, serialNumber);
             byte[] deviceHeader = getModernRoboticsDeviceHeader(dev);
-            DeviceType type = getModernRoboticsDeviceType(dev, deviceHeader);
+            UsbDeviceType type = getModernRoboticsDeviceType(dev, deviceHeader);
 
-            if (type != DeviceType.MODERN_ROBOTICS_USB_DC_MOTOR_CONTROLLER) {
+            if (type != UsbDeviceType.MODERN_ROBOTICS_USB_DC_MOTOR_CONTROLLER) {
               closeAndThrowOnFailedDeviceTypeCheck(dev, serialNumber);
             }
             dev.setFirmwareVersion(getModernRoboticsFirmwareVersion(deviceHeader));
@@ -410,14 +486,14 @@ public class HardwareDeviceManager implements DeviceManager {
     RobotLog.v("Creating %s", HardwareFactory.getDeviceDisplayName(context, serialNumber));
 
     ModernRoboticsUsbDevice.OpenRobotUsbDevice openRobotUsbDevice = new ModernRoboticsUsbDevice.OpenRobotUsbDevice() {
-      @Override public RobotUsbDevice open() throws RobotCoreException, InterruptedException {
+      @Override public RobotUsbDevice open() throws RobotCoreException {
         RobotUsbDevice dev = null;
         try {
-          dev = ModernRoboticsUsbUtil.openUsbDevice(true, usbManager, serialNumber);
+          dev = ModernRoboticsUsbUtil.openRobotUsbDevice(true, usbManager, serialNumber);
           byte[] deviceHeader = getModernRoboticsDeviceHeader(dev);
-          DeviceType type = getModernRoboticsDeviceType(dev, deviceHeader);
+          UsbDeviceType type = getModernRoboticsDeviceType(dev, deviceHeader);
 
-          if (type != DeviceType.MODERN_ROBOTICS_USB_SERVO_CONTROLLER) {
+          if (type != UsbDeviceType.MODERN_ROBOTICS_USB_SERVO_CONTROLLER) {
             closeAndThrowOnFailedDeviceTypeCheck(dev, serialNumber);
           }
           dev.setFirmwareVersion(getModernRoboticsFirmwareVersion(deviceHeader));
@@ -449,13 +525,23 @@ public class HardwareDeviceManager implements DeviceManager {
   }
 
   @Override
-  public Servo createServoEx(ServoController controller, int portNumber, String name) {
-    return new ServoImplEx(controller, portNumber, Servo.Direction.FORWARD);
+  public Servo createServoEx(ServoControllerEx controller, int portNumber, String name, ServoConfigurationType servoType) {
+    return new ServoImplEx(controller, portNumber, Servo.Direction.FORWARD, servoType);
   }
 
   @Override
-  public CRServo createCRServoEx(ServoController controller, int portNumber, String name) {
-    return new CRServoImplEx(controller, portNumber, DcMotor.Direction.FORWARD);
+  public CRServo createCRServoEx(ServoControllerEx controller, int portNumber, String name, ServoConfigurationType servoType) {
+    return new CRServoImplEx(controller, portNumber, DcMotor.Direction.FORWARD, servoType);
+  }
+
+  @Override
+  public HardwareDevice createCustomServoDevice(ServoController controller, int portNumber, ServoConfigurationType servoConfigurationType) {
+    return servoConfigurationType.createInstanceMr(controller, portNumber);
+  }
+
+  @Override
+  public HardwareDevice createLynxCustomServoDevice(ServoControllerEx controller, int portNumber, ServoConfigurationType servoConfigurationType) {
+    return servoConfigurationType.createInstanceRev(controller, portNumber);
   }
 
   @Override
@@ -465,14 +551,14 @@ public class HardwareDeviceManager implements DeviceManager {
     RobotLog.v("Creating %s", HardwareFactory.getDeviceDisplayName(context, serialNumber));
 
     ModernRoboticsUsbDevice.OpenRobotUsbDevice openRobotUsbDevice = new ModernRoboticsUsbDevice.OpenRobotUsbDevice() {
-      @Override public RobotUsbDevice open() throws RobotCoreException, InterruptedException {
+      @Override public RobotUsbDevice open() throws RobotCoreException {
         RobotUsbDevice dev = null;
         try {
-          dev = ModernRoboticsUsbUtil.openUsbDevice(true, usbManager, serialNumber);
+          dev = ModernRoboticsUsbUtil.openRobotUsbDevice(true, usbManager, serialNumber);
           byte[] deviceHeader = getModernRoboticsDeviceHeader(dev);
-          DeviceType type = getModernRoboticsDeviceType(dev, deviceHeader);
+          UsbDeviceType type = getModernRoboticsDeviceType(dev, deviceHeader);
 
-          if (type != DeviceType.MODERN_ROBOTICS_USB_DEVICE_INTERFACE_MODULE) {
+          if (type != UsbDeviceType.MODERN_ROBOTICS_USB_DEVICE_INTERFACE_MODULE) {
             closeAndThrowOnFailedDeviceTypeCheck(dev, serialNumber);
           }
           dev.setFirmwareVersion(getModernRoboticsFirmwareVersion(deviceHeader));
@@ -502,21 +588,18 @@ public class HardwareDeviceManager implements DeviceManager {
     RobotLog.v("Creating %s", HardwareFactory.getDeviceDisplayName(context, serialNumber));
 
     ModernRoboticsUsbDevice.OpenRobotUsbDevice openRobotUsbDevice = new ModernRoboticsUsbDevice.OpenRobotUsbDevice() {
-      @Override public RobotUsbDevice open() throws RobotCoreException, InterruptedException {
+      @Override public RobotUsbDevice open() throws RobotCoreException {
         RobotUsbDevice dev = null;
         try {
-          dev = ModernRoboticsUsbUtil.openUsbDevice(true, usbManager, serialNumber);
+          dev = ModernRoboticsUsbUtil.openRobotUsbDevice(true, usbManager, serialNumber);
           byte[] deviceHeader = getModernRoboticsDeviceHeader(dev);
-          DeviceType type = getModernRoboticsDeviceType(dev, deviceHeader);
+          UsbDeviceType type = getModernRoboticsDeviceType(dev, deviceHeader);
 
-          if (type != DeviceType.MODERN_ROBOTICS_USB_LEGACY_MODULE) {
+          if (type != UsbDeviceType.MODERN_ROBOTICS_USB_LEGACY_MODULE) {
             closeAndThrowOnFailedDeviceTypeCheck(dev, serialNumber);
           }
           dev.setFirmwareVersion(getModernRoboticsFirmwareVersion(deviceHeader));
-        } catch (RobotCoreException e) {
-          if (dev != null) dev.close(); // avoid leakage of open FT_Devices
-          throw e;
-        } catch (RuntimeException e) {
+        } catch (RobotCoreException|RuntimeException e) {
           if (dev != null) dev.close(); // avoid leakage of open FT_Devices
           throw e;
         }
@@ -544,6 +627,30 @@ public class HardwareDeviceManager implements DeviceManager {
     return new LynxModule((LynxUsbDevice)lynxUsbDevice, moduleAddress, isParent);
   }
 
+  @Override
+  public @Nullable WebcamName createWebcamName(final SerialNumber serialNumber, String name) throws RobotCoreException, InterruptedException {
+    HardwareFactory.noteSerialNumberType(context, serialNumber, context.getString(R.string.moduleDisplayNameWebcam));
+    RobotLog.v("Creating %s", HardwareFactory.getDeviceDisplayName(context, serialNumber));
+
+    ArmableUsbDevice.OpenRobotUsbDevice openWebcam = new ArmableUsbDevice.OpenRobotUsbDevice() {
+      @Nullable @Override public RobotUsbDevice open() throws RobotCoreException {
+        CameraManagerInternal cameraManager = (CameraManagerInternal) ClassFactory.getInstance().getCameraManager();
+        if (cameraManager.isWebcamAttached(serialNumber)) {
+        } else {
+          RobotLog.logAndThrow("Unable to find webcam with serial number " + serialNumber);
+        }
+        return null; // we don't need an actual RobotUsbDevice, just needed to do the attachment check.
+      }
+    };
+    CameraManagerInternal cameraManager = (CameraManagerInternal) ClassFactory.getInstance().getCameraManager();
+    WebcamName webcamName = cameraManager.webcamNameFromSerialNumber(serialNumber, openWebcam, manager);
+    if (webcamName instanceof UserNameable) {
+      ((UserNameable)webcamName).setUserName(name);
+    }
+    ((RobotUsbModule)webcamName).armOrPretend();  // Force it to check for presence on USB
+    return webcamName;
+  }
+
 /* (non-Javadoc)
  * @see com.qualcomm.hardware.DeviceManager#createNxtServoController(com.qualcomm.robotcore.hardware.LegacyModule, int)
  */
@@ -569,12 +676,6 @@ public class HardwareDeviceManager implements DeviceManager {
   public TouchSensor createMRDigitalTouchSensor(DigitalChannelController digitalChannelController, int physicalPort, String name) {
     RobotLog.v("Creating Modern Robotics digital Touch Sensor - Port: " + physicalPort);
     return new ModernRoboticsTouchSensor(digitalChannelController, physicalPort);
-  }
-
-  @Override
-  public TouchSensor createMRAnalogTouchSensor(AnalogInputController analogInputController, int physicalPort, String name) {
-    RobotLog.v("Creating Modern Robotics analog Touch Sensor - Port: " + physicalPort);
-    return new ModernRoboticsTouchSensor(analogInputController, physicalPort);
   }
 
 /* (non-Javadoc)
@@ -632,12 +733,6 @@ public class HardwareDeviceManager implements DeviceManager {
   }
 
   @Override
-  public OpticalDistanceSensor createMRAnalogOpticalDistanceSensor(AnalogInputController analogInputController, int physicalPort, String name) {
-    RobotLog.v("Creating Modern Robotics Analog Optical Distance Sensor - Port: " + physicalPort);
-    return new ModernRoboticsAnalogOpticalDistanceSensor(analogInputController, physicalPort);
-  }
-
-  @Override
   public TouchSensor createNxtTouchSensor(LegacyModule legacyModule, int physicalPort, String name) {
     RobotLog.v("Creating HiTechnic NXT Touch Sensor - Port: " + physicalPort);
     return new HiTechnicNxtTouchSensor(promote(legacyModule), physicalPort);
@@ -650,9 +745,9 @@ public class HardwareDeviceManager implements DeviceManager {
   }
 
   @Override
-  public AnalogInput createAnalogInputDevice(AnalogInputController controller, int channel, String name) {
-    RobotLog.v("Creating Analog Input Device - Port: " + channel);
-    return new AnalogInput(controller, channel);
+  public HardwareDevice createAnalogSensor(AnalogInputController controller, int channel, AnalogSensorConfigurationType type) {
+    RobotLog.v("Creating Analog Sensor - Type: " + type.getName() + " - Port: " + channel);
+    return type.createInstance(controller, channel);
   }
 
   @Override
@@ -662,9 +757,9 @@ public class HardwareDeviceManager implements DeviceManager {
   }
 
   @Override
-  public DigitalChannel createDigitalChannelDevice(DigitalChannelController controller, int channel, String name) {
-    RobotLog.v("Creating Digital Channel Device - Port: " + channel);
-    return new DigitalChannelImpl(controller, channel);
+  public HardwareDevice createDigitalDevice(DigitalChannelController controller, int channel, DigitalIoDeviceConfigurationType type) {
+    RobotLog.v("Creating Digital Channel Device - Type: " + type.getName() + " - Port: " + channel);
+    return type.createInstance(controller, channel);
   }
 
   @Override
@@ -674,49 +769,34 @@ public class HardwareDeviceManager implements DeviceManager {
   }
 
   @Override
-  public PWMOutput createPwmOutputDeviceEx(PWMOutputController controller, int channel, String name) {
-    RobotLog.v("Creating PWM Output Device - Port: " + channel);
-    return new PWMOutputImplEx(controller, channel);
-  }
-
-  @Override
   public I2cDevice createI2cDevice(I2cController controller, DeviceConfiguration.I2cChannel channel, String name) {
     RobotLog.v("Creating I2C Device - " + channel);
     return new I2cDeviceImpl(controller, channel.channel);
   }
 
   @Override
-  public HardwareDevice createUserI2cDevice(I2cController controller, DeviceConfiguration.I2cChannel channel, UserI2cSensorType type, String name) {
+  public HardwareDevice createUserI2cDevice(I2cController controller, DeviceConfiguration.I2cChannel channel, I2cDeviceConfigurationType type, String name) {
     RobotLog.v("Creating user sensor %s - Channel: %d", type.getName(), channel.channel);
-    try {
-      return type.createInstance(controller, channel.channel);
-    } catch (InvocationTargetException e) {
-      RobotLog.v("Creating user sensor %s failed: ", type.getName());
-      Exception eToLog = e.getTargetException()!=null && (e.getTargetException() instanceof Exception) ? ((Exception)e.getTargetException()) : e;
-      RobotLog.logStacktrace(eToLog);
-      return null;
-    }
+    return type.createInstance(controller, channel.channel);
   }
 
   @Override
-  public HardwareDevice createUserI2cDevice(final RobotCoreLynxModule lynxModule, final DeviceConfiguration.I2cChannel bus, final UserI2cSensorType type, final String name) {
+  public HardwareDevice createUserI2cDevice(final RobotCoreLynxModule lynxModule, final DeviceConfiguration.I2cChannel bus, final I2cDeviceConfigurationType type, final String name) {
     RobotLog.v("Creating user sensor %s - on Lynx module=%d bus=%d", type.getName(), lynxModule.getModuleAddress(), bus.channel);
-    try {
-      return type.createInstance(lynxModule,
-              new Func<I2cDeviceSynchSimple>() {
-                  @Override public I2cDeviceSynchSimple value() {
-                    return createI2cDeviceSynchSimple(lynxModule, bus, name);
-                  }},
-              new Func<I2cDeviceSynch>() {
-                  @Override public I2cDeviceSynch value() {
-                    return createI2cDeviceSynch(lynxModule, bus, name);
-                  }});
-    } catch (InvocationTargetException e) {
-      RobotLog.v("Creating user sensor %s failed: ", type.getName());
-      Exception eToLog = e.getTargetException()!=null && (e.getTargetException() instanceof Exception) ? ((Exception)e.getTargetException()) : e;
-      RobotLog.logStacktrace(eToLog);
-      return null;
-    }
+    return type.createInstance(lynxModule,
+            new Func<I2cDeviceSynchSimple>() {
+              @Override
+              public I2cDeviceSynchSimple value() {
+                return createI2cDeviceSynchSimple(lynxModule, bus, name);
+              }
+            },
+            new Func<I2cDeviceSynch>() {
+              @Override
+              public I2cDeviceSynch value() {
+                return createI2cDeviceSynch(lynxModule, bus, name);
+              }
+            });
+
   }
 
   @Override

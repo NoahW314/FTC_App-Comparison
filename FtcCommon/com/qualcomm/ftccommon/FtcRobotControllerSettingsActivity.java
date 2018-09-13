@@ -35,10 +35,15 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.preference.Preference;
 import android.preference.PreferenceFragment;
+import android.preference.SwitchPreference;
+import android.widget.Switch;
 
 import com.qualcomm.robotcore.util.RobotLog;
 
+import org.firstinspires.ftc.robotcore.internal.network.DeviceNameManagerFactory;
 import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
+import org.firstinspires.ftc.robotcore.internal.network.WifiDirectDeviceNameManager;
+import org.firstinspires.ftc.robotcore.internal.system.PreferencesHelper;
 import org.firstinspires.ftc.robotcore.internal.network.DeviceNameManager;
 import org.firstinspires.ftc.robotcore.internal.ui.ThemedActivity;
 
@@ -63,6 +68,13 @@ public class FtcRobotControllerSettingsActivity extends ThemedActivity {
           return true;
           }
         });
+
+      PreferencesHelper preferencesHelper = new PreferencesHelper(getTag());
+      if (!preferencesHelper.readBoolean(getString(R.string.pref_has_speaker), true)) {
+        // Disable turning on and off sound if there's no speaker
+        Preference prefSoundOnOff = findPreference(getString(R.string.pref_sound_on_off));
+        prefSoundOnOff.setEnabled(false);
+      }
     }
 
     @Override
@@ -82,7 +94,7 @@ public class FtcRobotControllerSettingsActivity extends ThemedActivity {
     super.onCreate(savedInstanceState);
 
     // Always make sure we have a real device name before we launch
-    DeviceNameManager.getInstance().initializeDeviceNameIfNecessary();
+    DeviceNameManagerFactory.getInstance().initializeDeviceNameIfNecessary();
 
     // Display the fragment as the main content.
     getFragmentManager().beginTransaction()

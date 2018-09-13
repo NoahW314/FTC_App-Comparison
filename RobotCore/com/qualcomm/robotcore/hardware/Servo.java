@@ -32,9 +32,15 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package com.qualcomm.robotcore.hardware;
 
+import com.qualcomm.robotcore.hardware.configuration.ServoFlavor;
+import com.qualcomm.robotcore.hardware.configuration.annotations.DeviceProperties;
+import com.qualcomm.robotcore.hardware.configuration.annotations.ServoType;
+
 /**
  * Instances of Servo interface provide access to servo hardware devices.
  */
+@ServoType(flavor = ServoFlavor.STANDARD)
+@DeviceProperties(name = "@string/configTypeServo", xmlTag = "Servo", builtIn = true)
 public interface Servo extends HardwareDevice
     {
     /**

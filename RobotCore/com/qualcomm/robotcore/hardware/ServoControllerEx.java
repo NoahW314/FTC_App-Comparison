@@ -34,6 +34,8 @@ package com.qualcomm.robotcore.hardware;
 
 import android.support.annotation.NonNull;
 
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.ServoConfigurationType;
+
 /**
  * ServoControllerEx is an optional servo controller interface supported by some hardware
  * that provides enhanced servo functionality.
@@ -60,14 +62,14 @@ public interface ServoControllerEx extends ServoController
     @NonNull PwmControl.PwmRange getServoPwmRange(int servo);
 
     /**
-     * Individually denergizes the PWM for a particular servo
+     * Individually energizes the PWM for a particular servo
      * @param servo the servo port number on the controller
      * @see PwmControl#setPwmEnable()
      */
     void setServoPwmEnable(int servo);
 
     /**
-     * Returns whether the PWM is energized a this particular servo
+     * Individually de-energizes the PWM for a particular servo
      * @param servo the servo port number on the controller
      * @see PwmControl#setPwmDisable()
      */
@@ -79,4 +81,11 @@ public interface ServoControllerEx extends ServoController
      * @see PwmControl#isPwmEnabled()
      */
     boolean isServoPwmEnabled(int servo);
+
+    /**
+     * Sets the servo type for a particular servo
+     * @param servo the servo port number on the controller
+     * @param servoType the ServoConfigurationType instance to set
+     */
+    void setServoType(int servo, ServoConfigurationType servoType);
     }

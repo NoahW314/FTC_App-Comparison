@@ -36,7 +36,7 @@ import android.support.annotation.NonNull;
 
 import com.qualcomm.robotcore.util.ElapsedTime;
 
-import org.firstinspires.ftc.robotcore.external.Consumer;
+import org.firstinspires.ftc.robotcore.external.function.Consumer;
 import org.firstinspires.ftc.robotcore.internal.system.Assert;
 
 import java.util.AbstractQueue;

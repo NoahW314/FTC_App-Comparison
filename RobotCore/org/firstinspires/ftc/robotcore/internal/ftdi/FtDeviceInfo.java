@@ -48,7 +48,8 @@ public class FtDeviceInfo
     public int      id;
     public int      location;
     public String   serialNumber;
-    public String   description;
+    public String   manufacturerName;
+    public String   productName;
     public int      handle;
     public int      breakOnParam;
     public short    modemStatus;

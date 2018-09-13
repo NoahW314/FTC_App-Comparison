@@ -51,6 +51,8 @@ public class LynxGetModuleStatusResponse extends LynxStandardResponse
     public static final int bitDeviceReset        = (1<<1);
     public static final int bitFailSafe           = (1<<2);
     public static final int bitControllerOverTemp = (1<<3);
+    public static final int bitBatteryLow         = (1<<4);
+    public static final int bitHIBFault           = (1<<5);
 
     //----------------------------------------------------------------------------------------------
     // State
@@ -75,6 +77,8 @@ public class LynxGetModuleStatusResponse extends LynxStandardResponse
         appendBit(builder, bitDeviceReset,          "Reset");
         appendBit(builder, bitFailSafe,             "FailSafe");
         appendBit(builder, bitControllerOverTemp,   "Temp");
+        appendBit(builder, bitBatteryLow,           "Battery");
+        appendBit(builder, bitHIBFault,             "HIB Fault");
         String message = builder.toString();
         if (message.length() > 0) message = ": " + message;
         return String.format("LynxGetModuleStatusResponse(status=0x%02x alerts=0x%02x%s)", status, motorAlerts, message);
@@ -108,6 +112,14 @@ public class LynxGetModuleStatusResponse extends LynxStandardResponse
     public boolean isControllerOverTemp()
         {
         return testBitsOn(bitControllerOverTemp);
+        }
+    public boolean isBatteryLow()
+        {
+        return testBitsOn(bitBatteryLow);
+        }
+    public boolean isHIBFault()
+        {
+        return testBitsOn(bitHIBFault);
         }
 
     public int getStatus()

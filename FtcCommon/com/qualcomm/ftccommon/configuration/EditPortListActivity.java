@@ -47,6 +47,7 @@ import com.qualcomm.robotcore.util.RobotLog;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * EditPortListActivity is a helper class that assists in managing configuration of
@@ -171,7 +172,7 @@ public abstract class EditPortListActivity<ITEM_T extends DeviceConfiguration> e
         TextView port = (TextView) result.findViewById(idItemPortNumber);
         if (port != null)
             {
-            port.setText(String.format("%d", portNumber));
+            port.setText(String.format(Locale.getDefault(), "%d", portNumber));
             }
 
         return result;

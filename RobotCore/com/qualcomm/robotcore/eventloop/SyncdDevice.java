@@ -50,6 +50,15 @@ import com.qualcomm.robotcore.hardware.usb.RobotUsbModule;
  */
 public interface SyncdDevice {
 
+  interface Manager {
+    void registerSyncdDevice(SyncdDevice device);
+    void unregisterSyncdDevice(SyncdDevice device);
+  }
+
+  interface Syncable {
+    void setSyncDeviceManager(Manager manager);
+  }
+
   /**
    * Has this device shutdown abnormally? Note that even if this method returns true that
    * a close() will still be necessary to fully clean up associated resources.

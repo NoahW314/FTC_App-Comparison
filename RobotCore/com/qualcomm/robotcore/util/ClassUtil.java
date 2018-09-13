@@ -37,19 +37,29 @@ import android.content.res.Resources;
 import com.qualcomm.robotcore.R;
 
 import org.firstinspires.ftc.robotcore.external.Predicate;
-import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 import org.firstinspires.ftc.robotcore.internal.network.WifiDirectAgent;
+import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.nio.MappedByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 
+@SuppressWarnings("WeakerAccess")
 public class ClassUtil {
+
+    public static final String TAG = ClassUtil.class.getSimpleName();
+
+    //----------------------------------------------------------------------------------------------
+    // Utilities for spelunking classes in general
+    //----------------------------------------------------------------------------------------------
 
     static public List<Constructor> getDeclaredConstructors(Class<?> clazz)
     {
@@ -65,7 +75,67 @@ public class ClassUtil {
         return result;
     }
 
-    static public List<Method> getDeclaredMethods(Class<?> clazz)
+    /** Answers whether one class is or inherits from another */
+    public static boolean inheritsFrom(Class subclass, Class superClass)
+    {
+        while (subclass != null) {
+            // If we've found who we're looking for, then we're golden
+            if (subclass == superClass) {
+                return true;
+            }
+
+            // In case target is an interface we need to explore the interface chain as well.
+            if (superClass.isInterface()) {
+                for (Class intf : subclass.getInterfaces()) {
+                    if (inheritsFrom(intf, superClass))
+                        return true;
+                }
+            }
+
+            // Try heading up one level
+            subclass = subclass.getSuperclass();
+        }
+        return false;
+    }
+
+    /**
+     * Finds a hidden (using @hide) or non-public method in the indicated class or one of its superclasses.
+     * @return the requested field, or null if no such method was found.
+     */
+    public static Method getDeclaredMethod(Class clazz, String methodName, Class<?>... types)
+    {
+        try {
+            Method method = clazz.getMethod(methodName, types);
+            method.setAccessible(true);
+            return method;
+        }
+        catch (LinkageError e) {
+            return null;
+        }
+        catch (NoSuchMethodException e) {
+            Class superclass = clazz.getSuperclass();
+            if (superclass != null) {
+                return getDeclaredMethod(superclass, methodName, types);
+            }
+            else {
+                RobotLog.ee(WifiDirectAgent.TAG, e, "method not found: %s", methodName);
+                return null;
+            }
+        }
+    }
+
+    public static List<Method> getAllDeclaredMethods(Class clazz)
+    {
+        List<Method> result = new ArrayList<>();
+        Class superclass = clazz.getSuperclass();
+        if (superclass != null) {
+            result.addAll(getAllDeclaredMethods(superclass));
+        }
+        result.addAll(getLocalDeclaredMethods(clazz));
+        return result;
+    }
+
+    static public List<Method> getLocalDeclaredMethods(Class<?> clazz)
     {
         Method[] methods;
         try {
@@ -74,61 +144,57 @@ public class ClassUtil {
         catch (Exception|LinkageError e) {
             methods = new Method[0];
         }
-        List<Method> result = new LinkedList<Method>();
-        result.addAll(Arrays.asList(methods));
+        return Arrays.asList(methods);
+    }
+
+
+    /**
+     * Finds a hidden (using @hide) or non-public field in the indicated class or one of its superclasses.
+     * @return the requested field, or null if no such field was found.
+     */
+    public static Field getDeclaredField(Class clazz, String fieldName)
+    {
+        try {
+            Field field = clazz.getDeclaredField(fieldName);;
+            field.setAccessible(true);
+            return field;
+        }
+        catch (LinkageError e) {
+            return null;
+        }
+        catch (NoSuchFieldException e) {
+            Class superclass = clazz.getSuperclass();
+            if (superclass != null) {
+                return getDeclaredField(superclass, fieldName);
+            }
+            else {
+                RobotLog.ee(WifiDirectAgent.TAG, e, "field not found: %s.%s", clazz.getName(), fieldName);
+                return null;
+            }
+        }
+    }
+
+    public static List<Field> getAllDeclaredFields(Class clazz)
+    {
+        List<Field> result = new ArrayList<>();
+        Class superclass = clazz.getSuperclass();
+        if (superclass != null) {
+            result.addAll(getAllDeclaredFields(superclass));
+        }
+        result.addAll(getLocalDeclaredFields(clazz));
         return result;
     }
 
-    static public List<Method> getDeclaredMethodsIncludingSuper(Class<?> clazz)
+    static public List<Field> getLocalDeclaredFields(Class<?> clazz)
     {
-        if (clazz.getSuperclass() == null) {
-            return getDeclaredMethods(clazz);
-        } else {
-            List<Method> result = getDeclaredMethodsIncludingSuper(clazz.getSuperclass());
-            result.addAll(getDeclaredMethods(clazz));
-            return result;
-        }
-    }
-
-    /** Answers whether one class is or inherits from another */
-    public static boolean inheritsFrom(Class baseClass, Class targetClass)
-    {
-        while (baseClass != null) {
-            // If we've found who we're looking for, then we're golden
-            if (baseClass == targetClass) {
-                return true;
-            }
-
-            // In case target is an interface we need to explore the interface chain as well.
-            if (targetClass.isInterface()) {
-                for (Class intf : baseClass.getInterfaces()) {
-                    if (inheritsFrom(intf, targetClass))
-                        return true;
-                }
-            }
-
-            // Try heading up one level
-            baseClass = baseClass.getSuperclass();
-        }
-        return false;
-    }
-
-    public static Method getHiddenMethod(Class clazz, String methodName, Class<?>... types)
-    {
+        Field[] fields;
         try {
-            Method method = clazz.getMethod(methodName, types);
-            method.setAccessible(true);
-            return method;
+            fields = clazz.getDeclaredFields();
         }
-        catch (NoSuchMethodException e) {
-            RobotLog.ee(WifiDirectAgent.TAG, e, "method not found: %s", methodName);
-            return null;
+        catch (Exception|LinkageError e) {
+            fields = new Field[0];
         }
-    }
-
-    public static Method getHiddenMethod(Object receiver, String methodName, Class<?>... types)
-    {
-        return getHiddenMethod(receiver.getClass(), methodName, types);
+        return Arrays.asList(fields);
     }
 
     public static Object invoke(Object receiver, Method method, Object... args)
@@ -205,6 +271,39 @@ public class ClassUtil {
         }
         else {
             return string;
+        }
+    }
+
+    protected static Class findClass(String className)
+    {
+        try {
+            return Class.forName(className);
+        }
+        catch (ClassNotFoundException e) {
+            RobotLog.ee(TAG, e, "class not found: %s", className);
+            throw new RuntimeException("class not found");
+        }
+    }
+
+    //----------------------------------------------------------------------------------------------
+    // Utilities for spelunking particular classes
+    //----------------------------------------------------------------------------------------------
+
+    protected static class MappedByteBufferInfo
+    {
+        public static Field blockField = getDeclaredField(java.nio.MappedByteBuffer.class, "block");
+        public static Field addressField = getDeclaredField(blockField.getType(), "address");
+    }
+
+    public static long memoryAddressFrom(MappedByteBuffer buffer)
+    {
+       try {
+            Object memoryBlock = MappedByteBufferInfo.blockField.get(buffer);
+            Object address = MappedByteBufferInfo.addressField.get(memoryBlock);
+            return (long)address;
+        } catch (Throwable e) {
+            RobotLog.ee(TAG, e, "internal error: can't extract address from MappedByteBuffer");
+            throw new RuntimeException("can't extract address from MappedByteBuffer");
         }
     }
 

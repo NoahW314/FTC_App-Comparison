@@ -40,6 +40,7 @@ import com.qualcomm.robotcore.eventloop.EventLoopManager;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.OpModeManager;
 import com.qualcomm.robotcore.eventloop.opmode.OpModeManagerNotifier;
+import com.qualcomm.robotcore.exception.RobotCoreException;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.Gamepad;
@@ -120,6 +121,7 @@ public class OpModeManagerImpl implements OpModeServices, OpModeManagerNotifier 
 
   protected enum OpModeState { INIT, LOOPING }
 
+  protected static int            matchNumber          = 0;
   protected Context               context;
   protected String                activeOpModeName     = DEFAULT_OP_MODE_NAME;
   protected OpMode                activeOpMode         = DEFAULT_OP_MODE;
@@ -224,6 +226,23 @@ public class OpModeManagerImpl implements OpModeServices, OpModeManagerNotifier 
     return activeOpMode;
   }
 
+  protected void doMatchLoggingWork(String opModeName) {
+    if (!opModeName.equals(DEFAULT_OP_MODE_NAME)) {
+      try {
+        RobotLog.startMatchLogging(context, opModeName, matchNumber);
+      } catch (RobotCoreException e) {
+        RobotLog.ee(TAG, "Could not start match logging");
+        e.printStackTrace();
+      }
+    } else {
+      RobotLog.stopMatchLogging();
+    }
+  }
+
+  public void setMatchNumber(int matchNumber) {
+    this.matchNumber = matchNumber;
+  }
+
   // called on DS receive thread
   // initActiveOpMode(DEFAULT_OP_MODE_NAME) is called from event loop thread, FtcRobotControllerService thread
   public void initActiveOpMode(String name) {
@@ -235,6 +254,8 @@ public class OpModeManagerImpl implements OpModeServices, OpModeManagerNotifier 
     newState.gamepadResetNeeded = true;
     newState.telemetryClearNeeded = !name.equals(DEFAULT_OP_MODE_NAME);  // no semantic need to clear if we're just stopping
     newState.callToStartNeeded = false;
+
+    doMatchLoggingWork(name);
 
     // We *insist* on becoming the new state
     nextOpModeState.set(newState);
@@ -262,6 +283,7 @@ public class OpModeManagerImpl implements OpModeServices, OpModeManagerNotifier 
   // called on the event loop thread
   public void stopActiveOpMode() {
     callActiveOpModeStop();
+    RobotLog.stopMatchLogging();
     initActiveOpMode(DEFAULT_OP_MODE_NAME);
   }
 
@@ -293,6 +315,12 @@ public class OpModeManagerImpl implements OpModeServices, OpModeManagerNotifier 
       telemetry.addData("\0", "");
       this.eventLoopManager.sendTelemetryData(telemetry);
       telemetryClearNeeded = false;
+
+      // Similarly, we clear the global error/warning in order to
+      // ensure that stale messages from previous OpMode runs are
+      // no longer (confusingly) on the screen.
+      RobotLog.clearGlobalErrorMsg();
+      RobotLog.clearGlobalWarningMsg();
     }
 
     if (opModeSwapNeeded) {
@@ -562,7 +590,7 @@ public class OpModeManagerImpl implements OpModeServices, OpModeManagerNotifier 
    */
   @SuppressWarnings("WeakerAccess")
   public static class DefaultOpMode extends OpMode {
-  
+
     //----------------------------------------------------------------------------------------------
     // State
     //----------------------------------------------------------------------------------------------

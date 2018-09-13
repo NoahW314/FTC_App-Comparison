@@ -69,14 +69,14 @@ import com.qualcomm.hardware.R;
 import com.qualcomm.hardware.modernrobotics.comm.ReadWriteRunnable;
 import com.qualcomm.hardware.modernrobotics.comm.ReadWriteRunnableSegment;
 import com.qualcomm.hardware.modernrobotics.comm.ReadWriteRunnableStandard;
-import com.qualcomm.robotcore.eventloop.EventLoopManager;
+import com.qualcomm.robotcore.eventloop.SyncdDevice;
 import com.qualcomm.robotcore.exception.RobotCoreException;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorController;
 import com.qualcomm.robotcore.hardware.VoltageSensor;
 import com.qualcomm.robotcore.hardware.configuration.ModernRoboticsConstants;
 import com.qualcomm.robotcore.hardware.configuration.ModernRoboticsMotorControllerParamsState;
-import com.qualcomm.robotcore.hardware.configuration.MotorConfigurationType;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.MotorConfigurationType;
 import com.qualcomm.robotcore.hardware.usb.RobotUsbDevice;
 import com.qualcomm.robotcore.util.DifferentialControlLoopCoefficients;
 import com.qualcomm.robotcore.util.ElapsedTime;
@@ -232,6 +232,7 @@ public final class ModernRoboticsUsbDcMotorController extends ModernRoboticsUsbC
         DcMotor.RunMode             prevRunMode                = null;
         double                      prevPower;
         MotorConfigurationType      motorType                  = MotorConfigurationType.getUnspecifiedMotorType();
+        MotorConfigurationType      internalMotorType          = null;
         }
 
     final MotorProperties[] motors = new MotorProperties[MOTOR_MAX];
@@ -245,7 +246,7 @@ public final class ModernRoboticsUsbDcMotorController extends ModernRoboticsUsbC
     /**
      * Use HardwareDeviceManager to create an instance of this class
      */
-    public ModernRoboticsUsbDcMotorController(final Context context, final SerialNumber serialNumber, final OpenRobotUsbDevice openRobotUsbDevice, EventLoopManager manager)
+    public ModernRoboticsUsbDcMotorController(final Context context, final SerialNumber serialNumber, final OpenRobotUsbDevice openRobotUsbDevice, SyncdDevice.Manager manager)
             throws RobotCoreException, InterruptedException
         {
         super(context, serialNumber, manager, openRobotUsbDevice, new CreateReadWriteRunnable()
@@ -416,10 +417,27 @@ public final class ModernRoboticsUsbDcMotorController extends ModernRoboticsUsbC
     // DcMotorController interface
     //------------------------------------------------------------------------------------------------
 
+    @Override public void resetDeviceConfigurationForOpMode(int motor)
+        {
+        this.validateMotor(motor);
+        if (motors[motor].internalMotorType!=null)
+            {
+            if (motors[motor].motorType != motors[motor].internalMotorType)
+                {
+                setMotorType(motor, motors[motor].internalMotorType);
+                }
+            }
+        }
+
     @Override public synchronized void setMotorType(int motor, MotorConfigurationType motorType)
         {
         this.validateMotor(motor);
         motors[motor].motorType = motorType;
+        if (motors[motor].internalMotorType==null)
+            {
+            // First one is the system setting the type
+            motors[motor].internalMotorType = motorType;
+            }
         updateMotorParamsIfNecessary(motor);
         }
 

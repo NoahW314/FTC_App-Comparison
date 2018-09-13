@@ -31,12 +31,16 @@
 package com.qualcomm.robotcore.hardware;
 
 import com.qualcomm.robotcore.R;
+import com.qualcomm.robotcore.hardware.configuration.annotations.AnalogSensorType;
+import com.qualcomm.robotcore.hardware.configuration.annotations.DeviceProperties;
 
 import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 
 /**
  * Control a single analog device
  */
+@AnalogSensorType
+@DeviceProperties(name = "@string/configTypeAnalogInput", xmlTag = "AnalogInput", builtIn = true)
 public class AnalogInput implements HardwareDevice {
 
   private AnalogInputController controller = null;

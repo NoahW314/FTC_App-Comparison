@@ -43,21 +43,23 @@ import android.widget.Spinner;
 import android.widget.TextView;
 
 import com.qualcomm.ftccommon.R;
+import com.qualcomm.robotcore.hardware.ControlSystem;
 import com.qualcomm.robotcore.hardware.configuration.BuiltInConfigurationType;
 import com.qualcomm.robotcore.hardware.configuration.ConfigurationType;
+import com.qualcomm.robotcore.hardware.configuration.ConfigurationUtility;
 import com.qualcomm.robotcore.hardware.configuration.ControllerConfiguration;
 import com.qualcomm.robotcore.hardware.configuration.DeviceConfiguration;
 import com.qualcomm.robotcore.hardware.configuration.MatrixConstants;
 import com.qualcomm.robotcore.hardware.configuration.MatrixControllerConfiguration;
 import com.qualcomm.robotcore.hardware.configuration.ModernRoboticsConstants;
-import com.qualcomm.robotcore.hardware.configuration.MotorConfiguration;
 import com.qualcomm.robotcore.hardware.configuration.MotorControllerConfiguration;
-import com.qualcomm.robotcore.hardware.configuration.ServoConfiguration;
 import com.qualcomm.robotcore.hardware.configuration.ServoControllerConfiguration;
 import com.qualcomm.robotcore.util.RobotLog;
 import com.qualcomm.robotcore.util.SerialNumber;
 
 import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 
 public class EditLegacyModuleControllerActivity extends EditUSBDeviceActivity {
 
@@ -127,7 +129,7 @@ public class EditLegacyModuleControllerActivity extends EditUSBDeviceActivity {
     LinearLayout layout = (LinearLayout) findViewById(id);
     View result = getLayoutInflater().inflate(R.layout.simple_device, layout, true);
     TextView port = (TextView) result.findViewById(R.id.portNumber);
-    port.setText(String.format("%d", portNumber));
+    port.setText(String.format(Locale.getDefault(), "%d", portNumber));
 
     Spinner spinner = (Spinner)result.findViewById(R.id.choiceSpinner);
     localizeConfigTypeSpinner(ConfigurationType.DisplayNameFlavor.Legacy, spinner);
@@ -168,14 +170,14 @@ public class EditLegacyModuleControllerActivity extends EditUSBDeviceActivity {
     controller.setName(nameText.getText().toString());
 
     if (controller.getConfigurationType() == BuiltInConfigurationType.MOTOR_CONTROLLER) {
-      EditParameters<MotorConfiguration> parameters = new EditParameters<MotorConfiguration>(this, controller, MotorConfiguration.class, ((MotorControllerConfiguration)controller).getMotors());
+      EditParameters<DeviceConfiguration> parameters = new EditParameters<>(this, controller, DeviceConfiguration.class, ((MotorControllerConfiguration)controller).getMotors());
       parameters.setInitialPortNumber(ModernRoboticsConstants.INITIAL_MOTOR_PORT);
-      parameters.setConfigurationTypes(MotorConfiguration.getAllMotorConfigurationTypes());
       handleLaunchEdit(EditLegacyMotorControllerActivity.requestCode, EditLegacyMotorControllerActivity.class, parameters);
     }
     else if (controller.getConfigurationType() == BuiltInConfigurationType.SERVO_CONTROLLER) {
-      EditParameters<ServoConfiguration> parameters = new EditParameters<ServoConfiguration>(this, controller, ServoConfiguration.class, ((ServoControllerConfiguration)controller).getServos());
+      EditParameters<DeviceConfiguration> parameters = new EditParameters<DeviceConfiguration>(this, controller, DeviceConfiguration.class, ((ServoControllerConfiguration)controller).getServos());
       parameters.setInitialPortNumber(ModernRoboticsConstants.INITIAL_SERVO_PORT);
+      parameters.setControlSystem(ControlSystem.MODERN_ROBOTICS);
       handleLaunchEdit(EditLegacyServoControllerActivity.requestCode, EditLegacyServoControllerActivity.class, parameters);
     }
     else if (controller.getConfigurationType() == BuiltInConfigurationType.MATRIX_CONTROLLER) {
@@ -303,37 +305,25 @@ public class EditLegacyModuleControllerActivity extends EditUSBDeviceActivity {
 
     String name = currentModule.getName();
 
-    SerialNumber serialNumber = new SerialNumber();
+    SerialNumber serialNumber = SerialNumber.createFake();
 
     ConfigurationType currentType = currentModule.getConfigurationType();
     if (!(currentType == newType)) { //only update the controller if it's a new choice.
       ControllerConfiguration newModule;
       if (newType == BuiltInConfigurationType.MOTOR_CONTROLLER) {
-        ArrayList<MotorConfiguration> motors = new ArrayList<MotorConfiguration>();
-        for (int motorPortNumber = ModernRoboticsConstants.INITIAL_MOTOR_PORT; motorPortNumber <= ModernRoboticsConstants.NUMBER_OF_MOTORS; motorPortNumber++) {
-          motors.add(new MotorConfiguration(motorPortNumber));
-        }
+        List<DeviceConfiguration> motors = ConfigurationUtility.buildEmptyMotors(ModernRoboticsConstants.INITIAL_MOTOR_PORT, ModernRoboticsConstants.NUMBER_OF_MOTORS);
         newModule = new MotorControllerConfiguration(name, motors, serialNumber);
         newModule.setPort(port);
       }
       else if (newType == BuiltInConfigurationType.SERVO_CONTROLLER) {
-        ArrayList<ServoConfiguration> servos = new ArrayList<ServoConfiguration>();
-        for (int servoPortNumber = ModernRoboticsConstants.INITIAL_SERVO_PORT; servoPortNumber <= ModernRoboticsConstants.NUMBER_OF_SERVOS; servoPortNumber++) {
-          servos.add(new ServoConfiguration(servoPortNumber));
-        }
+        List<DeviceConfiguration> servos = ConfigurationUtility.buildEmptyServos(ModernRoboticsConstants.INITIAL_SERVO_PORT, ModernRoboticsConstants.NUMBER_OF_SERVOS);
         newModule = new ServoControllerConfiguration(name, servos, serialNumber);
         newModule.setPort(port);
       }
       else if (newType == BuiltInConfigurationType.MATRIX_CONTROLLER) {
-        ArrayList<MotorConfiguration> motors = new ArrayList<MotorConfiguration>();
-        for(int motorPortNumber = MatrixConstants.INITIAL_MOTOR_PORT; motorPortNumber <= MatrixConstants.NUMBER_OF_MOTORS; motorPortNumber++) {
-          motors.add(new MotorConfiguration(motorPortNumber));
-        }
+        List<DeviceConfiguration> motors = ConfigurationUtility.buildEmptyMotors(MatrixConstants.INITIAL_MOTOR_PORT, MatrixConstants.NUMBER_OF_MOTORS);
+        List<DeviceConfiguration> servos = ConfigurationUtility.buildEmptyServos(MatrixConstants.INITIAL_SERVO_PORT, MatrixConstants.NUMBER_OF_SERVOS);
 
-        ArrayList<ServoConfiguration> servos = new ArrayList<ServoConfiguration>();
-        for(int servoPortNumber = MatrixConstants.INITIAL_SERVO_PORT; servoPortNumber <= MatrixConstants.NUMBER_OF_SERVOS; servoPortNumber++) {
-          servos.add(new ServoConfiguration(servoPortNumber));
-        }
         newModule = new MatrixControllerConfiguration(name, motors, servos, serialNumber);
         newModule.setPort(port);
       }

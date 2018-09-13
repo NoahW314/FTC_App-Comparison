@@ -49,9 +49,9 @@ public class LynxSetMotorTargetPositionCommand extends LynxDekaInterfaceCommand<
     // State
     //----------------------------------------------------------------------------------------------
 
-    public final int cbPayload = 7;
-    public final int apiToleranceFirst = 0;
-    public final int apiToleranceLast  = 65535;
+    public final static int cbPayload = 7;
+    public final static int apiToleranceFirst = 0;
+    public final static int apiToleranceLast  = 65535;
 
     private byte  motor;
     private int   target;

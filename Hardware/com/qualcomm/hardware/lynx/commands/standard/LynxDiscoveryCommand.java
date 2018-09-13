@@ -32,7 +32,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package com.qualcomm.hardware.lynx.commands.standard;
 
-import com.qualcomm.hardware.lynx.LynxUnsupportedCommandNumberException;
+import com.qualcomm.hardware.lynx.LynxUnsupportedCommandException;
 import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.hardware.lynx.LynxNackException;
 
@@ -88,7 +88,7 @@ public class LynxDiscoveryCommand extends LynxStandardCommand<LynxAck /*actually
         try {
             this.module.sendCommand(this);
             }
-        catch (LynxUnsupportedCommandNumberException e)
+        catch (LynxUnsupportedCommandException e)
             {
             throwNackForUnsupportedCommand(e);
             }
@@ -100,7 +100,7 @@ public class LynxDiscoveryCommand extends LynxStandardCommand<LynxAck /*actually
         try {
             this.module.sendCommand(this);
             }
-        catch (LynxUnsupportedCommandNumberException e)
+        catch (LynxUnsupportedCommandException e)
             {
             throwNackForUnsupportedCommand(e);
             }

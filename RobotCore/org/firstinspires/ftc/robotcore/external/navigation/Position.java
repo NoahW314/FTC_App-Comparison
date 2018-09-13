@@ -36,6 +36,9 @@ import java.util.Locale;
 
 /**
  * Instances of {@link Position} represent a three-dimensional distance in a particular distance unit.
+ *
+ * @see Acceleration
+ * @see Position
  */
 public class Position
     {

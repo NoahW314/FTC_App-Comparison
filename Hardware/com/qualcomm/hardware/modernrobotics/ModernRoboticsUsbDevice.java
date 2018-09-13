@@ -33,16 +33,17 @@ package com.qualcomm.hardware.modernrobotics;
 import android.content.Context;
 
 import com.qualcomm.hardware.modernrobotics.comm.ModernRoboticsUsbUtil;
-import com.qualcomm.hardware.modernrobotics.comm.RobotUsbDevicePretendModernRobotics;
 import com.qualcomm.hardware.modernrobotics.comm.ReadWriteRunnable;
 import com.qualcomm.hardware.modernrobotics.comm.ReadWriteRunnableStandard;
-import com.qualcomm.robotcore.eventloop.EventLoopManager;
+import com.qualcomm.hardware.modernrobotics.comm.RobotUsbDevicePretendModernRobotics;
+import com.qualcomm.robotcore.eventloop.SyncdDevice;
 import com.qualcomm.robotcore.exception.RobotCoreException;
-import com.qualcomm.hardware.ArmableUsbDevice;
 import com.qualcomm.robotcore.hardware.usb.RobotUsbDevice;
 import com.qualcomm.robotcore.util.RobotLog;
 import com.qualcomm.robotcore.util.SerialNumber;
 import com.qualcomm.robotcore.util.ThreadPool;
+
+import org.firstinspires.ftc.robotcore.internal.hardware.usb.ArmableUsbDevice;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -70,7 +71,7 @@ public abstract class ModernRoboticsUsbDevice extends ArmableUsbDevice implement
     ReadWriteRunnable create(RobotUsbDevice device) throws RobotCoreException, InterruptedException;
   }
 
-  public ModernRoboticsUsbDevice(Context context, SerialNumber serialNumber, EventLoopManager manager, OpenRobotUsbDevice openRobotUsbDevice, CreateReadWriteRunnable createReadWriteRunnable)
+  public ModernRoboticsUsbDevice(Context context, SerialNumber serialNumber, SyncdDevice.Manager manager, OpenRobotUsbDevice openRobotUsbDevice, CreateReadWriteRunnable createReadWriteRunnable)
       throws RobotCoreException, InterruptedException {
 
     super(context, serialNumber, manager, openRobotUsbDevice);
@@ -112,7 +113,7 @@ public abstract class ModernRoboticsUsbDevice extends ArmableUsbDevice implement
 
       // Did that give us something?
       if (readWriteRunnable != null) {
-        RobotLog.v("Starting up %sdevice %s", (this.armingState == ARMINGSTATE.TO_PRETENDING ? "pretend " : ""), this.serialNumber.toString());
+        RobotLog.v("Starting up %sdevice %s", (this.armingState == ARMINGSTATE.TO_PRETENDING ? "pretend " : ""), this.serialNumber);
 
         readWriteRunnable.setOwner(this);
 
@@ -120,7 +121,7 @@ public abstract class ModernRoboticsUsbDevice extends ArmableUsbDevice implement
         readWriteService = ThreadPool.newSingleThreadExecutor("readWriteService");
         readWriteRunnable.executeUsing(readWriteService);
 
-        eventLoopManager.registerSyncdDevice(readWriteRunnable);
+        syncdDeviceManager.registerSyncdDevice(readWriteRunnable);
 
         readWriteRunnable.setAcceptingWrites(true);
       }
@@ -151,7 +152,7 @@ public abstract class ModernRoboticsUsbDevice extends ArmableUsbDevice implement
         readWriteRunnable.drainPendingWrites();
 
         // tear down connections and close
-        eventLoopManager.unregisterSyncdDevice(readWriteRunnable);
+        syncdDeviceManager.unregisterSyncdDevice(readWriteRunnable);
         readWriteRunnable.close();
         readWriteRunnable = null;
         }

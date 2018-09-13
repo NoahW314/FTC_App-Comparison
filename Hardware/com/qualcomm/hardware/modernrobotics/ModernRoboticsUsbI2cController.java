@@ -34,7 +34,7 @@ package com.qualcomm.hardware.modernrobotics;
 
 import android.content.Context;
 
-import com.qualcomm.robotcore.eventloop.EventLoopManager;
+import com.qualcomm.robotcore.eventloop.SyncdDevice;
 import com.qualcomm.robotcore.exception.RobotCoreException;
 import com.qualcomm.robotcore.hardware.I2cController;
 import com.qualcomm.robotcore.util.SerialNumber;
@@ -58,7 +58,7 @@ public abstract class ModernRoboticsUsbI2cController extends ModernRoboticsUsbDe
     // Construction
     //----------------------------------------------------------------------------------------------
 
-    public ModernRoboticsUsbI2cController(int numberOfI2cPorts, Context context, SerialNumber serialNumber, EventLoopManager manager, OpenRobotUsbDevice openRobotUsbDevice, CreateReadWriteRunnable createReadWriteRunnable)
+    public ModernRoboticsUsbI2cController(int numberOfI2cPorts, Context context, SerialNumber serialNumber, SyncdDevice.Manager manager, OpenRobotUsbDevice openRobotUsbDevice, CreateReadWriteRunnable createReadWriteRunnable)
         throws RobotCoreException, InterruptedException
         {
         super(context, serialNumber, manager, openRobotUsbDevice, createReadWriteRunnable);

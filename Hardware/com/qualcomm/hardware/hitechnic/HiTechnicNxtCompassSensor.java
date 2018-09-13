@@ -130,7 +130,7 @@ public class HiTechnicNxtCompassSensor extends I2cControllerPortDeviceImpl imple
   @Override
   public String status() {
     return String.format("NXT Compass Sensor, connected via device %s, port %d",
-        controller.getSerialNumber().toString(), physicalPort);
+        controller.getSerialNumber(), physicalPort);
   }
 
   public synchronized void setMode(CompassMode mode){

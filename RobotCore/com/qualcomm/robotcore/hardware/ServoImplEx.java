@@ -32,6 +32,10 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package com.qualcomm.robotcore.hardware;
 
+import android.support.annotation.NonNull;
+
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.ServoConfigurationType;
+
 /**
  * ServoImplEx provides access to extended functionality on servos. Instances support
  * both the {@link Servo} and the {@link PwmControl} interfaces.
@@ -48,15 +52,16 @@ public class ServoImplEx extends ServoImpl implements PwmControl
     // Construction
     //----------------------------------------------------------------------------------------------
 
-    public ServoImplEx(ServoController controller, int portNumber)
+    public ServoImplEx(ServoControllerEx controller, int portNumber, @NonNull ServoConfigurationType servoType)
         {
-        this(controller, portNumber, Direction.FORWARD);
+        this(controller, portNumber, Direction.FORWARD, servoType);
         }
 
-    public ServoImplEx(ServoController controller, int portNumber, Direction direction)
+    public ServoImplEx(ServoControllerEx controller, int portNumber, Direction direction, @NonNull ServoConfigurationType servoType)
         {
         super(controller, portNumber, direction);
-        this.controllerEx = (ServoControllerEx)controller;
+        this.controllerEx = controller;
+        controllerEx.setServoType(portNumber, servoType);
         }
 
     //----------------------------------------------------------------------------------------------

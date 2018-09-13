@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2017 Craig MacFarlane, Roboert Atkinson
+Copyright (c) 2017 Craig MacFarlane, Robert Atkinson
 
 All rights reserved.
 
@@ -37,7 +37,6 @@ import android.content.Context;
 import com.qualcomm.hardware.lynx.commands.LynxCommand;
 import com.qualcomm.hardware.lynx.commands.core.LynxI2cReadMultipleBytesCommand;
 import com.qualcomm.hardware.lynx.commands.core.LynxI2cReadSingleByteCommand;
-import com.qualcomm.hardware.lynx.commands.core.LynxI2cWriteReadMultipleBytesCommand;
 import com.qualcomm.hardware.lynx.commands.core.LynxI2cWriteSingleByteCommand;
 import com.qualcomm.robotcore.exception.RobotCoreException;
 import com.qualcomm.robotcore.hardware.I2cWaitControl;

@@ -35,8 +35,9 @@ package com.qualcomm.hardware.adafruit;
 import com.qualcomm.hardware.bosch.BNO055IMUImpl;
 import com.qualcomm.robotcore.hardware.I2cController;
 import com.qualcomm.robotcore.hardware.I2cDeviceSynch;
-import com.qualcomm.robotcore.hardware.configuration.I2cSensor;
-import com.qualcomm.robotcore.hardware.configuration.UserConfigurationType;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.I2cDeviceConfigurationType;
+import com.qualcomm.robotcore.hardware.configuration.annotations.DeviceProperties;
+import com.qualcomm.robotcore.hardware.configuration.annotations.I2cDeviceType;
 
 import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 
@@ -44,7 +45,8 @@ import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
  * Instances of AdafruitBNO055IMU provide API access to an
  * <a href="http://www.adafruit.com/products/2472">Adafruit Absolute Orientation Sensor</a>.
  */
-@I2cSensor(name = "@string/adafruit_imu_name", xmlTag = "@string/adafruit_imu_xmltag", description = "@string/adafruit_imu_description")
+@I2cDeviceType
+@DeviceProperties(name = "@string/adafruit_imu_name", xmlTag = "AdafruitBNO055IMU", description = "@string/adafruit_imu_description", builtIn = true)
 public class AdafruitBNO055IMU extends BNO055IMUImpl
     {
     //----------------------------------------------------------------------------------------------
@@ -52,9 +54,9 @@ public class AdafruitBNO055IMU extends BNO055IMUImpl
     //----------------------------------------------------------------------------------------------
 
     /**
-     * This constructor is used by {@link UserConfigurationType#createInstance(I2cController, int)}
-     * @see UserConfigurationType#createInstance(I2cController, int)
-     * @see I2cSensor
+     * This constructor is used by {@link I2cDeviceConfigurationType#createInstance(I2cController, int)}
+     * @see I2cDeviceConfigurationType#createInstance(I2cController, int)
+     * @see I2cDeviceType
      */
     public AdafruitBNO055IMU(I2cDeviceSynch deviceClient)
         {

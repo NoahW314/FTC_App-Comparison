@@ -11,7 +11,6 @@ import com.qualcomm.robotcore.wifi.NetworkConnection;
 import java.net.SocketException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 @SuppressWarnings("WeakerAccess")
@@ -51,6 +50,11 @@ public class SetupRunnable implements Runnable
                     if (socket != null) socket.close();
                     socket = new RobocolDatagramSocket();
                     socket.listenUsingDestination(networkConnection.getConnectionOwnerAddress());
+                    /*
+                     * The driver station knows who it's peer is, so we go ahead and 'connect' this UDP
+                     * socket to that peer.   The robot controller will wait for the peer discovery packet
+                     * as it's can't statically determine the ip address of the driver station.
+                     */
                     if (socketConnect==SocketConnect.CONNECTION_OWNER) {
                         socket.connect(networkConnection.getConnectionOwnerAddress());
                     }
@@ -59,7 +63,7 @@ public class SetupRunnable implements Runnable
                 }
 
                 // start the new event loops
-                recvLoopService = Executors.newFixedThreadPool(2);
+                recvLoopService = ThreadPool.newFixedThreadPool(2, "ReceiveLoopService");
                 recvLoopRunnable = new RecvLoopRunnable(recvLoopCallback, socket, lastRecvPacket);
                 RecvLoopRunnable.CommandProcessor commandProcessor = recvLoopRunnable.new CommandProcessor();
                 NetworkConnectionHandler.getInstance().setRecvLoopRunnable(recvLoopRunnable);
@@ -94,7 +98,22 @@ public class SetupRunnable implements Runnable
         }
     }
 
+    public void stopPeerDiscovery() {
+        if (peerDiscoveryManager != null) {
+            peerDiscoveryManager.stop();
+            peerDiscoveryManager = null;
+        }
+    }
+
+    protected void closeSocket() {
+        if (socket != null) {
+            socket.close();
+            socket = null;
+        }
+    }
+
     public void shutdown() {
+        RobotLog.ii(TAG, "Shutting down setup and receive loop");
         try {
             // wait for startup to get to a safe point where we can shut it down
             countDownLatch.await();
@@ -109,9 +128,23 @@ public class SetupRunnable implements Runnable
             recvLoopRunnable = null;
         }
 
-        if (peerDiscoveryManager != null) {
-            peerDiscoveryManager.stop();
-            peerDiscoveryManager = null;
+        stopPeerDiscovery();
+        closeSocket();
+    }
+
+    public long getRxDataCount() {
+        return socket.getRxDataCount();
+    }
+
+    public long getTxDataCount() {
+        return socket.getTxDataCount();
+    }
+
+    public long getBytesPerSecond() {
+        if (recvLoopRunnable != null) {
+            return recvLoopRunnable.getBytesPerSecond();
+        } else {
+            return 0;
         }
     }
 }

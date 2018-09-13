@@ -30,36 +30,61 @@
 
 package com.qualcomm.robotcore.robocol;
 
+import android.support.annotation.NonNull;
+
 import com.qualcomm.robotcore.exception.RobotCoreException;
 import com.qualcomm.robotcore.robot.RobotState;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.RobotLog;
 
+import org.firstinspires.ftc.robotcore.internal.system.Misc;
+
 import java.nio.BufferOverflowException;
 import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
+import java.util.TimeZone;
 
 /**
  * Heartbeat message
  * <p>
  * Used to know if the connection between the client/server is still alive
  */
-@SuppressWarnings("unused")
+@SuppressWarnings("unused,WeakerAccess")
 public class Heartbeat extends RobocolParsableBase  {
 
   //------------------------------------------------------------------------------------------------
-  // Constants
+  // Sizing
   //------------------------------------------------------------------------------------------------
 
-  public static final short PAYLOAD_SIZE = 8 + 1 + 3*8;
+  public static final short BASE_PAYLOAD_SIZE = 8 + 1 + 3*8; // doesn't include timezone string
+
+  protected int cbPayload() {
+    return BASE_PAYLOAD_SIZE + 1 + timeZoneIdBytes.length;
+  }
 
   //------------------------------------------------------------------------------------------------
   // State
   //------------------------------------------------------------------------------------------------
 
+  private static final Charset charset = Charset.forName("UTF-8");
+
   private long       timestamp;
   private RobotState robotState;
-  public  long       t0, t1, t2;    // for time synchronization, a la Network Time Protocol
+  public  long       t0, t1, t2;    // for time synchronization of wall clock time, a la Network Time Protocol
+  private String     timeZoneId;      /** see {@link TimeZone#getTimeZone}, {@link TimeZone#getID()} */
+  private byte[]     timeZoneIdBytes;
+
+  public @NonNull String getTimeZoneId() {
+    return timeZoneId;
+  }
+
+  public void setTimeZoneId(@NonNull String timeZoneId) {
+    if (timeZoneId.getBytes(charset).length > Byte.MAX_VALUE)
+      throw Misc.illegalArgumentException("timezone id too long");
+    this.timeZoneId = timeZoneId;
+    this.timeZoneIdBytes = timeZoneId.getBytes(charset);
+  }
 
   //------------------------------------------------------------------------------------------------
   // Construction
@@ -69,6 +94,7 @@ public class Heartbeat extends RobocolParsableBase  {
     timestamp = 0;
     robotState = RobotState.NOT_STARTED;
     t0 = t1 = t2 = 0;
+    timeZoneId = TimeZone.getDefault().getID();
   }
 
   public static Heartbeat createWithTimeStamp() {
@@ -76,15 +102,6 @@ public class Heartbeat extends RobocolParsableBase  {
     result.timestamp = System.nanoTime();
     return result;
     }
-
-  //------------------------------------------------------------------------------------------------
-  // Time Synchronization
-  //------------------------------------------------------------------------------------------------
-
-  /** returns the time on the clock that is passed in the t0, t1, and t2 state variables */
-  public static long getMsTimeSyncTime() {
-    return System.currentTimeMillis();
-  }
 
   //------------------------------------------------------------------------------------------------
   // Operations
@@ -143,15 +160,17 @@ public class Heartbeat extends RobocolParsableBase  {
    */
   @Override
   public byte[] toByteArray() throws RobotCoreException {
-    ByteBuffer buffer = getWriteBuffer(PAYLOAD_SIZE);
+    ByteBuffer buffer = getWriteBuffer(cbPayload());
     try {
       buffer.putLong(timestamp);
       buffer.put(robotState.asByte());
       buffer.putLong(t0);
       buffer.putLong(t1);
       buffer.putLong(t2);
+      buffer.put((byte) timeZoneIdBytes.length);
+      buffer.put(timeZoneIdBytes);
     } catch (BufferOverflowException e) {
-      RobotLog.logStacktrace(e);
+      RobotLog.logStackTrace(e);
     }
     return buffer.array();
   }
@@ -168,6 +187,9 @@ public class Heartbeat extends RobocolParsableBase  {
       t0             = byteBuffer.getLong();
       t1             = byteBuffer.getLong();
       t2             = byteBuffer.getLong();
+      int cb         = byteBuffer.get();
+      timeZoneIdBytes = new byte[cb]; byteBuffer.get(timeZoneIdBytes);
+      timeZoneId     = new String(timeZoneIdBytes, charset);
     } catch (BufferUnderflowException e) {
       throw RobotCoreException.createChained(e, "incoming packet too small");
     }

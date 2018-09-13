@@ -32,16 +32,14 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package com.qualcomm.hardware.lynx;
 
-import android.content.Context;
-
 import com.qualcomm.robotcore.exception.RobotCoreException;
-import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.configuration.LynxConstants;
 import com.qualcomm.robotcore.hardware.usb.RobotUsbDevice;
 import com.qualcomm.robotcore.hardware.usb.RobotUsbManager;
-import org.firstinspires.ftc.robotcore.internal.usb.exception.RobotUsbException;
 import com.qualcomm.robotcore.util.RobotLog;
 import com.qualcomm.robotcore.util.SerialNumber;
+
+import org.firstinspires.ftc.robotcore.internal.usb.exception.RobotUsbException;
 
 /**
  * Created by bob on 2016-03-16.
@@ -49,25 +47,11 @@ import com.qualcomm.robotcore.util.SerialNumber;
 @SuppressWarnings("WeakerAccess")
 public class LynxUsbUtil
     {
-    public static RobotUsbDevice openUsbDevice(RobotUsbManager robotUsbManager, SerialNumber serialNumber) throws RobotCoreException
+    public static RobotUsbDevice openUsbDevice(boolean doScan, RobotUsbManager robotUsbManager, SerialNumber serialNumber) throws RobotCoreException
         {
-        String deviceDescription = "";
-        boolean found = false;
-        int deviceCount = robotUsbManager.scanForDevices();
-
-        for (int i = 0; i < deviceCount; ++i)
+        if (doScan)
             {
-            if (serialNumber.equals(robotUsbManager.getDeviceSerialNumberByIndex(i)))
-                {
-                found = true;
-                deviceDescription = robotUsbManager.getDeviceDescriptionByIndex(i) + " [" + serialNumber.getSerialNumber() + "]";
-                break;
-                }
-            }
-
-        if (!found)
-            {
-            logMessageAndThrow("unable to find lynx USB device with serial number " + serialNumber.toString());
+            robotUsbManager.scanForDevices();
             }
 
         RobotUsbDevice result = null;
@@ -77,7 +61,7 @@ public class LynxUsbUtil
             }
         catch (RobotCoreException e)
             {
-            logMessageAndThrow("unable to open lynx USB device " + serialNumber + " - " + deviceDescription + ": " + e.getMessage());
+            logMessageAndThrow("unable to open lynx USB device " + serialNumber + ": " + e.getMessage());
             }
 
         try
@@ -96,7 +80,7 @@ public class LynxUsbUtil
         catch (RobotUsbException e)
             {
             result.close();
-            logMessageAndThrow("Unable to open lynx USB device " + serialNumber + " - " + deviceDescription + ": " + e.getMessage());
+            logMessageAndThrow("Unable to open lynx USB device " + serialNumber + " - " + result.getProductName() + ": " + e.getMessage());
             }
 
         return result;

@@ -456,11 +456,19 @@ public class TelemetryImpl implements Telemetry, TelemetryInternal
         //------------------------------------------------------------------------------------------
         // State
         //------------------------------------------------------------------------------------------
+        List<String> entries;
+        int          capacity;
+        DisplayOrder displayOrder;
+        boolean      isDirty;
 
-        final List<String> entries      = new ArrayList<String>();
-        int                capacity     = 9;
-        DisplayOrder       displayOrder = DisplayOrder.OLDEST_FIRST;
-        boolean            isDirty      = false;
+        //------------------------------------------------------------------------------------------
+        // Construction
+        //------------------------------------------------------------------------------------------
+
+        LogImpl()
+            {
+            reset();
+            }
 
         //------------------------------------------------------------------------------------------
         // Accessors
@@ -510,6 +518,14 @@ public class TelemetryImpl implements Telemetry, TelemetryInternal
                     this.entries.remove(0);
                     }
                 }
+            }
+
+        void reset()
+            {
+            this.entries    = new ArrayList<>();
+            this.capacity   = 9;
+            this.isDirty    = false;
+            this.displayOrder = DisplayOrder.OLDEST_FIRST;
             }
 
         //------------------------------------------------------------------------------------------
@@ -597,6 +613,7 @@ public class TelemetryImpl implements Telemetry, TelemetryInternal
     public TelemetryImpl(OpMode opMode)
         {
         this.opMode = opMode;
+        this.log = new LogImpl();
         resetTelemetryForOpMode();
         }
 
@@ -606,7 +623,7 @@ public class TelemetryImpl implements Telemetry, TelemetryInternal
         this.lines   = new LineableContainer();
         this.composedLines = new ArrayList<String>();
         this.actions = new LinkedList<Runnable>();
-        this.log     = new LogImpl();
+        log.reset(); // Reuse the log instance in case the user stores a reference to it
         this.transmissionTimer = new ElapsedTime();
         this.isDirty     = false;
         this.clearOnAdd  = false;

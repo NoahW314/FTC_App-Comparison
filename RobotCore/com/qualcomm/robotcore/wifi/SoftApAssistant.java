@@ -44,6 +44,7 @@ import com.qualcomm.robotcore.util.ReadWriteFile;
 import com.qualcomm.robotcore.util.RobotLog;
 
 import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
+import org.firstinspires.ftc.robotcore.internal.system.PreferencesHelper;
 
 import java.io.File;
 import java.lang.reflect.InvocationTargetException;
@@ -55,13 +56,14 @@ import java.util.List;
 
 public class SoftApAssistant extends NetworkConnection {
 
+  public static final String TAG = "SoftApAssistant";
+
   private static SoftApAssistant softApAssistant = null;
 
   private final List<ScanResult> scanResults = new ArrayList<ScanResult>();
 
   private final WifiManager wifiManager;
   private Context context = null;
-  private Event lastEvent = null;
 
   private static IntentFilter intentFilter;
   private BroadcastReceiver receiver;
@@ -74,9 +76,6 @@ public class SoftApAssistant extends NetworkConnection {
 
   private final static String NETWORK_SSID_FILE = "FTC_RobotController_SSID.txt";
   private final static String NETWORK_PASSWORD_FILE = "FTC_RobotController_password.txt";
-
-  private NetworkConnectionCallback callback = null;
-
 
   public synchronized static SoftApAssistant getSoftApAssistant(Context context) {
     if (softApAssistant == null) softApAssistant = new SoftApAssistant(context);
@@ -94,11 +93,8 @@ public class SoftApAssistant extends NetworkConnection {
   }
 
   private SoftApAssistant(Context context) {
-
-    this.context = context;
-
+    super(context);
     wifiManager = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-
   }
 
   public List<ScanResult> getScanResults() {
@@ -121,7 +117,7 @@ public class SoftApAssistant extends NetworkConnection {
         RobotLog.v("onReceive(), action: " + action + ", wifiInfo: " + wifiInfo);
 
         if (wifiInfo.getSSID().equals(ssid) && wifiInfo.getSupplicantState() == SupplicantState.COMPLETED) {
-          sendEvent(Event.CONNECTION_INFO_AVAILABLE);
+          sendEvent(NetworkEvent.CONNECTION_INFO_AVAILABLE);
         }
         if (WifiManager.SCAN_RESULTS_AVAILABLE_ACTION.equals(action)) {
           scanResults.clear();
@@ -133,11 +129,11 @@ public class SoftApAssistant extends NetworkConnection {
             String s = "    scanResult: " + scanResult.SSID;
             RobotLog.v(s);
           }
-          sendEvent(Event.PEERS_AVAILABLE);
+          sendEvent(NetworkEvent.PEERS_AVAILABLE);
         }
         if (WifiManager.SUPPLICANT_STATE_CHANGED_ACTION.equals(action)) {
           if (wifiInfo.getSupplicantState() == SupplicantState.COMPLETED) {
-            sendEvent(Event.CONNECTION_INFO_AVAILABLE);
+            sendEvent(NetworkEvent.CONNECTION_INFO_AVAILABLE);
           }
         }
       }
@@ -153,13 +149,6 @@ public class SoftApAssistant extends NetworkConnection {
     } catch (IllegalArgumentException e) {
       // disable() was called, but enable() was never called; ignore
     }
-    lastEvent = null;
-  }
-
-  @Override
-  public void setCallback(NetworkConnectionCallback callback) {
-    RobotLog.v("setting NetworkConnection callback: " + callback);
-    this.callback = callback;
   }
 
   @Override
@@ -192,7 +181,6 @@ public class SoftApAssistant extends NetworkConnection {
 
   @Override
   public void createConnection() {
-
     if (wifiManager.isWifiEnabled()) {
       wifiManager.setWifiEnabled(false);
     }
@@ -242,7 +230,7 @@ public class SoftApAssistant extends NetworkConnection {
       }
 
       if (success) {
-        sendEvent(Event.AP_CREATED);
+        sendEvent(NetworkEvent.AP_CREATED);
       }
     } catch (NoSuchMethodException|InvocationTargetException|IllegalAccessException e) {
       RobotLog.e(e.getMessage());
@@ -261,7 +249,7 @@ public class SoftApAssistant extends NetworkConnection {
 
     RobotLog.v("Connecting to SoftAP, SSID: " + wifiConfig.SSID + ", supplicant state: " + wifiInfo.getSupplicantState());
     if (wifiInfo.getSSID().equals(wifiConfig.SSID) && wifiInfo.getSupplicantState() == SupplicantState.COMPLETED) {
-      sendEvent(Event.CONNECTION_INFO_AVAILABLE);
+      sendEvent(NetworkEvent.CONNECTION_INFO_AVAILABLE);
     }
     if (!wifiInfo.getSSID().equals(wifiConfig.SSID) || wifiInfo.getSupplicantState() != SupplicantState.COMPLETED) {
       // connect to and enable the connection
@@ -397,11 +385,4 @@ public class SoftApAssistant extends NetworkConnection {
     }
   }
 
-  private void sendEvent(Event event) {
-    // don't send duplicate events
-    if (lastEvent == event) return;
-    lastEvent = event;
-
-    if (callback != null) callback.onNetworkConnectionEvent(event);
-  }
 }

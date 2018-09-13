@@ -31,11 +31,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. */
 
 package com.qualcomm.ftccommon;
 
+import android.support.annotation.NonNull;
+
 import com.qualcomm.robotcore.util.SerialNumber;
 
-import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 import org.firstinspires.ftc.robotcore.internal.collections.SimpleGson;
 import org.firstinspires.ftc.robotcore.internal.network.RobotCoreCommandList;
+import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -46,10 +48,18 @@ import java.util.ArrayList;
 @SuppressWarnings("WeakerAccess")
 public class CommandList extends RobotCoreCommandList {
 
-  public static final String CMD_RESTART_ROBOT = "CMD_RESTART_ROBOT";
+  //------------------------------------------------------------------------------------------------
+  // Opmodes
+  //------------------------------------------------------------------------------------------------
 
   public static final String CMD_INIT_OP_MODE = "CMD_INIT_OP_MODE";
   public static final String CMD_RUN_OP_MODE = "CMD_RUN_OP_MODE";
+
+  //------------------------------------------------------------------------------------------------
+  // Configurations
+  //------------------------------------------------------------------------------------------------
+
+  public static final String CMD_RESTART_ROBOT = "CMD_RESTART_ROBOT";
 
   public static final String CMD_SCAN = "CMD_SCAN";
   public static final String CMD_SCAN_RESP = "CMD_SCAN_RESP";
@@ -71,8 +81,76 @@ public class CommandList extends RobotCoreCommandList {
   public static final String CMD_DISCOVER_LYNX_MODULES = "CMD_DISCOVER_LYNX_MODULES";
   public static final String CMD_DISCOVER_LYNX_MODULES_RESP = "CMD_DISCOVER_LYNX_MODULES_RESP";
 
+  //------------------------------------------------------------------------------------------------
+  // Networking
+  //------------------------------------------------------------------------------------------------
+
   public static final String CMD_REQUEST_REMEMBERED_GROUPS = "CMD_REQUEST_REMEMBERED_GROUPS";
   public static final String CMD_REQUEST_REMEMBERED_GROUPS_RESP = "CMD_REQUEST_REMEMBERED_GROUPS_RESP";
+
+  //------------------------------------------------------------------------------------------------
+  // Sounds
+  //------------------------------------------------------------------------------------------------
+
+  public static class CmdPlaySound {
+    public static final String Command = "CMD_PLAY_SOUND";
+    public final long msPresentationTime;
+    public final String hashString;
+    public final boolean waitForNonLoopingSoundsToFinish;
+    public final float volume;
+    public final int loopControl;
+    public final float rate;
+
+    public CmdPlaySound(long msPresentationTime, String hashString, SoundPlayer.PlaySoundParams params) {
+      this.msPresentationTime = msPresentationTime;
+      this.hashString = hashString;
+      this.waitForNonLoopingSoundsToFinish = params.waitForNonLoopingSoundsToFinish;
+      this.volume = params.volume;
+      this.loopControl = params.loopControl;
+      this.rate = params.rate;
+    }
+    public String serialize()
+        {
+        return SimpleGson.getInstance().toJson(this);
+        }
+    public static CmdPlaySound deserialize(String serialized) { return SimpleGson.getInstance().fromJson(serialized, CmdPlaySound.class); }
+    public SoundPlayer.PlaySoundParams getParams() {
+      SoundPlayer.PlaySoundParams result = new SoundPlayer.PlaySoundParams();
+      result.waitForNonLoopingSoundsToFinish = this.waitForNonLoopingSoundsToFinish;
+      result.volume = this.volume;
+      result.loopControl = this.loopControl;
+      result.rate = this.rate;
+      return result;
+    }
+  }
+
+  public static class CmdRequestSound {
+    public static final String Command = "CMD_REQUEST_SOUND";
+    public final String hashString;
+    public final int port;
+
+    public CmdRequestSound(String hashString, int port) { this.hashString = hashString; this.port = port;}
+    public String serialize()
+        {
+        return SimpleGson.getInstance().toJson(this);
+        }
+    public static CmdRequestSound deserialize(String serialized) { return SimpleGson.getInstance().fromJson(serialized, CmdRequestSound.class); }
+  }
+
+  public static class CmdStopPlayingSounds {
+    public static final String Command = "CMD_STOP_PLAYING_SOUNDS";
+    public final SoundPlayer.StopWhat stopWhat;
+    public CmdStopPlayingSounds(SoundPlayer.StopWhat stopWhat) { this.stopWhat = stopWhat; }
+    public String serialize()
+        {
+        return SimpleGson.getInstance().toJson(this);
+        }
+    public static CmdStopPlayingSounds deserialize(String serialized) { return SimpleGson.getInstance().fromJson(serialized, CmdStopPlayingSounds.class); }
+  }
+  
+  //------------------------------------------------------------------------------------------------
+  // Programming and management
+  //------------------------------------------------------------------------------------------------
 
   /**
    * Command to start programming mode (blocks).
@@ -107,8 +185,10 @@ public class CommandList extends RobotCoreCommandList {
    */
   public static final String CMD_STOP_PROGRAMMING_MODE = "CMD_STOP_PROGRAMMING_MODE";
 
+  public static final String CMD_SET_MATCH_NUMBER = "CMD_SET_MATCH_NUMBER";
+
   //------------------------------------------------------------------------------------------------
-  // Lynx firmware update suppport
+  // Lynx firmware update support
   //------------------------------------------------------------------------------------------------
 
   public static final String CMD_GET_CANDIDATE_LYNX_FIRMWARE_IMAGES = "CMD_GET_CANDIDATE_LYNX_FIRMWARE_IMAGES";
@@ -129,7 +209,7 @@ public class CommandList extends RobotCoreCommandList {
   }
   public static final String CMD_GET_USB_ACCESSIBLE_LYNX_MODULES = "CMD_GET_USB_ACCESSIBLE_LYNX_MODULES";
   public static class USBAccessibleLynxModulesRequest {
-    public boolean includeModuleNumbers = false;
+    public boolean forFirmwareUpdate = false;
 
     public String serialize() {
       return SimpleGson.getInstance().toJson(this);
@@ -194,6 +274,25 @@ public class CommandList extends RobotCoreCommandList {
     }
     public static LynxAddressChangeRequest deserialize(String serialized) {
       return SimpleGson.getInstance().fromJson(serialized, LynxAddressChangeRequest.class);
+    }
+  }
+
+  public static class CmdVisuallyIdentify {
+    public static final String Command = "CMD_VISUALLY_IDENTIFY";
+    public final @NonNull SerialNumber serialNumber;
+    public final boolean shouldIdentify;
+
+    public CmdVisuallyIdentify(@NonNull SerialNumber serialNumber, boolean shouldIdentify) {
+      this.serialNumber = serialNumber;
+      this.shouldIdentify = shouldIdentify;
+    }
+
+    public String serialize() {
+      return SimpleGson.getInstance().toJson(this);
+    }
+
+    public static CmdVisuallyIdentify deserialize(String serialized) {
+      return SimpleGson.getInstance().fromJson(serialized, CmdVisuallyIdentify.class);
     }
   }
 }

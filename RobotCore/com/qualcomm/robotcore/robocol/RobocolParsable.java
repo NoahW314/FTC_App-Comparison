@@ -31,6 +31,7 @@
 package com.qualcomm.robotcore.robocol;
 
 import com.qualcomm.robotcore.exception.RobotCoreException;
+import com.qualcomm.robotcore.exception.RobotProtocolException;
 import com.qualcomm.robotcore.util.RobotLog;
 
 /**
@@ -156,5 +157,5 @@ public interface RobocolParsable {
    *
    * @throws RobotCoreException if unable to parse the byte array.
    */
-  void fromByteArray(byte[] byteArray) throws RobotCoreException;
+  void fromByteArray(byte[] byteArray) throws RobotCoreException, RobotProtocolException;
 }

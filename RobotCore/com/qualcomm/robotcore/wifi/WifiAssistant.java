@@ -46,7 +46,7 @@ import com.qualcomm.robotcore.util.RobotLog;
 public class WifiAssistant {
 
   /**
-   * Wifi Event
+   * Wifi NetworkEvent
    */
   public enum WifiState { CONNECTED, NOT_CONNECTED; }
 

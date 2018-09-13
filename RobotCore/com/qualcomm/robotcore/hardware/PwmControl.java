@@ -91,11 +91,14 @@ public interface PwmControl
      */
     class PwmRange
         {
+
         /** usFrameDefault is the default frame rate used, in microseconds */
         public static final double usFrameDefault = 20000;
+        public static final double usPulseUpperDefault = 2400;
+        public static final double usPulseLowerDefault = 600;
 
         /** defaultRange is the default PWM range used */
-        public final static PwmRange defaultRange = new PwmRange(600, 2400);
+        public final static PwmRange defaultRange = new PwmRange(usPulseLowerDefault, usPulseUpperDefault);
 
         /** usPulseLower is the minimum PWM rate used, in microseconds. This corresponds to a servo position of 0.0. */
         public final double usPulseLower;

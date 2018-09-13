@@ -34,7 +34,7 @@ package com.qualcomm.robotcore.hardware;
 import android.support.annotation.NonNull;
 
 import com.qualcomm.robotcore.R;
-import com.qualcomm.robotcore.hardware.configuration.MotorConfigurationType;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.MotorConfigurationType;
 import com.qualcomm.robotcore.util.RobotLog;
 
 import org.firstinspires.ftc.robotcore.external.navigation.Rotation;
@@ -129,6 +129,7 @@ public class DcMotorImpl implements DcMotor {
   @Override
   public void resetDeviceConfigurationForOpMode() {
     this.setDirection(Direction.FORWARD);
+    this.controller.resetDeviceConfigurationForOpMode(portNumber);
   }
 
   @Override

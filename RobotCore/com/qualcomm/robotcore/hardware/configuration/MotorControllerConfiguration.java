@@ -1,4 +1,4 @@
-/* Copyright (c) 2014, 2015 Qualcomm Technologies Inc
+/* Copyright (c) 2014, 2015 Qualcomm Technologies Inc, Noah Andrews
 
 All rights reserved.
 
@@ -31,27 +31,48 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. */
 
 package com.qualcomm.robotcore.hardware.configuration;
 
+import com.qualcomm.robotcore.exception.RobotCoreException;
 import com.qualcomm.robotcore.util.SerialNumber;
 
+import org.xmlpull.v1.XmlPullParser;
+import org.xmlpull.v1.XmlPullParserException;
+
+import java.io.IOException;
 import java.io.Serializable;
-import java.util.ArrayList;
 import java.util.List;
 
-public class MotorControllerConfiguration extends ControllerConfiguration<MotorConfiguration> implements Serializable{
+/**
+ * Represents a configured MR or HiTechnic standalone motor controller
+ *
+ * Hardware ports are indexed by 1.
+ */
+public class MotorControllerConfiguration extends ControllerConfiguration<DeviceConfiguration> implements Serializable{
 
   public MotorControllerConfiguration(){
-    super("", new ArrayList<MotorConfiguration>(), new SerialNumber(), BuiltInConfigurationType.MOTOR_CONTROLLER);
+    super("", ConfigurationUtility.buildEmptyMotors(ModernRoboticsConstants.INITIAL_MOTOR_PORT, ModernRoboticsConstants.NUMBER_OF_MOTORS), SerialNumber.createFake(), BuiltInConfigurationType.MOTOR_CONTROLLER);
   }
 
-  public MotorControllerConfiguration(String name, List<MotorConfiguration> motors, SerialNumber serialNumber) {
+  public MotorControllerConfiguration(String name, List<DeviceConfiguration> motors, SerialNumber serialNumber) {
     super(name, motors, serialNumber, BuiltInConfigurationType.MOTOR_CONTROLLER);
   }
 
-  public List<MotorConfiguration> getMotors() {
+  public List<DeviceConfiguration> getMotors() {
     return super.getDevices();
   }
 
-  public void setMotors(List<MotorConfiguration> motors) {
+  public void setMotors(List<DeviceConfiguration> motors) {
     super.setDevices(motors);
+  }
+
+  @Override
+  protected void deserializeChildElement(ConfigurationType configurationType, XmlPullParser parser, ReadXMLFileHandler xmlReader) throws IOException, XmlPullParserException, RobotCoreException {
+    super.deserializeChildElement(configurationType, parser, xmlReader); // Doesn't currently do anything, but leave for future-proofing
+    if (configurationType.isDeviceFlavor(ConfigurationType.DeviceFlavor.MOTOR)) {
+      DeviceConfiguration motor = new DeviceConfiguration();
+      motor.deserialize(parser, xmlReader);
+
+      // ModernRobotics HW is indexed by 1, but internally this code indexes by 0.
+      getMotors().set(motor.getPort() - ModernRoboticsConstants.INITIAL_MOTOR_PORT, motor);
+    }
   }
 }

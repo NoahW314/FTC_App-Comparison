@@ -42,6 +42,7 @@ import android.widget.TextView;
 import com.qualcomm.ftccommon.CommandList;
 import com.qualcomm.ftccommon.R;
 import com.qualcomm.robotcore.exception.RobotCoreException;
+import com.qualcomm.robotcore.hardware.ScannedDevices;
 import com.qualcomm.robotcore.hardware.configuration.ControllerConfiguration;
 import com.qualcomm.robotcore.hardware.configuration.ReadXMLFileHandler;
 import com.qualcomm.robotcore.robocol.Command;

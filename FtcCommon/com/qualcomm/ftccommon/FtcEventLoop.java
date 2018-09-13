@@ -63,9 +63,9 @@ package com.qualcomm.ftccommon;
 
 import android.app.Activity;
 import android.hardware.usb.UsbDevice;
+import android.os.Build;
 
 import com.qualcomm.ftccommon.configuration.FtcConfigurationActivity;
-import com.qualcomm.ftccommon.configuration.ScannedDevices;
 import com.qualcomm.ftccommon.configuration.USBScanManager;
 import com.qualcomm.hardware.HardwareFactory;
 import com.qualcomm.robotcore.eventloop.EventLoopManager;
@@ -75,7 +75,9 @@ import com.qualcomm.robotcore.exception.RobotCoreException;
 import com.qualcomm.robotcore.hardware.Gamepad;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.LynxModuleMetaList;
+import com.qualcomm.robotcore.hardware.ScannedDevices;
 import com.qualcomm.robotcore.hardware.configuration.Utility;
+import com.qualcomm.robotcore.hardware.usb.RobotArmingStateNotifier;
 import com.qualcomm.robotcore.hardware.usb.RobotUsbModule;
 import com.qualcomm.robotcore.robocol.Command;
 import com.qualcomm.robotcore.robocol.TelemetryMessage;
@@ -83,12 +85,15 @@ import com.qualcomm.robotcore.util.RobotLog;
 import com.qualcomm.robotcore.util.SerialNumber;
 import com.qualcomm.robotcore.util.ThreadPool;
 
+import org.firstinspires.ftc.robotcore.external.ClassFactory;
+import org.firstinspires.ftc.robotcore.internal.camera.CameraManagerInternal;
 import org.firstinspires.ftc.robotcore.internal.ftdi.FtDevice;
 import org.firstinspires.ftc.robotcore.internal.ftdi.FtDeviceIOException;
 import org.firstinspires.ftc.robotcore.internal.ftdi.FtDeviceManager;
 import org.firstinspires.ftc.robotcore.internal.network.CallbackResult;
 import org.firstinspires.ftc.robotcore.internal.opmode.OpModeManagerImpl;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -264,6 +269,8 @@ public class FtcEventLoop extends FtcEventLoopBase {
         handleCommandScan(extra);
       } else if (name.equals(CommandList.CMD_DISCOVER_LYNX_MODULES)) {
         handleCommandDiscoverLynxModules(extra);
+      } else if (name.equals(CommandList.CMD_SET_MATCH_NUMBER)) {
+        handleCommandSetMatchNumber(extra);
       } else {
         localResult = CallbackResult.NOT_HANDLED;
       }
@@ -307,7 +314,7 @@ public class FtcEventLoop extends FtcEventLoopBase {
 
   protected void handleCommandDiscoverLynxModules(String extra) throws RobotCoreException, InterruptedException {
     RobotLog.vv(FtcConfigurationActivity.TAG, "handling command DiscoverLynxModules");
-    final SerialNumber serialNumber = new SerialNumber(extra);
+    final SerialNumber serialNumber = SerialNumber.fromString(extra);
 
     final USBScanManager usbScanManager = startUsbScanMangerIfNecessary();
 
@@ -347,6 +354,19 @@ public class FtcEventLoop extends FtcEventLoopBase {
 
     EventLoopManager manager = ftcEventLoopHandler.getEventLoopManager();
     if (manager != null) manager.refreshSystemTelemetryNow(); // null check is paranoia, need isn't verified
+  }
+
+  /*
+   * handleCommandSetMatchNumber
+   *
+   * Cache the match number in the opMode manager.
+   */
+  protected void handleCommandSetMatchNumber(String extra) {
+    try {
+      opModeManager.setMatchNumber(Integer.parseInt(extra));
+    } catch (NumberFormatException e) {
+      RobotLog.logStackTrace(e);
+    }
   }
 
   protected void handleCommandInitOpMode(String extra) {
@@ -404,32 +424,53 @@ public class FtcEventLoop extends FtcEventLoopBase {
       // FT_Device for which we're actually receiving a change notification: who else
       // would have it open (for example)? We'd like to do something more, but don't
       // have an idea of what that would look like.
+      //
+      // 2018.06.01: It is suspected that the serial number being returned as null was
+      // a consequence of a race between USB attachment notifications here and in FtDeviceManager.
       RobotLog.ee(TAG, "ignoring: unable get serial number of attached UsbDevice vendor=0x%04x, product=0x%04x device=0x%04x name=%s",
               usbDevice.getVendorId(), usbDevice.getProductId(), usbDevice.getDeviceId(), usbDevice.getDeviceName());
     }
   }
 
   protected SerialNumber getSerialNumberOfUsbDevice(UsbDevice usbDevice) {
-    FtDevice ftDevice = null;
     SerialNumber serialNumber = null;
-    try {
-      FtDeviceManager manager = FtDeviceManager.getInstance(this.activityContext); // note: we're not supposed to close this
-      ftDevice = manager.openByUsbDevice(this.activityContext, usbDevice);
-      if (ftDevice != null) {
-        serialNumber = new SerialNumber(ftDevice.getDeviceInfo().serialNumber);
-      }
-    } catch (RuntimeException|FtDeviceIOException e) {  // RuntimeException is paranoia
-      // ignored
-    } finally {
-      if (ftDevice != null)
-        ftDevice.close();
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+      serialNumber = SerialNumber.fromStringOrNull(usbDevice.getSerialNumber());
     }
+
+    if (serialNumber==null) {
+      // Don't need this branch any more, but left in for now to preserve code paths. Remove after further testing.
+      FtDevice ftDevice = null;
+      try {
+        FtDeviceManager manager = FtDeviceManager.getInstance(this.activityContext); // note: we're not supposed to close this
+        ftDevice = manager.openByUsbDevice(this.activityContext, usbDevice);
+        if (ftDevice != null) {
+          serialNumber = SerialNumber.fromStringOrNull(ftDevice.getDeviceInfo().serialNumber);
+        }
+      } catch (RuntimeException|FtDeviceIOException e) {  // RuntimeException is paranoia
+        // ignored
+      } finally {
+        if (ftDevice != null)
+          ftDevice.close();
+      }
+    }
+
+    if (serialNumber==null) { // non FTDI devices on KitKat, or devices that simply lack a serial number
+      try {
+        CameraManagerInternal cameraManagerInternal = (CameraManagerInternal) ClassFactory.getInstance().getCameraManager();
+        serialNumber = cameraManagerInternal.getRealOrVendorProductSerialNumber(usbDevice);
+      } catch (RuntimeException e) {
+        // ignore
+      }
+    }
+
     return serialNumber;
   }
 
   @Override public void pendUsbDeviceAttachment(SerialNumber serialNumber, long time, TimeUnit unit) {
     long nsDeadline = time==0L ? 0L : System.nanoTime() + unit.toNanos(time);
-    this.recentlyAttachedUsbDevices.put(serialNumber.toString(), nsDeadline);
+    this.recentlyAttachedUsbDevices.put(serialNumber.getString(), nsDeadline);
   }
 
   /**
@@ -456,12 +497,21 @@ public class FtcEventLoop extends FtcEventLoopBase {
       List<RobotUsbModule> modules = this.ftcEventLoopHandler.getHardwareMap().getAll(RobotUsbModule.class);
 
       // For each serial number, find the module with that serial number and ask the handler to deal with it
-      for (String serialNumber : serialNumbersToProcess) {
+      for (String serialNumberString : new ArrayList<>(serialNumbersToProcess)) {
+        SerialNumber serialNumberAttached = SerialNumber.fromString(serialNumberString);
+        boolean found = false;
         for (RobotUsbModule module : modules) {
-          if (module.getSerialNumber().toString().equals(serialNumber)) {
-            handleUsbModuleAttach(module);
-            break;
+          if (serialNumberAttached.matches(module.getSerialNumber())) {
+            if (module.getArmingState() != RobotArmingStateNotifier.ARMINGSTATE.ARMED) {
+              serialNumbersToProcess.remove(serialNumberString);
+              handleUsbModuleAttach(module);
+              found = true;
+              break;
+            }
           }
+        }
+        if (!found) {
+          RobotLog.vv(TAG, "processedRecentlyAttachedUsbDevices(): %s not in hwmap; ignoring", serialNumberAttached);
         }
       }
     }

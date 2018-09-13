@@ -50,6 +50,7 @@ import android.os.Looper;
 import com.qualcomm.robotcore.R;
 import com.qualcomm.robotcore.util.RobotLog;
 
+import org.firstinspires.ftc.robotcore.internal.network.WifiDirectAgent;
 import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 import org.firstinspires.ftc.robotcore.internal.system.PreferencesHelper;
 import org.firstinspires.ftc.robotcore.internal.network.WifiDirectInviteDialogMonitor;
@@ -67,7 +68,6 @@ public class WifiDirectAssistant extends NetworkConnection {
 
   private final Object connectStatusLock = new Object();
   private final Object groupOwnerLock = new Object();
-  private final Object callbackLock = new Object();
 
   private final List<WifiP2pDevice> peers = new ArrayList<WifiP2pDevice>();
 
@@ -79,14 +79,13 @@ public class WifiDirectAssistant extends NetworkConnection {
   private final WifiDirectPeerListListener peerListListener;
   private final WifiDirectGroupInfoListener groupInfoListener;
 
-  private Context context = null;
   private PreferencesHelper preferencesHelper;
   private WifiDirectInviteDialogMonitor inviteDialogMonitor = null;
   private boolean isWifiP2pEnabled = false;
   private WifiP2pBroadcastReceiver receiver;
   private int failureReason = WifiP2pManager.ERROR;
   private ConnectStatus connectStatus = ConnectStatus.NOT_CONNECTED;
-  private Event lastEvent = null;
+  private NetworkEvent lastEvent = null;
 
   private String deviceMacAddress = "";
   private String deviceName = "";
@@ -100,8 +99,6 @@ public class WifiDirectAssistant extends NetworkConnection {
 
   // tracks the number of clients, must be thread safe
   private int clients = 0;
-
-  private NetworkConnectionCallback callback = null;
 
   /*
    * Maintains the list of wifi p2p peers available
@@ -124,7 +121,7 @@ public class WifiDirectAssistant extends NetworkConnection {
         RobotLog.vv(TAG, s);
       }
 
-      sendEvent(Event.PEERS_AVAILABLE);
+      sendEvent(NetworkEvent.PEERS_AVAILABLE);
     }
   }
 
@@ -147,20 +144,20 @@ public class WifiDirectAssistant extends NetworkConnection {
         synchronized (connectStatusLock) {
           connectStatus = ConnectStatus.GROUP_OWNER;
         }
-        sendEvent(Event.CONNECTED_AS_GROUP_OWNER);
+        sendEvent(NetworkEvent.CONNECTED_AS_GROUP_OWNER);
       } else if (info.groupFormed) {
         RobotLog.dd(TAG, "group formed, this device is a client");
         synchronized (connectStatusLock) {
           connectStatus = ConnectStatus.CONNECTED;
         }
-        sendEvent(Event.CONNECTED_AS_PEER);
+        sendEvent(NetworkEvent.CONNECTED_AS_PEER);
       } else {
         RobotLog.dd(TAG, "group NOT formed, ERROR: " + info.toString());
         failureReason = WifiP2pManager.ERROR; // there is no error code for this
         synchronized (connectStatusLock) {
           connectStatus = ConnectStatus.ERROR;
         }
-        sendEvent(Event.ERROR);
+        sendEvent(NetworkEvent.ERROR);
       }
     }
   }
@@ -194,7 +191,7 @@ public class WifiDirectAssistant extends NetworkConnection {
       RobotLog.vv(TAG, "connection information - groupInterface = " + groupInterface);
       RobotLog.vv(TAG, "connection information - groupNetworkName = " + groupNetworkName);
 
-      sendEvent(Event.CONNECTION_INFO_AVAILABLE);
+      sendEvent(NetworkEvent.CONNECTION_INFO_AVAILABLE);
     }
   }
 
@@ -241,7 +238,7 @@ public class WifiDirectAssistant extends NetworkConnection {
           // if we were previously connected, notify that we are now disconnected
           if (isConnected()) {
             RobotLog.vv(TAG, "disconnecting");
-            sendEvent(Event.DISCONNECTED);
+            sendEvent(NetworkEvent.DISCONNECTED);
           }
           groupFormed = wifip2pinfo.groupFormed;
         }
@@ -262,7 +259,7 @@ public class WifiDirectAssistant extends NetworkConnection {
   }
 
   private WifiDirectAssistant(Context context) {
-    this.context = context == null ? AppUtil.getDefContext() : context;
+    super(context);
 
     // Set up the intent filter for wifi direct
     intentFilter = new IntentFilter();
@@ -297,6 +294,8 @@ public class WifiDirectAssistant extends NetworkConnection {
       context.registerReceiver(receiver, intentFilter);
       inviteDialogMonitor.startMonitoring();
     }
+
+    WifiDirectAgent.getInstance().doListen();
   }
 
   public synchronized void disable() {
@@ -336,6 +335,7 @@ public class WifiDirectAssistant extends NetworkConnection {
     cancelDiscoverPeers();
   }
 
+
   @Override
   public String getInfo() {
     StringBuilder s = new StringBuilder();
@@ -343,7 +343,7 @@ public class WifiDirectAssistant extends NetworkConnection {
     if (isEnabled()) {
       s.append("Name: ").append(getDeviceName());
       if (isGroupOwner()) {
-        s.append("\nIP Address").append(getGroupOwnerAddress().getHostAddress());
+        s.append("\nIP Address: ").append(getGroupOwnerAddress().getHostAddress());
         s.append("\nPassphrase: ").append(getPassphrase());
         s.append("\nGroup Owner");
       } else if (isConnected()) {
@@ -369,18 +369,6 @@ public class WifiDirectAssistant extends NetworkConnection {
 
   public List<WifiP2pDevice> getPeers() {
     return new ArrayList<WifiP2pDevice>(peers);
-  }
-
-  public NetworkConnectionCallback getCallback() {
-    synchronized (callbackLock) {
-      return callback;
-    }
-  }
-
-  public void setCallback(NetworkConnectionCallback callback) {
-    synchronized (callbackLock) {
-      this.callback = callback;
-    }
   }
 
   /**
@@ -490,7 +478,7 @@ public class WifiDirectAssistant extends NetworkConnection {
 
       @Override
       public void onSuccess() {
-        sendEvent(Event.DISCOVERING_PEERS);
+        sendEvent(NetworkEvent.DISCOVERING_PEERS);
         RobotLog.dd(TAG, "discovering peers");
       }
 
@@ -499,7 +487,7 @@ public class WifiDirectAssistant extends NetworkConnection {
         String reasonStr = failureReasonToString(reason);
         failureReason = reason;
         RobotLog.w("Wifi Direct failure while trying to discover peers - reason: " + reasonStr);
-        sendEvent(Event.ERROR);
+        sendEvent(NetworkEvent.ERROR);
       }
     });
   }
@@ -515,9 +503,9 @@ public class WifiDirectAssistant extends NetworkConnection {
   /**
    * Create a Wifi Direct group
    * <p>
-   * Will receive a Event.GROUP_CREATED if the group is created. If there is an
-   * error creating group Event.ERROR will be sent. If group already exists, no
-   * event will be sent. However, an Event.CONNECTED_AS_GROUP_OWNER should be
+   * Will receive a NetworkEvent.GROUP_CREATED if the group is created. If there is an
+   * error creating group NetworkEvent.ERROR will be sent. If group already exists, no
+   * event will be sent. However, an NetworkEvent.CONNECTED_AS_GROUP_OWNER should be
    * received.
    */
   public void createGroup() {
@@ -525,7 +513,7 @@ public class WifiDirectAssistant extends NetworkConnection {
 
       @Override
       public void onSuccess() {
-        sendEvent(Event.GROUP_CREATED);
+        sendEvent(NetworkEvent.GROUP_CREATED);
         RobotLog.dd(TAG, "created group");
       }
 
@@ -541,7 +529,7 @@ public class WifiDirectAssistant extends NetworkConnection {
           synchronized (connectStatusLock) {
             connectStatus = ConnectStatus.ERROR;
           }
-          sendEvent(Event.ERROR);
+          sendEvent(NetworkEvent.ERROR);
         }
       }
     });
@@ -580,7 +568,7 @@ public class WifiDirectAssistant extends NetworkConnection {
       @Override
       public void onSuccess() {
         RobotLog.dd(TAG, "connect started");
-        sendEvent(Event.CONNECTING);
+        sendEvent(NetworkEvent.CONNECTING);
       }
 
       @Override
@@ -588,7 +576,7 @@ public class WifiDirectAssistant extends NetworkConnection {
         String reasonStr = failureReasonToString(reason);
         failureReason = reason;
         RobotLog.dd(TAG, "connect cannot start - reason: " + reasonStr);
-        sendEvent(Event.ERROR);
+        sendEvent(NetworkEvent.ERROR);
       }
     });
   }
@@ -616,9 +604,9 @@ public class WifiDirectAssistant extends NetworkConnection {
     }
   }
 
-  private void sendEvent(Event event) {
+  protected void sendEvent(NetworkEvent event) {
     // don't send duplicate events
-    if (lastEvent == event && lastEvent != Event.PEERS_AVAILABLE) return;
+    if (lastEvent == event && lastEvent != NetworkEvent.PEERS_AVAILABLE) return;
     lastEvent = event;
 
     synchronized (callbackLock) {

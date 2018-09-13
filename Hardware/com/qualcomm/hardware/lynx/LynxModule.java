@@ -45,13 +45,14 @@ import com.qualcomm.hardware.lynx.commands.LynxMessage;
 import com.qualcomm.hardware.lynx.commands.LynxRespondable;
 import com.qualcomm.hardware.lynx.commands.LynxResponse;
 import com.qualcomm.hardware.lynx.commands.core.LynxDekaInterfaceCommand;
-import com.qualcomm.hardware.lynx.commands.core.LynxFirmwareVersionManager;
+import com.qualcomm.hardware.lynx.commands.core.LynxFtdiResetControlCommand;
 import com.qualcomm.hardware.lynx.commands.core.LynxPhoneChargeControlCommand;
 import com.qualcomm.hardware.lynx.commands.core.LynxPhoneChargeQueryCommand;
 import com.qualcomm.hardware.lynx.commands.core.LynxPhoneChargeQueryResponse;
 import com.qualcomm.hardware.lynx.commands.core.LynxReadVersionStringCommand;
 import com.qualcomm.hardware.lynx.commands.core.LynxReadVersionStringResponse;
 import com.qualcomm.hardware.lynx.commands.standard.LynxAck;
+import com.qualcomm.hardware.lynx.commands.standard.LynxDiscoveryCommand;
 import com.qualcomm.hardware.lynx.commands.standard.LynxFailSafeCommand;
 import com.qualcomm.hardware.lynx.commands.standard.LynxGetModuleLEDColorCommand;
 import com.qualcomm.hardware.lynx.commands.standard.LynxGetModuleStatusCommand;
@@ -69,9 +70,11 @@ import com.qualcomm.robotcore.exception.RobotCoreException;
 import com.qualcomm.robotcore.hardware.Blinker;
 import com.qualcomm.robotcore.hardware.HardwareDevice;
 import com.qualcomm.robotcore.hardware.HardwareDeviceHealth;
+import com.qualcomm.robotcore.hardware.VisuallyIdentifiableHardwareDevice;
 import com.qualcomm.robotcore.hardware.RobotConfigNameable;
 import com.qualcomm.robotcore.hardware.configuration.LynxConstants;
 import com.qualcomm.robotcore.hardware.usb.RobotArmingStateNotifier;
+import com.qualcomm.robotcore.util.ClassUtil;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.RobotLog;
 import com.qualcomm.robotcore.util.SerialNumber;
@@ -79,8 +82,11 @@ import com.qualcomm.robotcore.util.ThreadPool;
 
 import junit.framework.Assert;
 
-import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
+import org.firstinspires.ftc.robotcore.external.function.Consumer;
 import org.firstinspires.ftc.robotcore.internal.network.WifiDirectInviteDialogMonitor;
+import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
+import org.firstinspires.ftc.robotcore.internal.system.Misc;
+import org.firstinspires.ftc.robotcore.internal.usb.LynxModuleSerialNumber;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
@@ -89,28 +95,29 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static com.qualcomm.hardware.lynx.commands.core.LynxDekaInterfaceCommand.theInterface;
-
 /**
  * {@link LynxModule} represents the connection between the host and a particular
  * Lynx controller module. Multiple Lynx controller modules may be chained together over RS485
  * and share a common USB connection.
- * 
+ *
  * @see LynxUsbDeviceImpl
  */
 @SuppressWarnings("WeakerAccess")
-public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIntf, RobotArmingStateNotifier, RobotArmingStateNotifier.Callback, Blinker
+public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIntf, RobotArmingStateNotifier, RobotArmingStateNotifier.Callback, Blinker, VisuallyIdentifiableHardwareDevice
     {
     //----------------------------------------------------------------------------------------------
     // Constants
@@ -119,8 +126,8 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
     public static final String TAG = "LynxModule";
     @Override protected String getTag() { return TAG; }
 
-    protected static final int msLivenessLong = 5000;
-    protected static final int msLivenessShort = 500;
+    public static BlinkerPolicy blinkerPolicy = new CountModuleAddressBlinkerPolicy();
+
     protected static final int msInitialContact = 500;      // not an exact number; probably can be reduced
     protected static final int msKeepAliveTimeout = 2500;   // per the Lynx spec
 
@@ -152,27 +159,27 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
             }
         }
 
-    protected static Map<Integer,MessageClassAndCtor>                        standardCommands = new HashMap<Integer, MessageClassAndCtor>();    // command number -> class
-    protected static Map<Class<? extends LynxCommand>,MessageClassAndCtor>   responseClasses = new HashMap<Class<? extends LynxCommand>, MessageClassAndCtor>();
+    protected static Map<Integer,MessageClassAndCtor>                       standardMessages = new HashMap<Integer, MessageClassAndCtor>();    // command number -> class
+    protected static Map<Class<? extends LynxCommand>,MessageClassAndCtor>  responseClasses = new HashMap<Class<? extends LynxCommand>, MessageClassAndCtor>();
 
     static {
-        addStandardCommand(LynxAck.class);
-        addStandardCommand(LynxNack.class);
-        addStandardCommand(LynxKeepAliveCommand.class);
-        addStandardCommand(LynxGetModuleStatusCommand.class);
-        addStandardCommand(LynxFailSafeCommand.class);
-        addStandardCommand(LynxSetNewModuleAddressCommand.class);
-        addStandardCommand(LynxQueryInterfaceCommand.class);
-        addStandardCommand(LynxSetNewModuleAddressCommand.class);
-        addStandardCommand(LynxSetModuleLEDColorCommand.class);
-        addStandardCommand(LynxGetModuleLEDColorCommand.class);
+        addStandardMessage(LynxAck.class);
+        addStandardMessage(LynxNack.class);
+        addStandardMessage(LynxKeepAliveCommand.class);
+        addStandardMessage(LynxGetModuleStatusCommand.class);
+        addStandardMessage(LynxFailSafeCommand.class);
+        addStandardMessage(LynxSetNewModuleAddressCommand.class);
+        addStandardMessage(LynxQueryInterfaceCommand.class);
+        addStandardMessage(LynxSetNewModuleAddressCommand.class);
+        addStandardMessage(LynxSetModuleLEDColorCommand.class);
+        addStandardMessage(LynxGetModuleLEDColorCommand.class);
 
         correlateStandardResponse(LynxGetModuleStatusCommand.class);
         correlateStandardResponse(LynxQueryInterfaceCommand.class);
         correlateStandardResponse(LynxGetModuleLEDColorCommand.class);
         }
 
-    protected static void addStandardCommand(Class<? extends LynxMessage> clazz)
+    protected static void addStandardMessage(Class<? extends LynxMessage> clazz)
         {
         try {
             Integer commandNumber = (Integer)LynxMessage.invokeStaticNullaryMethod(clazz, "getStandardCommandNumber");
@@ -181,7 +188,7 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
             MessageClassAndCtor pair = new MessageClassAndCtor();
             pair.clazz = clazz;
             pair.assignCtor();
-            standardCommands.put(commandNumber, pair);
+            standardMessages.put(commandNumber, pair);
             }
         catch (NoSuchMethodException|IllegalAccessException|InvocationTargetException e)
             {
@@ -216,11 +223,13 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
     protected LynxUsbDevice         lynxUsbDevice;
     protected List<LynxController>  controllers;
     protected int                   moduleAddress;
+    protected SerialNumber          moduleSerialNumber;
     protected AtomicInteger         nextMessageNumber;
     protected boolean               isParent;
     protected boolean               isSystemSynthetic;  // if true, then system made this up, not user
     protected boolean               isUserModule;       // if false, then this is for some system-admin purpose
     protected boolean               isEngaged;
+    protected final Object          engagementLock = this; // 'this' for historical reasons; optimization might be possible
     protected boolean               isOpen;
     protected final Object          startStopLock;
 
@@ -230,6 +239,7 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
     /** for all the commands we know about (standard + QueryInterface), maps command number to
      *  class which implements same. Only commands known to be supported by the module are populated */
     protected final ConcurrentHashMap<Integer,MessageClassAndCtor>          commandClasses;
+    protected final Set<Class<? extends LynxCommand>>                       supportedCommands;
 
     protected final ConcurrentHashMap<String, LynxInterface>                interfacesQueried;
 
@@ -242,11 +252,14 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
     /** State for maintaining stack of blinker patterns */
     protected ArrayList<Step>                                 currentSteps;
     protected Deque<ArrayList<Step>>                          previousSteps;
+    protected boolean                                         isVisuallyIdentifying;
 
     protected ScheduledExecutorService                        executor;
     protected Future<?>                                       pingFuture;
     protected Future<?>                                       attentionRequiredFuture;
     protected final Object                                    futureLock;
+    protected boolean                                         ftdiResetWatchdogActive; // our actual current status
+    protected boolean                                         ftdiResetWatchdogActiveWhenEngaged; // status when we were last engaged
 
     //----------------------------------------------------------------------------------------------
     // Construction
@@ -255,8 +268,9 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
     public LynxModule(LynxUsbDevice lynxUsbDevice, int moduleAddress, boolean isParent)
         {
         this.lynxUsbDevice      = lynxUsbDevice;
-        this.controllers        = new LinkedList<LynxController>();
+        this.controllers        = new CopyOnWriteArrayList<LynxController>();
         this.moduleAddress      = moduleAddress;
+        this.moduleSerialNumber = new LynxModuleSerialNumber(lynxUsbDevice.getSerialNumber(), moduleAddress);
         this.isParent           = isParent;
         this.isSystemSynthetic  = false;
         this.isEngaged          = true;
@@ -265,16 +279,28 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
         this.startStopLock      = new Object();
 
         this.nextMessageNumber  = new AtomicInteger(0); // TODO: start with random number? Either that, or send a 'new msg# seq' start of some sort (less important now that we reset before connecting)
-        this.commandClasses     = new ConcurrentHashMap<Integer, MessageClassAndCtor>(standardCommands);
+        this.commandClasses     = new ConcurrentHashMap<Integer, MessageClassAndCtor>(standardMessages);
+        this.supportedCommands  = new HashSet<>();
+        for (MessageClassAndCtor pair : this.commandClasses.values())
+            {
+            if (ClassUtil.inheritsFrom(pair.clazz, LynxCommand.class))
+                {
+                //noinspection unchecked
+                supportedCommands.add((Class<? extends LynxCommand>)pair.clazz);
+                }
+            }
         this.interfacesQueried  = new ConcurrentHashMap<String, LynxInterface>();
         this.unfinishedCommands = new ConcurrentHashMap<Integer, LynxRespondable>();
         this.i2cLock            = new Object();
         this.currentSteps       = new ArrayList<Step>();
         this.previousSteps      = new ArrayDeque<ArrayList<Step>>();
+        this.isVisuallyIdentifying = false;
         this.executor           = null;
         this.pingFuture         = null;
         this.attentionRequiredFuture = null;
         this.futureLock         = new Object();
+        this.ftdiResetWatchdogActive = false;
+        this.ftdiResetWatchdogActiveWhenEngaged = false;
 
         startExecutor();
 
@@ -283,14 +309,15 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
 
     @Override public String toString()
         {
-        return String.format("LynxModule(mod#=%d)", this.moduleAddress);
+        return Misc.formatForUser("LynxModule(mod#=%d)", this.moduleAddress);
         }
 
     @Override public void close()
         {
         synchronized (startStopLock)
             {
-            RobotLog.vv(TAG, "close()");
+            RobotLog.vv(TAG, "close(#%d)", moduleAddress);
+            stopFtdiResetWatchdog();
             this.isOpen = false;
             stopAttentionRequired();
             stopPingTimer(true);
@@ -464,18 +491,29 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
         return String.format("%s (%s)", AppUtil.getDefContext().getString(R.string.lynxModuleDisplayName), getFirmwareVersionString());
         }
 
+    @Override
     public String getFirmwareVersionString()
+        {
+        String result = getNullableFirmwareVersionString();
+        if (result == null)
+            {
+            result = AppUtil.getDefContext().getString(com.qualcomm.robotcore.R.string.lynxUnavailableFWVersionString);
+            }
+        return result;
+        }
+
+    public String getNullableFirmwareVersionString()
         {
         try {
             LynxReadVersionStringCommand command = new LynxReadVersionStringCommand(this);
             LynxReadVersionStringResponse response = command.sendReceive();
-            return response.getVersionString();
+            return response.getNullableVersionString();
             }
         catch (LynxNackException|InterruptedException e)
             {
             handleException(e);
             }
-        return AppUtil.getDefContext().getString(com.qualcomm.robotcore.R.string.lynxUnavailableFWVersionString);
+        return null;
         }
 
     @Override
@@ -558,8 +596,12 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
     // RobotArmingStateNotifier
     //----------------------------------------------------------------------------------------------
 
-    @Override
-    public SerialNumber getSerialNumber()
+    public SerialNumber getModuleSerialNumber()
+        {
+        return moduleSerialNumber;
+        }
+
+    @Override public SerialNumber getSerialNumber()
         {
         return this.lynxUsbDevice.getSerialNumber();
         }
@@ -598,33 +640,79 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
     // Engagable
     //----------------------------------------------------------------------------------------------
 
-    @Override public synchronized void engage()
+    @Override public void engage()
         {
-        RobotLog.vv(TAG, "engaging lynx module #%d", getModuleAddress());
-        for (LynxController controller : this.controllers)
+        synchronized (engagementLock)
             {
-            controller.engage();
+            if (!isEngaged)
+                {
+                RobotLog.vv(TAG, "engaging lynx module #%d", getModuleAddress());
+                for (LynxController controller : this.controllers)
+                    {
+                    controller.engage();
+                    }
+                isEngaged = true;
+                if (ftdiResetWatchdogActiveWhenEngaged)
+                    {
+                    startFtdiResetWatchdog();
+                    }
+                }
             }
-        this.isEngaged = true;
         }
 
-    @Override public synchronized void disengage()
+    @Override public void disengage()
         {
-        RobotLog.vv(TAG, "disengaging lynx module #%d", getModuleAddress());
-        for (LynxController controller : this.controllers)
+        synchronized (engagementLock)
             {
-            controller.disengage();
+            if (isEngaged)
+                {
+                RobotLog.vv(TAG, "disengaging lynx module #%d", getModuleAddress());
+                stopFtdiResetWatchdog(true); // paranoia: do *before* commencing disengagement to avoid interactions with transmission infrastructure
+                isEngaged = false;
+                //
+                nackUnfinishedCommands();
+                for (LynxController controller : this.controllers)
+                    {
+                    controller.disengage();
+                    }
+                nackUnfinishedCommands(); // paranoia
+                }
             }
-        this.isEngaged = false;
         }
 
-    @Override public synchronized boolean isEngaged()
+    @Override public boolean isEngaged()
         {
-        return isEngaged;
+        synchronized (engagementLock)
+            {
+            return isEngaged;
+            }
         }
 
     //----------------------------------------------------------------------------------------------
-    // LEDBlinker interface
+    // VisuallyIdentifiableHardwareDevice
+    //----------------------------------------------------------------------------------------------
+
+    @Override public void visuallyIdentify(boolean shouldIdentify)
+        {
+        synchronized (this)
+            {
+            if (isVisuallyIdentifying != shouldIdentify)
+                {
+                if (!isVisuallyIdentifying)
+                    {
+                    internalPushPattern(blinkerPolicy.getVisuallyIdentifyPattern(this));
+                    }
+                else
+                    {
+                    popPattern();
+                    }
+                isVisuallyIdentifying = shouldIdentify;
+                }
+            }
+        }
+
+    //----------------------------------------------------------------------------------------------
+    // Blinker interface
     //----------------------------------------------------------------------------------------------
 
     @Override public int getBlinkerPatternMaxLength()
@@ -664,6 +752,12 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
         }
 
     @Override public synchronized void pushPattern(Collection<Step> steps)
+        {
+        visuallyIdentify(false);
+        internalPushPattern(steps);
+        }
+
+    protected void internalPushPattern(Collection<Step> steps)
         {
         this.previousSteps.push(this.currentSteps);
         setPattern(steps);
@@ -715,6 +809,93 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
             }
         }
 
+    /**
+     * {@link BlinkerPolicy} embodies the various blinker patterns exhibited by {@link LynxModule}s
+     * The policy can be changed, globally, by setting the variable {@link #blinkerPolicy}.
+     */
+    public interface BlinkerPolicy
+        {
+        List<Step> getIdlePattern(LynxModule lynxModule);
+        List<Step> getVisuallyIdentifyPattern(LynxModule lynxModule);
+        }
+
+    public static class BreathingBlinkerPolicy implements BlinkerPolicy
+        {
+        // 'Breathes' in and out in cyan
+        @Override public List<Step> getIdlePattern(LynxModule lynxModule)
+            {
+            float[] hsv = new float[] { 0, 0, 0 };
+            Color.colorToHSV(Color.CYAN, hsv);
+            final float hue = hsv[0];
+            final float saturation = 1;
+
+            final int iStepLast = LynxSetModuleLEDPatternCommand.maxStepCount/2;
+            final int msIncrement = 2000 / (2 * iStepLast);
+            final List<Step> steps = new ArrayList<>();
+
+            Consumer<Integer> makeStep = new Consumer<Integer>()
+                {
+                @Override public void accept(Integer iStep)
+                    {
+                    float min = 0.05f;
+                    float max = 1.0f;
+                    float value = (float)iStep / (float)iStepLast * (max-min) + min;
+                    value = 1-(float)Math.sqrt(1-value); // darken brighter bits more than darker bits
+                    @ColorInt int color = Color.HSVToColor(new float[] { hue, saturation, value });
+                    steps.add(new Step(color, msIncrement, TimeUnit.MILLISECONDS));
+                    }
+                };
+
+            for (int iStep = 0; iStep <= iStepLast; iStep++)
+                {
+                makeStep.accept(iStep);
+                }
+            for (int iStep = iStepLast-1; iStep > 0; iStep--)
+                {
+                makeStep.accept(iStep);
+                }
+
+            return steps;
+            }
+
+
+        // Blinks back and forth between cyan and magenta
+        @Override public List<Step> getVisuallyIdentifyPattern(LynxModule lynxModule)
+            {
+            List<Step> steps = new ArrayList<>();
+            int msIncrement = 150;
+            steps.add(new Blinker.Step(Color.CYAN,    msIncrement,    TimeUnit.MILLISECONDS));
+            steps.add(new Blinker.Step(Color.BLACK,  msIncrement /2, TimeUnit.MILLISECONDS));
+            steps.add(new Blinker.Step(Color.MAGENTA, msIncrement,    TimeUnit.MILLISECONDS));
+            steps.add(new Blinker.Step(Color.BLACK,  msIncrement /2, TimeUnit.MILLISECONDS));
+            return steps;
+            }
+        }
+
+    public static class CountModuleAddressBlinkerPolicy extends BreathingBlinkerPolicy
+        {
+        @Override public List<Step> getIdlePattern(LynxModule lynxModule)
+            {
+            // We set the LED to be a solid green, interrupted occasionally by a brief off duration.
+            int msLivenessLong = 5000;
+            int msLivenessShort = 500;
+            List<Step> steps = new ArrayList<Step>();
+            steps.add(new Step(Color.GREEN, msLivenessLong - msLivenessShort, TimeUnit.MILLISECONDS));
+            steps.add(new Step(Color.BLACK, msLivenessShort, TimeUnit.MILLISECONDS));
+
+            // Then we blink the module address in blue
+            int slotsRemaining = LynxSetModuleLEDPatternCommand.maxStepCount-steps.size();
+            int blinkCount = Math.min(lynxModule.getModuleAddress(), slotsRemaining/2);
+            for (int i = 0; i < blinkCount; i++)
+                {
+                steps.add(new Step(Color.BLUE, msLivenessShort, TimeUnit.MILLISECONDS));
+                steps.add(new Step(Color.BLACK, msLivenessShort, TimeUnit.MILLISECONDS));
+                }
+
+            return steps;
+            }
+        }
+
     //----------------------------------------------------------------------------------------------
     // QueryInterface
     //----------------------------------------------------------------------------------------------
@@ -733,7 +914,8 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
         // Note that, in doing so, we also need to make sure we ping the parent first
         // before we ping any children; that is the responsibility of our caller.
         pingInitialContact();
-        queryInterface(theInterface);
+        queryInterface(LynxDekaInterfaceCommand.theInterface);
+        startFtdiResetWatchdog();
         if (isUserModule())
             {
             initializeDebugLogging();
@@ -751,29 +933,9 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
             }
         }
 
-    public static List<Step> getLivenessSteps()
+    protected void initializeLEDS()
         {
-        // We set the LED to be a solid green, interrupted occasionally by a brief off duration.
-        List<Step> steps = new ArrayList<Step>();
-        steps.add(new Step(Color.GREEN, msLivenessLong - msLivenessShort, TimeUnit.MILLISECONDS));
-        steps.add(new Step(Color.BLACK, msLivenessShort, TimeUnit.MILLISECONDS));
-        return steps;
-        }
-
-    protected void initializeLEDS() throws InterruptedException
-        {
-        // Get the basic indicator
-        List<Step> steps = getLivenessSteps();
-
-        // Then we blink the module address
-        int slotsRemaining = getBlinkerPatternMaxLength()-steps.size();
-        for (int i = 0; i < Math.min(moduleAddress, slotsRemaining/2); i++)
-            {
-            steps.add(new Step(Color.BLUE, msLivenessShort, TimeUnit.MILLISECONDS));
-            steps.add(new Step(Color.BLACK, msLivenessShort, TimeUnit.MILLISECONDS));
-            }
-
-        setPattern(steps);
+        setPattern(blinkerPolicy.getIdlePattern(this));
         }
 
     protected void initializeDebugLogging() throws RobotCoreException, InterruptedException
@@ -803,7 +965,7 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
         throw new RobotCoreException("initial ping contact failed: mod=%d", this.getModuleAddress());
         }
 
-    public void validateCommandNumber(int commandNumber) throws LynxUnsupportedCommandNumberException
+    public void validateCommand(LynxMessage lynxMessage) throws LynxUnsupportedCommandException
         {
         synchronized (this.interfacesQueried)
             {
@@ -814,6 +976,7 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
                 }
 
             // If it's a standard command, then we're good
+            int commandNumber = lynxMessage.getCommandNumber();
             if (LynxStandardCommand.isStandardCommandNumber(commandNumber))
                 {
                 return;
@@ -822,26 +985,30 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
             // Otherwise, it's an interface command
             if (!commandClasses.containsKey(commandNumber))
                 {
-                throw new LynxUnsupportedCommandNumberException(this, commandNumber);
+                throw new LynxUnsupportedCommandException(this, lynxMessage);
                 }
             }
         }
 
     /** Answers as to whether the command is actively supported by the module, at least in SOME
      * interface, or as a standard command */
-    public boolean isCommandSupported(Class<? extends LynxInterfaceCommand> clazz)
+    public boolean isCommandSupported(Class<? extends LynxCommand> clazz)
         {
-        for (MessageClassAndCtor pair : this.commandClasses.values())
+        synchronized (this.interfacesQueried)
             {
-            if (pair.clazz == clazz) return true;
+            /** Nothing but discovery is supported on fake modules. See {@link LynxUsbDeviceImpl#discoverModules} */
+            return moduleAddress==0
+                    ? clazz==LynxDiscoveryCommand.class
+                    : supportedCommands.contains(clazz);
             }
-        return false;
         }
 
     /** Issues a query interface for the indicated interface and processes the results. This
-     * method is idempotent, and copes with a module changing its mind about command numbering */
-    protected void queryInterface(LynxInterface theInterface) throws InterruptedException
+     * method is idempotent, and copes with a module changing its mind about command numbering.
+     * @return whether or not the interface is supported */
+    protected boolean queryInterface(LynxInterface theInterface) throws InterruptedException
         {
+        boolean supported = false;
         synchronized (this.interfacesQueried)
             {
             LynxQueryInterfaceCommand queryInterfaceCommand = new LynxQueryInterfaceCommand(this, theInterface.getInterfaceName());
@@ -851,7 +1018,7 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
                 LynxQueryInterfaceResponse response = queryInterfaceCommand.sendReceive();
                 theInterface.setWasNacked(response.isNackReceived());
                 theInterface.setBaseCommandNumber(response.getCommandNumberFirst());
-                RobotLog.vv(TAG, "queryInterface(%s)=%d commands", theInterface.getInterfaceName(), response.getNumberOfCommands());
+                RobotLog.vv(TAG, "mod#=%d queryInterface(%s)=%d commands starting at %d", getModuleAddress(), theInterface.getInterfaceName(), response.getNumberOfCommands(), response.getCommandNumberFirst());
 
                 // Clean out our old notions of the commands in this interface
                 final List<Class<? extends LynxInterfaceCommand>> interfaceCommandClasses = theInterface.getCommandClasses();
@@ -860,12 +1027,13 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
                     if (interfaceCommandClasses.contains(pair.getValue().clazz))
                         {
                         commandClasses.remove(pair.getKey());
+                        supportedCommands.remove(pair.getValue().clazz);
                         }
                     }
 
                 // Add the current notion of the commands in this interface
                 int iCommand = 0;
-                for (Class<? extends LynxMessage> interfaceCommandClass : interfaceCommandClasses)
+                for (Class<? extends LynxInterfaceCommand> interfaceCommandClass : interfaceCommandClasses)
                     {
                     // If the module returned fewer commands for this interface than what we know
                     // about, then we'll assume it's working with an older version of the interface.
@@ -877,31 +1045,42 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
                         break;
                         }
 
-                    try {
-                        int commandNumber = iCommand + response.getCommandNumberFirst();
-                        MessageClassAndCtor pair = new MessageClassAndCtor();
-                        pair.clazz = interfaceCommandClass;
-                        pair.assignCtor();
-                        this.commandClasses.put(commandNumber, pair);
-                        }
-                    catch (NoSuchMethodException e)
+                    if (interfaceCommandClass==null)
                         {
-                        RobotLog.ee(TAG, "error registering %s", interfaceCommandClass.getSimpleName());
+                        // empty, placeholder entry in table
+                        }
+                    else
+                        {
+                        try {
+                            int commandNumber = iCommand + response.getCommandNumberFirst();
+                            MessageClassAndCtor pair = new MessageClassAndCtor();
+                            pair.clazz = interfaceCommandClass;
+                            pair.assignCtor();
+                            commandClasses.put(commandNumber, pair);
+                            supportedCommands.add(interfaceCommandClass);
+                            }
+                        catch (NoSuchMethodException|RuntimeException e)
+                            {
+                            RobotLog.ee(TAG, e, "exception registering %s", interfaceCommandClass.getSimpleName());
+                            }
                         }
                     iCommand++;
                     }
 
+                supported = true;
                 }
             catch (LynxNackException e)
                 {
                 // The interface is not supported. Leave the nack in the command so that
                 // getInterfaceBaseCommandNumber will find it later.
+                RobotLog.vv(TAG, "mod#=%d queryInterface(): interface %s is not supported", getModuleAddress(), theInterface.getInterfaceName());
                 }
             catch (RuntimeException e)
                 {
-                // Nothing to do
+                RobotLog.ee(TAG, e, "exception during queryInterface(%s)", theInterface.getInterfaceName());
                 }
             }
+        return supported;
         }
 
     /** Returns the first command number to use for the given interface. Throws if not supported */
@@ -913,7 +1092,6 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
             if (anInterface == null)
                 return LynxInterface.ERRONEOUS_COMMAND_NUMBER;  // we never queried. why? shutdown?
 
-            int baseCommandNumber = anInterface.getBaseCommandNumber();
             if (!anInterface.wasNacked())
                 {
                 return anInterface.getBaseCommandNumber();
@@ -927,7 +1105,7 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
     // Pinging
     //----------------------------------------------------------------------------------------------
 
-    public void ping()
+    protected void ping()
         {
         try {
             ping(false);
@@ -938,7 +1116,7 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
             }
         }
 
-    public void ping(boolean initialPing) throws RobotCoreException, InterruptedException, LynxNackException
+    protected void ping(boolean initialPing) throws RobotCoreException, InterruptedException, LynxNackException
         {
         // RobotLog.vv(TAG, "pinging mod#=%d initial=%s", getModuleAddress(), initialPing);
         LynxKeepAliveCommand command = new LynxKeepAliveCommand(this, initialPing);
@@ -995,6 +1173,60 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
                         }
                     }
                 this.pingFuture = null;
+                }
+            }
+        }
+
+    protected void startFtdiResetWatchdog()
+        {
+        synchronized (engagementLock)
+            {
+            if (!ftdiResetWatchdogActive)
+                {
+                ftdiResetWatchdogActive = true;
+                setFtdiResetWatchdog(true);
+                }
+            if (isEngaged) ftdiResetWatchdogActiveWhenEngaged = ftdiResetWatchdogActive;
+            }
+        }
+
+    protected void stopFtdiResetWatchdog()
+        {
+        stopFtdiResetWatchdog(false);
+        }
+
+    protected void stopFtdiResetWatchdog(boolean disengaging)
+        {
+        synchronized (engagementLock)
+            {
+            if (ftdiResetWatchdogActive)
+                {
+                ftdiResetWatchdogActive = false;
+                setFtdiResetWatchdog(false);
+                }
+            if (isEngaged && !disengaging) ftdiResetWatchdogActiveWhenEngaged = ftdiResetWatchdogActive;
+            }
+        }
+
+    protected void setFtdiResetWatchdog(boolean enabled)
+        {
+        if (isCommandSupported(LynxFtdiResetControlCommand.class))
+            {
+            boolean wasInterrupted = Thread.interrupted(); // also clears interrupted flag
+
+            RobotLog.vv(TAG, "sending LynxFtdiResetControlCommand(%s) wasInterrupted=%s", enabled, wasInterrupted);
+            try {
+                LynxFtdiResetControlCommand command = new LynxFtdiResetControlCommand(this, enabled);
+                command.sendReceive();
+                }
+            catch (InterruptedException|LynxNackException|RuntimeException e)
+                {
+                handleException(e);
+                }
+
+            if (wasInterrupted)
+                {
+                Thread.currentThread().interrupt();
                 }
             }
         }
@@ -1132,7 +1364,7 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
     /**
      * Sends a command to the module, scheduling retransmissions as necessary.
      */
-    public void sendCommand(LynxMessage command) throws InterruptedException, LynxUnsupportedCommandNumberException
+    public void sendCommand(LynxMessage command) throws InterruptedException, LynxUnsupportedCommandException
         {
         command.setMessageNumber(getNewMessageNumber());
         int msgnumCur = command.getMessageNumber();
@@ -1147,7 +1379,7 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
 
         // Send it on out!
         this.lynxUsbDevice.transmit(command);
-        
+
         // If the module isn't going to send something back to us in response, then it's finished
         if (!moduleWillReply)
             {
@@ -1161,7 +1393,7 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
         this.lynxUsbDevice.transmit(message);
         }
 
-    public void finishedWithMessage(LynxMessage message) throws InterruptedException
+    public void finishedWithMessage(LynxMessage message) // must be idempotent
         {
         if (LynxUsbDeviceImpl.DEBUG_LOG_DATAGRAMS_FINISH) RobotLog.vv(TAG, "finishing mod=%d msg#=%d",
                 message.getModuleAddress(),
@@ -1180,7 +1412,7 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
             }
         }
 
-    public void onIncomingDatagramReceived(LynxDatagram datagram) throws InterruptedException
+    public void onIncomingDatagramReceived(LynxDatagram datagram)
     // We've received a datagram from our module.
         {
         // Reify the incoming command. First, what kind of command is that guy?
@@ -1262,5 +1494,19 @@ public class LynxModule extends LynxCommExceptionHandler implements LynxModuleIn
     public void abandonUnfinishedCommands()
         {
         this.unfinishedCommands.clear();
+        }
+
+    protected void nackUnfinishedCommands()
+        {
+        while (!unfinishedCommands.isEmpty())
+            {
+            for (LynxRespondable respondable : unfinishedCommands.values())
+                {
+                RobotLog.vv(RobotLog.TAG, "force-nacking unfinished command=%s mod=%d msg#=%d", respondable.getClass().getSimpleName(), respondable.getModuleAddress(), respondable.getMessageNumber());
+                LynxNack nack = new LynxNack(this, respondable.isResponseExpected() ? LynxNack.ReasonCode.ABANDONED_WAITING_FOR_RESPONSE : LynxNack.ReasonCode.ABANDONED_WAITING_FOR_ACK);
+                respondable.onNackReceived(nack);
+                finishedWithMessage(respondable);
+                }
+            }
         }
     }

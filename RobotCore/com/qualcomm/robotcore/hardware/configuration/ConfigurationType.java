@@ -32,7 +32,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package com.qualcomm.robotcore.hardware.configuration;
 
-import android.content.Context;
 import android.support.annotation.NonNull;
 
 import com.qualcomm.robotcore.hardware.DeviceManager;
@@ -49,12 +48,27 @@ public interface ConfigurationType
         Legacy
         }
 
+    enum DeviceFlavor
+        {
+            BUILT_IN,
+            I2C,
+            MOTOR,
+            ANALOG_SENSOR,
+            SERVO,
+            DIGITAL_IO,
+            ANALOG_OUTPUT
+        }
+
     /**
      * Returns a user-understandable string form of this configuration type
-     * @param context context to use for resource string retrieval
      * @return a user-understandable string form of this configuration type
      */
-    @NonNull String getDisplayName(DisplayNameFlavor flavor, Context context);
+    @NonNull String getDisplayName(DisplayNameFlavor flavor);
+
+    /**
+     * Whether the type should be presented as deprecated in the user interface
+     */
+    boolean isDeprecated();
 
     /**
      * Returns the XML element tag to be used when serializing configurations of this type
@@ -63,15 +77,33 @@ public interface ConfigurationType
     @NonNull String getXmlTag();
 
     /**
+     * Returns any additional XML tags that will resolve to this type
+     * @return the XML tag aliases
+     */
+    @NonNull String[] getXmlTagAliases();
+
+    /**
      * If this configuration type has a corresponding USB device configuration type, returns same;
-     * otherwise, returns {@link com.qualcomm.robotcore.hardware.DeviceManager.DeviceType#FTDI_USB_UNKNOWN_DEVICE FTDI_USB_UNKNOWN_DEVICE}.
+     * otherwise, returns {@link DeviceManager.UsbDeviceType#FTDI_USB_UNKNOWN_DEVICE FTDI_USB_UNKNOWN_DEVICE}.
      * @return the USB device type that corresponds to this configuration type, if any
      */
-    @NonNull DeviceManager.DeviceType toUSBDeviceType();
+    @NonNull DeviceManager.UsbDeviceType toUSBDeviceType();
 
     /**
      * Returns whether this configuration type is of the indicated flavor
      * @return whether this configuration type is of the indicated flavor;
      */
-    boolean isDeviceFlavor(UserConfigurationType.Flavor flavor);
+    boolean isDeviceFlavor(DeviceFlavor flavor);
+
+    /**
+     * Returns the configuration type's most specific flavor.
+     *
+     * Types defined in BuiltInConfigurationType will only return DeviceFlavor.BUILT_IN
+     * if none of the other types apply. If you need to know if this type is defined in the
+     * BuiltInConfigurationType enum, use isDeviceFlavor(BUILT_IN).
+     *
+     * For BuiltInConfigurationType instances that are defined both as a legacy device and as a modern
+     * device, this will assume you're asking about the modern variant.
+     */
+    @NonNull DeviceFlavor getDeviceFlavor();
     }

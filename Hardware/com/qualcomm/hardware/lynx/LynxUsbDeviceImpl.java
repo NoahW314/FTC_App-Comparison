@@ -36,7 +36,6 @@ import android.content.Context;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 
-import com.qualcomm.hardware.ArmableUsbDevice;
 import com.qualcomm.hardware.HardwareFactory;
 import com.qualcomm.hardware.R;
 import com.qualcomm.hardware.lynx.commands.LynxDatagram;
@@ -44,7 +43,7 @@ import com.qualcomm.hardware.lynx.commands.LynxMessage;
 import com.qualcomm.hardware.lynx.commands.standard.LynxDiscoveryCommand;
 import com.qualcomm.hardware.lynx.commands.standard.LynxDiscoveryResponse;
 import com.qualcomm.hardware.modernrobotics.ModernRoboticsUsbDevice;
-import com.qualcomm.robotcore.eventloop.EventLoopManager;
+import com.qualcomm.robotcore.eventloop.SyncdDevice;
 import com.qualcomm.robotcore.exception.RobotCoreException;
 import com.qualcomm.robotcore.hardware.LynxModuleMeta;
 import com.qualcomm.robotcore.hardware.LynxModuleMetaList;
@@ -60,12 +59,13 @@ import com.qualcomm.robotcore.util.TypeConversion;
 import com.qualcomm.robotcore.util.Util;
 import com.qualcomm.robotcore.util.WeakReferenceSet;
 
-import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
-import org.firstinspires.ftc.robotcore.internal.system.Assert;
 import org.firstinspires.ftc.robotcore.internal.hardware.DragonboardLynxDragonboardIsPresentPin;
 import org.firstinspires.ftc.robotcore.internal.hardware.DragonboardLynxProgrammingPin;
 import org.firstinspires.ftc.robotcore.internal.hardware.DragonboardLynxResetPin;
 import org.firstinspires.ftc.robotcore.internal.hardware.TimeWindow;
+import org.firstinspires.ftc.robotcore.internal.hardware.usb.ArmableUsbDevice;
+import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
+import org.firstinspires.ftc.robotcore.internal.system.Assert;
 import org.firstinspires.ftc.robotcore.internal.usb.exception.RobotUsbDeviceClosedException;
 import org.firstinspires.ftc.robotcore.internal.usb.exception.RobotUsbException;
 import org.firstinspires.ftc.robotcore.internal.usb.exception.RobotUsbFTDIException;
@@ -73,7 +73,9 @@ import org.firstinspires.ftc.robotcore.internal.usb.exception.RobotUsbUnspecifie
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Iterator;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -132,12 +134,14 @@ public class LynxUsbDeviceImpl extends ArmableUsbDevice implements LynxUsbDevice
     protected final static int msCbusWiggle         = 75;       // more of a guess than anything
     protected final static int msResetRecovery      = 200;      // more of a guess than anything
 
+    protected final static String SEPARATOR         = " / ";
+
     //----------------------------------------------------------------------------------------------
     // Construction
     //----------------------------------------------------------------------------------------------
 
-    /** Use {@link #findOrCreateAndArm(Context, SerialNumber, EventLoopManager, OpenRobotUsbDevice)} instead */
-    protected LynxUsbDeviceImpl(final Context context, final SerialNumber serialNumber, EventLoopManager manager, final ModernRoboticsUsbDevice.OpenRobotUsbDevice openRobotUsbDevice)
+    /** Use {@link #findOrCreateAndArm} instead */
+    protected LynxUsbDeviceImpl(final Context context, final SerialNumber serialNumber, SyncdDevice.Manager manager, final ModernRoboticsUsbDevice.OpenRobotUsbDevice openRobotUsbDevice)
         {
         super(context, serialNumber, manager, openRobotUsbDevice);
         this.incomingDatagramPoller  = null;
@@ -164,13 +168,13 @@ public class LynxUsbDeviceImpl extends ArmableUsbDevice implements LynxUsbDevice
      * so that we can do reference counting (allowing multiple opens of the same device) while at
      * the same time maintaining the semantic that close() must be idempotent on a given instance.
      */
-    public static LynxUsbDevice findOrCreateAndArm(final Context context, final SerialNumber serialNumber, EventLoopManager manager, final ModernRoboticsUsbDevice.OpenRobotUsbDevice openRobotUsbDevice) throws RobotCoreException, InterruptedException
+    public static LynxUsbDevice findOrCreateAndArm(final Context context, final SerialNumber serialNumber, SyncdDevice.Manager manager, final ModernRoboticsUsbDevice.OpenRobotUsbDevice openRobotUsbDevice) throws RobotCoreException, InterruptedException
         {
         synchronized (extantDevices)
             {
             for (LynxUsbDeviceImpl device : extantDevices)
                 {
-                if (device.getSerialNumber().equals(serialNumber))
+                if (device.getSerialNumber().equals(serialNumber) && /*paranoia*/device.getArmingState() != ARMINGSTATE.CLOSED)
                     {
                     device.addRef(); // new delegate must own another reference
                     RobotLog.vv(TAG, "using existing [%s]: 0x%08x", serialNumber, device.hashCode());
@@ -213,7 +217,6 @@ public class LynxUsbDeviceImpl extends ArmableUsbDevice implements LynxUsbDevice
             super.doClose();
 
             // Once we're closed, there's no reason for anyone to find us any more.
-            // Note that close() will lock extantDevices for us
             extantDevices.remove(this);
             }
         }
@@ -358,7 +361,7 @@ public class LynxUsbDeviceImpl extends ArmableUsbDevice implements LynxUsbDevice
                 }
 
             this.hasShutdownAbnormally = false;
-            if (eventLoopManager!=null) eventLoopManager.registerSyncdDevice(this);
+            if (syncdDeviceManager!=null) syncdDeviceManager.registerSyncdDevice(this);
             resetNetworkTransmissionLock();
             startPollingForIncomingDatagrams();
             pingAndQueryKnownInterfaces();
@@ -390,7 +393,7 @@ public class LynxUsbDeviceImpl extends ArmableUsbDevice implements LynxUsbDevice
                 }
 
             resetNetworkTransmissionLock();
-            if (eventLoopManager!=null) eventLoopManager.unregisterSyncdDevice(this);
+            if (syncdDeviceManager!=null) syncdDeviceManager.unregisterSyncdDevice(this);
 
             RobotLog.vv(TAG, "...done disarmDevice()");
             }
@@ -463,7 +466,25 @@ public class LynxUsbDeviceImpl extends ArmableUsbDevice implements LynxUsbDevice
             return result;
             }
         }
-    
+
+    /**
+     * getAllModuleFirmwareVersions
+     *
+     * @return A list of firmware versions for all known modules in the form of "id / version"
+     */
+    public List<String> getAllModuleFirmwareVersions()
+        {
+        List<String> versions = new ArrayList<>();
+
+        for (LynxModule module : this.getKnownModules())
+            {
+            module.getFirmwareVersionString();
+            versions.add(module.getModuleAddress() + SEPARATOR + module.getFirmwareVersionString());
+            }
+
+        return versions;
+        }
+
     public void changeModuleAddress(LynxModule module, int newAddress, Runnable runnable)
         {
         int oldAddress = module.getModuleAddress();
@@ -560,6 +581,14 @@ public class LynxUsbDeviceImpl extends ArmableUsbDevice implements LynxUsbDevice
             }
         }
 
+    public @Nullable LynxModule getConfiguredModule(int moduleAddress)
+        {
+        synchronized (this.knownModules)
+            {
+            return this.knownModules.get(moduleAddress);
+            }
+        }
+
     @Override public void removeConfiguredModule(LynxModule module)
         {
         synchronized (this.knownModules)
@@ -571,6 +600,11 @@ public class LynxUsbDeviceImpl extends ArmableUsbDevice implements LynxUsbDevice
             }
         }
 
+    /**
+     * Discover all the lynx modules that are accessible through this Lynx USB device. One of these
+     * will be the 'parent', which is the one directly USB connected. The others are accessible
+     * over the RS485 bus.
+     */
     @Override public LynxModuleMetaList discoverModules() throws RobotCoreException, InterruptedException
         {
         RobotLog.vv(TAG, "lynx discovery beginning...transmitting LynxDiscoveryCommand()...");
@@ -579,16 +613,17 @@ public class LynxUsbDeviceImpl extends ArmableUsbDevice implements LynxUsbDevice
         this.discoveredModules.clear();
 
         // Make ourselves a fake module so that we can (mostly) use the normal transmission infrastructure
-        LynxModule fakeModule = new LynxModule(this, 0/*ignored*/, false);
+        LynxModule fakeModule = new LynxModule(this, 0/*ignored in discovery*/, false);
         try {
             // Make a discovery command and send it out
             LynxDiscoveryCommand discoveryCommand = new LynxDiscoveryCommand(fakeModule);
             discoveryCommand.send();
 
             // Wait an interval sufficient so as to guarantee that we'll see all the replies
-            // that are there to see
+            // that are there to see. See description of timing in LynxDiscoveryCommand.
+
             long nsPerModuleInterval = 3 * ElapsedTime.MILLIS_IN_NANO;
-            int  maxNumberOfModules  = 254;
+            int  maxNumberOfModules  = LynxConstants.MAX_MODULES_DISCOVER;
             long nsPacketTimeMax     = 50 * ElapsedTime.MILLIS_IN_NANO;     // "entire packet must be received within 50ms from the first Frame Byte"
             long nsSlop              = 200 * ElapsedTime.MILLIS_IN_NANO;    // should be oodles
             long nsWait = nsPerModuleInterval * maxNumberOfModules + nsPacketTimeMax + nsSlop;
@@ -734,39 +769,47 @@ public class LynxUsbDeviceImpl extends ArmableUsbDevice implements LynxUsbDevice
             {
             if (this.isArmedOrArming() && !this.hasShutdownAbnormally() && isEngaged)
                 {
-                if (DEBUG_LOG_DATAGRAMS || DEBUG_LOG_MESSAGES)
-                    {
-                    RobotLog.vv(TAG, "xmit'ing: mod=%d cmd=0x%02x(%s) msg#=%d ref#=%d ", message.getModuleAddress(), message.getCommandNumber(), message.getClass().getSimpleName(), message.getMessageNumber(), message.getReferenceNumber());
-                    }
-
                 LynxDatagram datagram = message.getSerialization();
-                Assert.assertTrue(datagram != null);
-
-                byte[] bytes = datagram.toByteArray();
-
-                try {
-                    this.robotUsbDevice.write(bytes);
-                    }
-                catch (RobotUsbException|RuntimeException e)    // RuntimeException is just paranoia
+                /**
+                 * {@link LynxModule#finishedWithMessage()} might have nulled the serialization
+                 */
+                if (datagram != null)
                     {
-                    // For now, at least, we're brutal: we don't quarter ANY usb transmission errors
-                    // before giving up and shutting things down. In the wake of future experience, it
-                    // might later be reasonable to reconsider this decision.
-                    shutdownAbnormally();
+                    if (DEBUG_LOG_DATAGRAMS || DEBUG_LOG_MESSAGES)
+                        {
+                        RobotLog.vv(TAG, "xmit'ing: mod=%d cmd=0x%02x(%s) msg#=%d ref#=%d ", message.getModuleAddress(), message.getCommandNumber(), message.getClass().getSimpleName(), message.getMessageNumber(), message.getReferenceNumber());
+                        }
+
+                    byte[] bytes = datagram.toByteArray();
+
+                    try {
+                        this.robotUsbDevice.write(bytes);
+                        }
+                    catch (RobotUsbException|RuntimeException e)    // RuntimeException is just paranoia
+                        {
+                        // For now, at least, we're brutal: we don't quarter ANY usb transmission errors
+                        // before giving up and shutting things down. In the wake of future experience, it
+                        // might later be reasonable to reconsider this decision.
+                        shutdownAbnormally();
+                        //
+                        RobotLog.ee(TAG, e, "exception thrown in LynxUsbDevice.transmit");
+                        //
+                        return;
+                        }
+
+                    long now = System.nanoTime();
+                    message.setNanotimeLastTransmit(now);
+
+                    // "The keep alive must be sent at least every 2500 milliseconds. The Controller Module
+                    // will perform the actions specified in Fail Safe (7F05) if it fails to receive a timely
+                    // Keep Alive". Other messages will do the trick, too.
                     //
-                    RobotLog.ee(TAG, e, "exception thrown in LynxUsbDevice.transmit");
-                    //
-                    return;
+                    message.resetModulePingTimer();
                     }
-
-                long now = System.nanoTime();
-                message.setNanotimeLastTransmit(now);
-
-                // "The keep alive must be sent at least every 2500 milliseconds. The Controller Module
-                // will perform the actions specified in Fail Safe (7F05) if it fails to receive a timely
-                // Keep Alive". Other messages will do the trick, too.
-                //
-                message.resetModulePingTimer();
+                else
+                    {
+                    message.onPretendTransmit();
+                    }
                 }
             else
                 {
@@ -834,13 +877,7 @@ public class LynxUsbDeviceImpl extends ArmableUsbDevice implements LynxUsbDevice
                                 LynxModule module = findKnownModule(datagram.getSourceModuleAddress());
                                 if (module != null)
                                     {
-                                    try {
-                                        module.onIncomingDatagramReceived(datagram);
-                                        }
-                                    catch (InterruptedException whoCares)
-                                        {
-                                        break;
-                                        }
+                                    module.onIncomingDatagramReceived(datagram);
                                     }
                                 }
                             }
@@ -1064,49 +1101,64 @@ public class LynxUsbDeviceImpl extends ArmableUsbDevice implements LynxUsbDevice
     /**
      * If we are a USB-attached Lynx, then cause us to enter firmware update mode
      */
-    public static void enterFirmwareUpdateModeUSB(RobotUsbDevice robotUsbDevice)
+    public static boolean enterFirmwareUpdateModeUSB(RobotUsbDevice robotUsbDevice)
         {
         RobotLog.vv(LynxModule.TAG, "enterFirmwareUpdateModeUSB() serial=%s", robotUsbDevice.getSerialNumber());
 
-        RobotUsbDeviceFtdi deviceFtdi = accessCBus(robotUsbDevice);
-        if (deviceFtdi != null)
+        if (!LynxConstants.isRevControlHub())
             {
-            try {
-                int msDelay = msCbusWiggle;
-
-                // Initialize with both lines deasserted
-                deviceFtdi.cbus_setup(cbusMask, cbusNeitherAsserted);
-                Thread.sleep(msDelay);
-
-                // Assert nProg
-                deviceFtdi.cbus_write(cbusProgAsserted);
-                Thread.sleep(msDelay);
-
-                // Assert nProg and nReset
-                deviceFtdi.cbus_write(cbusBothAsserted);
-                Thread.sleep(msDelay);
-
-                // Deassert nReset
-                deviceFtdi.cbus_write(cbusProgAsserted);
-                Thread.sleep(msDelay);
-
-                // Deassert nProg
-                deviceFtdi.cbus_write(cbusNeitherAsserted);
-                Thread.sleep(msResetRecovery);
-                }
-            catch (InterruptedException|RobotUsbException e)
+            RobotUsbDeviceFtdi deviceFtdi = accessCBus(robotUsbDevice);
+            if (deviceFtdi != null)
                 {
-                exceptionHandler.handleException(e);
+                try {
+                    int msDelay = msCbusWiggle;
+
+                    // Initialize with both lines deasserted
+                    deviceFtdi.cbus_setup(cbusMask, cbusNeitherAsserted);
+                    Thread.sleep(msDelay);
+
+                    // Assert nProg
+                    deviceFtdi.cbus_write(cbusProgAsserted);
+                    Thread.sleep(msDelay);
+
+                    // Assert nProg and nReset
+                    deviceFtdi.cbus_write(cbusBothAsserted);
+                    Thread.sleep(msDelay);
+
+                    // Deassert nReset
+                    deviceFtdi.cbus_write(cbusProgAsserted);
+                    Thread.sleep(msDelay);
+
+                    // Deassert nProg
+                    deviceFtdi.cbus_write(cbusNeitherAsserted);
+                    Thread.sleep(msResetRecovery);
+
+                    return true;
+                    }
+                catch (InterruptedException|RobotUsbException e)
+                    {
+                    exceptionHandler.handleException(e);
+                    }
+                }
+            else
+                {
+                RobotLog.ee(TAG, "enterFirmwareUpdateModeUSB() can't access FTDI device");
                 }
             }
+        else
+            {
+            RobotLog.ee(TAG, "enterFirmwareUpdateModeUSB() issued on Control Hub");
+            }
+
+        return false;
         }
 
     /**
-     * If we are a Dragonboard/Lynx combo, then this causes the combo-Lynx to enter firmware update * mode.
+     * If we are a Dragonboard/Lynx combo, then this causes the combo-Lynx to enter firmware update mode.
      * We will be updating the firmware using the 'serial' connection, not the USB connection. So
-     * after this function exits, the Dragonboad must be asserting its presence.
+     * after this function exits, the Dragonboard must be asserting its presence.
      */
-    public static void enterFirmwareUpdateModeDragonboardCombo()
+    public static boolean enterFirmwareUpdateModeDragonboardCombo()
         {
         RobotLog.vv(LynxModule.TAG, "enterFirmwareUpdateModeDragonboardCombo()");
 
@@ -1140,6 +1192,8 @@ public class LynxUsbDeviceImpl extends ArmableUsbDevice implements LynxUsbDevice
                 // Deassert programming
                 DragonboardLynxProgrammingPin.getInstance().setState(false);
                 Thread.sleep(msDelay);
+
+                return true;
                 }
             catch (InterruptedException e)
                 {
@@ -1148,7 +1202,9 @@ public class LynxUsbDeviceImpl extends ArmableUsbDevice implements LynxUsbDevice
             }
         else
             {
-            RobotLog.ee(TAG, "enterFirmwareUpdateModeDragonboardCombo() issued on non-combo; ignoring");
+            RobotLog.ee(TAG, "enterFirmwareUpdateModeDragonboardCombo() issued on non-Control Hub");
             }
+
+        return false;
         }
     }

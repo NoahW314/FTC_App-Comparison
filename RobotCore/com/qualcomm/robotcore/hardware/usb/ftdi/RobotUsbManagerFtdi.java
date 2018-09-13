@@ -45,6 +45,9 @@ import org.firstinspires.ftc.robotcore.internal.ftdi.FtDevice;
 import org.firstinspires.ftc.robotcore.internal.ftdi.FtDeviceInfo;
 import org.firstinspires.ftc.robotcore.internal.usb.exception.RobotUsbException;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class RobotUsbManagerFtdi implements RobotUsbManager {
 
   public static final String TAG = "RobotUsbManagerFtdi";
@@ -74,14 +77,13 @@ public class RobotUsbManagerFtdi implements RobotUsbManager {
    * @throws RobotCoreException
    */
   @Override
-  public synchronized int scanForDevices() throws RobotCoreException {
+  public synchronized List<SerialNumber> scanForDevices() throws RobotCoreException {
     numberOfDevices = ftDeviceManager.createDeviceInfoList(context);
-    return numberOfDevices;
-  }
-
-  @Override
-  public synchronized int getScanCount() {
-    return numberOfDevices;
+    List<SerialNumber> result = new ArrayList<>(numberOfDevices);
+    for (int i = 0; i < numberOfDevices; i++) {
+        result.add(getDeviceSerialNumberByIndex(i));
+    }
+    return result;
   }
 
  /**
@@ -90,20 +92,13 @@ public class RobotUsbManagerFtdi implements RobotUsbManager {
    * @return serial number
    * @throws RobotCoreException
    */
-  @Override
-  public SerialNumber getDeviceSerialNumberByIndex(int index) throws RobotCoreException {
-    return new SerialNumber(ftDeviceManager.getDeviceInfoListDetail(index).serialNumber);
-  }
-
-  // Is thread safe
-  @Override
-  public String getDeviceDescriptionByIndex(int index) throws RobotCoreException {
-    return ftDeviceManager.getDeviceInfoListDetail(index).description;
+  protected SerialNumber getDeviceSerialNumberByIndex(int index) throws RobotCoreException {
+    return SerialNumber.fromString(ftDeviceManager.getDeviceInfoListDetail(index).serialNumber);
   }
 
   public static SerialNumber getSerialNumber(FtDevice device) {
     FtDeviceInfo devInfo = device.getDeviceInfo();
-    return new SerialNumber(devInfo.serialNumber);
+    return SerialNumber.fromString(devInfo.serialNumber);
   }
 
   /**
@@ -116,15 +111,15 @@ public class RobotUsbManagerFtdi implements RobotUsbManager {
   public RobotUsbDevice openBySerialNumber(SerialNumber serialNumber) throws RobotCoreException {
     // openBySerialNumber() will return null if the device can't be opened. In particular, it
     // will return null if the device is *already* opened.
-    FtDevice device = ftDeviceManager.openBySerialNumber(context, serialNumber.toString());
+    FtDevice device = ftDeviceManager.openBySerialNumber(context, serialNumber.getString());
     if (device == null) {
       throw new RobotCoreException("FTDI driver failed to open USB device with serial number " + serialNumber + " (returned null device)");
     }
-    // Some good housekeeping: reset the FTDI layer (why not?)
+    // Some good housekeeping: reset the FTDI chip in the device (why not?)
     try {
       device.resetDevice();
     } catch (RobotUsbException e) {
-      throw RobotCoreException.createChained(e, "unable to reset FtDevice");
+      RobotLog.ee(TAG, e, "unable to reset FtDevice(%s): ignoring");
     }
 
     return new RobotUsbDeviceFtdi(device, serialNumber);

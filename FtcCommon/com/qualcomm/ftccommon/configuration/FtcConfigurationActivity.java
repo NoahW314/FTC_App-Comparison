@@ -47,11 +47,11 @@ import android.widget.Toast;
 
 import com.qualcomm.ftccommon.CommandList;
 import com.qualcomm.ftccommon.R;
-import com.qualcomm.hardware.HardwareDeviceManager;
 import com.qualcomm.robotcore.exception.DuplicateNameException;
 import com.qualcomm.robotcore.exception.RobotCoreException;
+import com.qualcomm.robotcore.hardware.ControlSystem;
 import com.qualcomm.robotcore.hardware.DeviceManager;
-import com.qualcomm.robotcore.hardware.LynxModuleMetaList;
+import com.qualcomm.robotcore.hardware.ScannedDevices;
 import com.qualcomm.robotcore.hardware.configuration.BuiltInConfigurationType;
 import com.qualcomm.robotcore.hardware.configuration.ConfigurationType;
 import com.qualcomm.robotcore.hardware.configuration.ControllerConfiguration;
@@ -61,10 +61,8 @@ import com.qualcomm.robotcore.hardware.configuration.LegacyModuleControllerConfi
 import com.qualcomm.robotcore.hardware.configuration.LynxModuleConfiguration;
 import com.qualcomm.robotcore.hardware.configuration.LynxUsbDeviceConfiguration;
 import com.qualcomm.robotcore.hardware.configuration.ModernRoboticsConstants;
-import com.qualcomm.robotcore.hardware.configuration.MotorConfiguration;
 import com.qualcomm.robotcore.hardware.configuration.MotorControllerConfiguration;
 import com.qualcomm.robotcore.hardware.configuration.ReadXMLFileHandler;
-import com.qualcomm.robotcore.hardware.configuration.ServoConfiguration;
 import com.qualcomm.robotcore.hardware.configuration.ServoControllerConfiguration;
 import com.qualcomm.robotcore.robocol.Command;
 import com.qualcomm.robotcore.robocol.RobocolDatagram;
@@ -73,14 +71,16 @@ import com.qualcomm.robotcore.util.SerialNumber;
 import com.qualcomm.robotcore.util.ThreadPool;
 import com.qualcomm.robotcore.wifi.NetworkConnection;
 
-import org.firstinspires.ftc.robotcore.internal.ui.UILocation;
 import org.firstinspires.ftc.robotcore.internal.network.CallbackResult;
 import org.firstinspires.ftc.robotcore.internal.network.NetworkConnectionHandler;
 import org.firstinspires.ftc.robotcore.internal.network.RecvLoopRunnable;
+import org.firstinspires.ftc.robotcore.internal.system.Misc;
+import org.firstinspires.ftc.robotcore.internal.ui.UILocation;
 import org.xmlpull.v1.XmlPullParser;
 
 import java.io.IOException;
 import java.io.StringReader;
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -274,7 +274,7 @@ public class FtcConfigurationActivity extends EditActivity implements RecvLoopRu
       ScannedDevices devices = future.await();
       //
       if (devices != null) {
-        RobotLog.ee(TAG, "scan for devices on USB bus found %d devices", devices.size());
+        RobotLog.dd(TAG, "scan for devices on USB bus found %d devices", devices.size());
 
         // Use the results of the scan to figure out what we've got here
         buildRobotConfigMapFromScanned(devices);  // may take awhile, maybe a second or two
@@ -340,42 +340,14 @@ public class FtcConfigurationActivity extends EditActivity implements RecvLoopRu
     RobotConfigMap newRobotConfigMap = new RobotConfigMap();
 
     configurationUtility.resetNameUniquifiers();
-    for(Map.Entry<SerialNumber, DeviceManager.DeviceType> entry : scannedDevices.entrySet()) {
-      SerialNumber serialNumber = entry.getKey();
+    for(Map.Entry<SerialNumber, DeviceManager.UsbDeviceType> entry : scannedDevices.entrySet()) {
+      final SerialNumber serialNumber = entry.getKey();
       ControllerConfiguration controllerConfiguration = null;
       if (carryOver(serialNumber, existingControllers)) {
         RobotLog.vv(TAG, "carrying over %s", serialNumber);
         controllerConfiguration = existingControllers.get(serialNumber);
       } else {
-        switch (entry.getValue()) {
-          case MODERN_ROBOTICS_USB_DC_MOTOR_CONTROLLER:
-            controllerConfiguration = configurationUtility.buildNewModernMotorController(serialNumber);
-            break;
-          case MODERN_ROBOTICS_USB_SERVO_CONTROLLER:
-            controllerConfiguration = configurationUtility.buildNewModernServoController(serialNumber);
-            break;
-          case MODERN_ROBOTICS_USB_LEGACY_MODULE:
-            controllerConfiguration = configurationUtility.buildNewLegacyModule(serialNumber);
-            break;
-          case MODERN_ROBOTICS_USB_DEVICE_INTERFACE_MODULE:
-            controllerConfiguration = configurationUtility.buildNewDeviceInterfaceModule(serialNumber);
-            break;
-          case LYNX_USB_DEVICE:
-            try {
-              RobotLog.vv(TAG, "buildRobotConfigMapFromScanned(%s)...", serialNumber);
-              HardwareDeviceManager deviceManager = new HardwareDeviceManager(utility.getActivity(), null);
-              ThreadPool.SingletonResult<LynxModuleMetaList> discoveryFuture = this.usbScanManager.startLynxModuleEnumerationIfNecessary(serialNumber);
-              controllerConfiguration = configurationUtility.buildNewLynxUsbDevice(serialNumber, deviceManager, discoveryFuture);
-              RobotLog.vv(TAG, "...buildRobotConfigMapFromScanned(%s)", serialNumber);
-            } catch (InterruptedException e) {
-              RobotLog.ee(TAG, "interrupt in buildRobotConfigMapFromScanned(%s)", serialNumber);
-              Thread.currentThread().interrupt();
-            } catch (RobotCoreException e) {
-              RobotLog.ee(TAG, e, "exception in buildRobotConfigMapFromScanned(%s)", serialNumber);
-              controllerConfiguration = null;
-            }
-            break;
-        }
+        controllerConfiguration = configurationUtility.buildNewControllerConfiguration(serialNumber, entry.getValue(), usbScanManager.getLynxModuleMetaListSupplier(serialNumber));
       }
       if (controllerConfiguration != null) {
         controllerConfiguration.setKnownToBeAttached(true);
@@ -428,15 +400,25 @@ public class FtcConfigurationActivity extends EditActivity implements RecvLoopRu
   }
 
   private void warnIncompleteDevices() {
-    if (!getRobotConfigMap().allControllersAreBound()) {
-      String title = getString(R.string.notAllDevicesFoundTitle);
-      String message = String.format(getString(R.string.notAllDevicesFoundMessage), getString(R.string.noSerialNumber));
-      utility.setFeedbackText(title, message, idFeedbackAnchor, R.layout.feedback, R.id.feedbackText0, R.id.feedbackText1, R.id.feedbackOKButton);
+    String title = null;
+    String message = null;
+
+    if (scannedDevices.getErrorMessage() != null) {
+      title = getString(R.string.errorScanningDevicesTitle);
+      message = scannedDevices.getErrorMessage();
+    } else if (!getRobotConfigMap().allControllersAreBound()) {
+      title = getString(R.string.notAllDevicesFoundTitle);
+      message = Misc.formatForUser(R.string.notAllDevicesFoundMessage, getString(R.string.noSerialNumber));
     } else if (getRobotConfigMap().size() == 0){
-      String title   = getString(R.string.noDevicesFoundTitle);
-      String message = getString(R.string.noDevicesFoundMessage);
-      utility.setFeedbackText(title, message, idFeedbackAnchor, R.layout.feedback, R.id.feedbackText0, R.id.feedbackText1, R.id.feedbackOKButton);
+      title   = getString(R.string.noDevicesFoundTitle);
+      message = getString(R.string.noDevicesFoundMessage);
       clearDuplicateWarning();
+    }
+
+    if (title != null || message != null) {
+      if (title==null) title = "";
+      if (message==null) message = "";
+      utility.setFeedbackText(title, message, idFeedbackAnchor, R.layout.feedback, R.id.feedbackText0, R.id.feedbackText1, R.id.feedbackOKButton);
     } else {
       utility.hideFeedbackText(idFeedbackAnchor);
     }
@@ -501,56 +483,65 @@ public class FtcConfigurationActivity extends EditActivity implements RecvLoopRu
       @Override
       public void onItemClick(AdapterView<?> adapterView, View v, int pos, long arg3)
         {
-      ControllerConfiguration controllerConfiguration = (ControllerConfiguration) adapterView.getItemAtPosition(pos);
-      ConfigurationType itemType = controllerConfiguration.getConfigurationType();
-      if (itemType == BuiltInConfigurationType.MOTOR_CONTROLLER) {
-        EditParameters parameters = initParameters(ModernRoboticsConstants.INITIAL_MOTOR_PORT,
-                MotorConfiguration.class,
-                controllerConfiguration,
-                ((MotorControllerConfiguration)controllerConfiguration).getMotors());
-        parameters.setConfigurationTypes(MotorConfiguration.getAllMotorConfigurationTypes());
-        handleLaunchEdit(EditMotorControllerActivity.requestCode, EditMotorControllerActivity.class, parameters);
-        }
-      else if (itemType == BuiltInConfigurationType.SERVO_CONTROLLER) {
-        EditParameters parameters = initParameters(ModernRoboticsConstants.INITIAL_SERVO_PORT,
-                ServoConfiguration.class,
-                controllerConfiguration,
-                ((ServoControllerConfiguration)controllerConfiguration).getServos());
-        handleLaunchEdit(EditServoControllerActivity.requestCode, EditServoControllerActivity.class, parameters);
-        }
-      else if (itemType == BuiltInConfigurationType.LEGACY_MODULE_CONTROLLER) {
-        EditParameters parameters = initParameters(0,
-                DeviceConfiguration.class,
-                controllerConfiguration,
-                ((LegacyModuleControllerConfiguration)controllerConfiguration).getDevices());
-        handleLaunchEdit(EditLegacyModuleControllerActivity.requestCode, EditLegacyModuleControllerActivity.class, parameters);
-        }
-      else if (itemType == BuiltInConfigurationType.DEVICE_INTERFACE_MODULE) {
-        EditParameters parameters = initParameters(0,
-                DeviceConfiguration.class,
-                controllerConfiguration,
-                ((DeviceInterfaceModuleConfiguration)controllerConfiguration).getDevices());
-        handleLaunchEdit(EditDeviceInterfaceModuleActivity.requestCode, EditDeviceInterfaceModuleActivity.class, parameters);
-        }
-      else if (itemType == BuiltInConfigurationType.LYNX_USB_DEVICE) {
-        EditParameters parameters = initParameters(0,
-                LynxModuleConfiguration.class,
-                controllerConfiguration,
-                ((LynxUsbDeviceConfiguration)controllerConfiguration).getDevices());
-        handleLaunchEdit(EditLynxUsbDeviceActivity.requestCode, EditLynxUsbDeviceActivity.class, parameters);
-        }
+        ControllerConfiguration controllerConfiguration = (ControllerConfiguration) adapterView.getItemAtPosition(pos);
+        ConfigurationType itemType = controllerConfiguration.getConfigurationType();
+        if (itemType == BuiltInConfigurationType.MOTOR_CONTROLLER) {
+          EditParameters parameters = initParameters(ModernRoboticsConstants.INITIAL_MOTOR_PORT,
+                  DeviceConfiguration.class,
+                  controllerConfiguration,
+                  ((MotorControllerConfiguration)controllerConfiguration).getMotors());
+          handleLaunchEdit(EditMotorControllerActivity.requestCode, EditMotorControllerActivity.class, parameters);
+          }
+        else if (itemType == BuiltInConfigurationType.SERVO_CONTROLLER) {
+          EditParameters parameters = initParameters(ModernRoboticsConstants.INITIAL_SERVO_PORT,
+                  DeviceConfiguration.class,
+                  controllerConfiguration,
+                  ((ServoControllerConfiguration)controllerConfiguration).getServos());
+          parameters.setControlSystem(ControlSystem.MODERN_ROBOTICS);
+          handleLaunchEdit(EditServoControllerActivity.requestCode, EditServoControllerActivity.class, parameters);
+          }
+        else if (itemType == BuiltInConfigurationType.LEGACY_MODULE_CONTROLLER) {
+          EditParameters parameters = initParameters(0,
+                  DeviceConfiguration.class,
+                  controllerConfiguration,
+                  ((LegacyModuleControllerConfiguration)controllerConfiguration).getDevices());
+          handleLaunchEdit(EditLegacyModuleControllerActivity.requestCode, EditLegacyModuleControllerActivity.class, parameters);
+          }
+        else if (itemType == BuiltInConfigurationType.DEVICE_INTERFACE_MODULE) {
+          EditParameters parameters = initParameters(0,
+                  DeviceConfiguration.class,
+                  controllerConfiguration,
+                  ((DeviceInterfaceModuleConfiguration)controllerConfiguration).getDevices());
+          handleLaunchEdit(EditDeviceInterfaceModuleActivity.requestCode, EditDeviceInterfaceModuleActivity.class, parameters);
+          }
+        else if (itemType == BuiltInConfigurationType.LYNX_USB_DEVICE) {
+          EditParameters parameters = initParameters(0,
+                  LynxModuleConfiguration.class,
+                  controllerConfiguration,
+                  ((LynxUsbDeviceConfiguration)controllerConfiguration).getDevices());
+          handleLaunchEdit(EditLynxUsbDeviceActivity.requestCode, EditLynxUsbDeviceActivity.class, parameters);
+          }
+        else if (itemType == BuiltInConfigurationType.WEBCAM) {
+          EditParameters parameters = initParameters(controllerConfiguration);
+          handleLaunchEdit(EditWebcamActivity.requestCode, EditWebcamActivity.class, parameters);
+          }
         }
       }
     );
   }
 
-  <ITEM_T extends DeviceConfiguration> EditParameters initParameters(int initialPortNumber, Class<ITEM_T> clazz, ControllerConfiguration controllerConfiguration, List<ITEM_T> currentItems) {
-    EditParameters parameters = new EditParameters<ITEM_T>(this, controllerConfiguration, clazz, currentItems);
+  <ITEM_T extends DeviceConfiguration> EditParameters initParameters(int initialPortNumber, Class<ITEM_T> itemClass, ControllerConfiguration controllerConfiguration, List<ITEM_T> currentItems) {
+    EditParameters parameters = new EditParameters<ITEM_T>(this, controllerConfiguration, itemClass, currentItems);
     parameters.setInitialPortNumber(initialPortNumber);
     parameters.setScannedDevices(scannedDevices);
     parameters.setRobotConfigMap(this.getRobotConfigMap());
     return parameters;
   }
+
+  <ITEM_T extends DeviceConfiguration> EditParameters initParameters(ControllerConfiguration controllerConfiguration) {
+    return initParameters(0, DeviceConfiguration.class, controllerConfiguration, new ArrayList<DeviceConfiguration>());
+  }
+
 
   @Override
   protected void onActivityResult(int requestCodeValue, int resultCode, Intent data) {
@@ -790,7 +781,7 @@ public class FtcConfigurationActivity extends EditActivity implements RecvLoopRu
   }
 
   @Override
-  public CallbackResult onNetworkConnectionEvent(NetworkConnection.Event event) {
+  public CallbackResult onNetworkConnectionEvent(NetworkConnection.NetworkEvent event) {
     return CallbackResult.NOT_HANDLED;
   }
 

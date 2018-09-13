@@ -43,8 +43,6 @@ import android.widget.TextView;
 import com.qualcomm.ftccommon.R;
 import com.qualcomm.robotcore.hardware.configuration.DeviceConfiguration;
 import com.qualcomm.robotcore.hardware.configuration.MatrixControllerConfiguration;
-import com.qualcomm.robotcore.hardware.configuration.MotorConfiguration;
-import com.qualcomm.robotcore.hardware.configuration.ServoConfiguration;
 
 import java.util.List;
 
@@ -53,8 +51,8 @@ public class EditMatrixControllerActivity extends EditActivity {
   @Override public String getTag() { return this.getClass().getSimpleName(); }	
   public static final RequestCode requestCode = RequestCode.EDIT_MATRIX_CONTROLLER;
   private MatrixControllerConfiguration matrixControllerConfigurationConfig;
-  private List<MotorConfiguration> motors;
-  private List<ServoConfiguration> servos;
+  private List<DeviceConfiguration> motors;
+  private List<DeviceConfiguration> servos;
   private EditText controller_name;
 
   private View info_port1;

@@ -32,6 +32,10 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package com.qualcomm.robotcore.hardware;
 
+import android.support.annotation.NonNull;
+
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.ServoConfigurationType;
+
 /**
  * CRServoEx provides access to extended functionality on continuous rotation
  * servos. Implementations support both the {@link CRServo} and {@link PwmControl} interfaces.
@@ -48,15 +52,16 @@ public class CRServoImplEx extends CRServoImpl implements PwmControl
     // Construction
     //----------------------------------------------------------------------------------------------
 
-    public CRServoImplEx(ServoController controller, int portNumber)
+    public CRServoImplEx(ServoControllerEx controller, int portNumber, @NonNull ServoConfigurationType servoType)
         {
-        this(controller, portNumber, DcMotor.Direction.FORWARD);
+        this(controller, portNumber, DcMotor.Direction.FORWARD, servoType);
         }
 
-    public CRServoImplEx(ServoController controller, int portNumber, DcMotor.Direction direction)
+    public CRServoImplEx(ServoControllerEx controller, int portNumber, DcMotor.Direction direction, @NonNull ServoConfigurationType servoType)
         {
         super(controller, portNumber, direction);
-        this.controllerEx = (ServoControllerEx)controller;
+        this.controllerEx = controller;
+        controllerEx.setServoType(portNumber, servoType);
         }
 
     //----------------------------------------------------------------------------------------------

@@ -42,12 +42,19 @@ import com.qualcomm.robotcore.exception.RobotCoreException;
 import com.qualcomm.robotcore.hardware.DeviceManager;
 import com.qualcomm.robotcore.hardware.LynxModuleMeta;
 import com.qualcomm.robotcore.hardware.LynxModuleMetaList;
+import com.qualcomm.robotcore.hardware.RobotCoreLynxUsbDevice;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.I2cDeviceConfigurationType;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.MotorConfigurationType;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.ServoConfigurationType;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.UserConfigurationType;
+import com.qualcomm.robotcore.util.Device;
 import com.qualcomm.robotcore.util.RobotLog;
 import com.qualcomm.robotcore.util.SerialNumber;
-import com.qualcomm.robotcore.util.ThreadPool;
 
+import org.firstinspires.ftc.robotcore.external.function.Supplier;
 import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 import org.firstinspires.ftc.robotcore.internal.system.Assert;
+import org.firstinspires.ftc.robotcore.internal.system.Misc;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -71,6 +78,7 @@ public class ConfigurationUtility
     //----------------------------------------------------------------------------------------------
 
     public static final String TAG = "ConfigurationUtility";
+    public static final int firstNamedDeviceNumber = 1;
 
     protected Set<String> existingNames;
 
@@ -100,9 +108,10 @@ public class ConfigurationUtility
         getExistingNames(configurationType).add(name);
         }
 
+    // TODO: the resId should be retreived from configurationType
     protected String createUniqueName(ConfigurationType configurationType, @StringRes int resId)
         {
-        return createUniqueName(configurationType, AppUtil.getDefContext().getString(resId), 1);
+        return createUniqueName(configurationType, AppUtil.getDefContext().getString(resId), firstNamedDeviceNumber);
         }
 
     protected String createUniqueName(ConfigurationType configurationType, @StringRes int resId, int preferredParam)
@@ -126,15 +135,15 @@ public class ConfigurationUtility
                 return firstChoice;
                 }
             }
-        String candidate = String.format(format, preferredParam);
+        String candidate = Misc.formatForUser(format, preferredParam);
         if (!existing.contains(candidate))
             {
             noteExistingName(configurationType, candidate);
             return candidate;
             }
-        for (int i = 0; ; i++)
+        for (int i = firstNamedDeviceNumber; ; i++)
             {
-            candidate = String.format(format, i);
+            candidate = Misc.formatForUser(format, i);
             if (!existing.contains(candidate))
                 {
                 noteExistingName(configurationType, candidate);
@@ -147,9 +156,26 @@ public class ConfigurationUtility
     // Building *new* configurations
     //----------------------------------------------------------------------------------------------
 
+    public ControllerConfiguration buildNewControllerConfiguration(SerialNumber serialNumber, DeviceManager.UsbDeviceType deviceType, Supplier<LynxModuleMetaList> lynxModuleSupplier)
+        {
+        ControllerConfiguration result = null;
+        switch (deviceType)
+            {
+            case MODERN_ROBOTICS_USB_DC_MOTOR_CONTROLLER:       result = buildNewModernMotorController(serialNumber); break;
+            case MODERN_ROBOTICS_USB_SERVO_CONTROLLER:          result = buildNewModernServoController(serialNumber); break;
+            case MODERN_ROBOTICS_USB_LEGACY_MODULE:             result = buildNewLegacyModule(serialNumber); break;
+            case MODERN_ROBOTICS_USB_DEVICE_INTERFACE_MODULE:   result = buildNewDeviceInterfaceModule(serialNumber); break;
+            case WEBCAM:                                        result = buildNewWebcam(serialNumber); break;
+            case LYNX_USB_DEVICE:                               result = buildNewLynxUsbDevice(serialNumber, lynxModuleSupplier); break;
+            }
+        return result;
+        }
+
+    // TODO(Noah): Look into making it so that lists are never passed into DeviceConfiguration constructors
+    // This would let us get rid of most of the buildEmptyX calls
     public MotorControllerConfiguration buildNewModernMotorController(SerialNumber serialNumber)
         {
-        List<MotorConfiguration> motors = buildEmptyMotors(ModernRoboticsConstants.INITIAL_MOTOR_PORT, ModernRoboticsConstants.NUMBER_OF_MOTORS);
+        List<DeviceConfiguration> motors = buildEmptyMotors(ModernRoboticsConstants.INITIAL_MOTOR_PORT, ModernRoboticsConstants.NUMBER_OF_MOTORS);
         String name = createUniqueName(BuiltInConfigurationType.MOTOR_CONTROLLER, R.string.counted_motor_controller_name);
         MotorControllerConfiguration motorController = new MotorControllerConfiguration(name, motors, serialNumber);
         return motorController;
@@ -157,7 +183,7 @@ public class ConfigurationUtility
 
     public ServoControllerConfiguration buildNewModernServoController(SerialNumber serialNumber)
         {
-        List<ServoConfiguration> servos = buildEmptyServos(ModernRoboticsConstants.INITIAL_SERVO_PORT, ModernRoboticsConstants.NUMBER_OF_SERVOS);
+        List<DeviceConfiguration> servos = buildEmptyServos(ModernRoboticsConstants.INITIAL_SERVO_PORT, ModernRoboticsConstants.NUMBER_OF_SERVOS);
         String name = createUniqueName(BuiltInConfigurationType.SERVO_CONTROLLER, R.string.counted_servo_controller_name);
         ServoControllerConfiguration servoController = new ServoControllerConfiguration(name, servos, serialNumber);
         return servoController;
@@ -169,9 +195,9 @@ public class ConfigurationUtility
         DeviceInterfaceModuleConfiguration deviceInterfaceModule = new DeviceInterfaceModuleConfiguration(name, serialNumber);
         deviceInterfaceModule.setPwmOutputs         (buildEmptyDevices(0, ModernRoboticsConstants.NUMBER_OF_PWM_CHANNELS,   BuiltInConfigurationType.PULSE_WIDTH_DEVICE));
         deviceInterfaceModule.setI2cDevices         (buildEmptyDevices(0, ModernRoboticsConstants.NUMBER_OF_I2C_CHANNELS,   BuiltInConfigurationType.I2C_DEVICE));
-        deviceInterfaceModule.setAnalogInputDevices (buildEmptyDevices(0, ModernRoboticsConstants.NUMBER_OF_ANALOG_INPUTS,  BuiltInConfigurationType.ANALOG_INPUT));
-        deviceInterfaceModule.setDigitalDevices     (buildEmptyDevices(0, ModernRoboticsConstants.NUMBER_OF_DIGITAL_IOS,    BuiltInConfigurationType.DIGITAL_DEVICE));
-        deviceInterfaceModule.setAnalogOutputDevices(buildEmptyDevices(0, ModernRoboticsConstants.NUMBER_OF_ANALOG_OUTPUTS, BuiltInConfigurationType.ANALOG_OUTPUT));
+        deviceInterfaceModule.setAnalogInputDevices (buildEmptyDevices(0, ModernRoboticsConstants.NUMBER_OF_ANALOG_INPUTS,  BuiltInConfigurationType.NOTHING));
+        deviceInterfaceModule.setDigitalDevices     (buildEmptyDevices(0, ModernRoboticsConstants.NUMBER_OF_DIGITAL_IOS,    BuiltInConfigurationType.NOTHING));
+        deviceInterfaceModule.setAnalogOutputDevices(buildEmptyDevices(0, ModernRoboticsConstants.NUMBER_OF_ANALOG_OUTPUTS, BuiltInConfigurationType.NOTHING));
         return deviceInterfaceModule;
         }
 
@@ -188,11 +214,20 @@ public class ConfigurationUtility
         return legacyModule;
         }
 
-    public LynxUsbDeviceConfiguration buildNewLynxUsbDevice(SerialNumber serialNumber, DeviceManager deviceManager, ThreadPool.SingletonResult<LynxModuleMetaList> discoveryFuture) throws RobotCoreException, InterruptedException
+    public WebcamConfiguration buildNewWebcam(SerialNumber serialNumber)
+        {
+        String name = createUniqueName(BuiltInConfigurationType.WEBCAM, R.string.counted_camera_name);
+        return new WebcamConfiguration(name, serialNumber);
+        }
+
+    public LynxUsbDeviceConfiguration buildNewLynxUsbDevice(SerialNumber serialNumber, Supplier<LynxModuleMetaList> lynxModuleMetaListSupplier)
+        {
+        return buildNewLynxUsbDevice(serialNumber, lynxModuleMetaListSupplier.get());
+        }
+    public LynxUsbDeviceConfiguration buildNewLynxUsbDevice(SerialNumber serialNumber, LynxModuleMetaList metas)
         {
         RobotLog.vv(TAG, "buildNewLynxUsbDevice(%s)...", serialNumber);
         try {
-            LynxModuleMetaList metas = discoveryFuture.await();
             if (metas == null) metas = new LynxModuleMetaList(serialNumber);
             RobotLog.vv(TAG, "buildLynxUsbDevice(): discovered lynx modules: %s", metas);
             //
@@ -222,8 +257,8 @@ public class ConfigurationUtility
 
         // Add add the embedded IMU device to the newly created configuration
         Context context = AppUtil.getDefContext();
-        UserConfigurationType embeddedIMUConfigurationType = UserI2cSensorType.getLynxEmbeddedIMUType();
-        Assert.assertTrue(embeddedIMUConfigurationType!=null && embeddedIMUConfigurationType.isDeviceFlavor(UserConfigurationType.Flavor.I2C));
+        UserConfigurationType embeddedIMUConfigurationType = I2cDeviceConfigurationType.getLynxEmbeddedIMUType();
+        Assert.assertTrue(embeddedIMUConfigurationType!=null && embeddedIMUConfigurationType.isDeviceFlavor(ConfigurationType.DeviceFlavor.I2C));
 
         String imuName = createUniqueName(embeddedIMUConfigurationType, context.getString(R.string.preferred_imu_name), context.getString(R.string.counted_imu_name), 1);
         LynxI2cDeviceConfiguration imuConfiguration = new LynxI2cDeviceConfiguration();
@@ -240,18 +275,40 @@ public class ConfigurationUtility
      * 'system synthetic', in that we make it up, making sure it's there independent of whether
      * it's been configured in the hardware map or not. We do this so that we can ALWAYS access
      * the functionality of that embedded module, such as its LEDs. */
-    protected LynxUsbDeviceConfiguration buildNewEmbeddedLynxUsbDevice()
+    protected LynxUsbDeviceConfiguration buildNewEmbeddedLynxUsbDevice(final @NonNull DeviceManager deviceManager)
         {
-        LynxModuleConfiguration lynxModuleConfiguration = buildNewLynxModule(LynxUsbDeviceConfiguration.DEFAULT_PARENT_MODULE_ADDRESS, true, true);
-        lynxModuleConfiguration.setSystemSynthetic(true);
-        List<LynxModuleConfiguration> modules = new ArrayList<LynxModuleConfiguration>();
-        modules.add(lynxModuleConfiguration);
-        //
-        String usbDeviceName = createUniqueName(BuiltInConfigurationType.LYNX_USB_DEVICE, AppUtil.getDefContext().getString(R.string.counted_lynx_usb_device_name), 1);
-        LynxUsbDeviceConfiguration controllerConfiguration = new LynxUsbDeviceConfiguration(usbDeviceName, modules, LynxConstants.SERIAL_NUMBER_EMBEDDED);
+        LynxUsbDeviceConfiguration controllerConfiguration = buildNewLynxUsbDevice(LynxConstants.SERIAL_NUMBER_EMBEDDED, new Supplier<LynxModuleMetaList>()
+            {
+            @Override public LynxModuleMetaList get()
+                {
+                RobotCoreLynxUsbDevice device = null;
+                try {
+                    device = deviceManager.createLynxUsbDevice(LynxConstants.SERIAL_NUMBER_EMBEDDED, null);
+                    return device.discoverModules();
+                    }
+                catch (InterruptedException e)
+                    {
+                    Thread.currentThread().interrupt();
+                    }
+                catch (RobotCoreException e)
+                    {
+                    RobotLog.ee(TAG, e, "exception in buildNewEmbeddedLynxUsbDevice()");
+                    }
+                finally
+                    {
+                    if (device != null) device.close();
+                    }
+                return null;
+                }
+            });
+
         controllerConfiguration.setEnabled(true);
         controllerConfiguration.setSystemSynthetic(true);
-        //
+        for (LynxModuleConfiguration moduleConfiguration : controllerConfiguration.getModules())
+            {
+            moduleConfiguration.setSystemSynthetic(true);
+            }
+
         return controllerConfiguration;
         }
 
@@ -269,44 +326,14 @@ public class ConfigurationUtility
         return list;
         }
 
-    protected static List<MotorConfiguration> buildEmptyMotors(int initialPort, int size)
+    public static List<DeviceConfiguration> buildEmptyMotors(int initialPort, int size)
         {
-        return buildEmptyMotors(initialPort, size, MotorConfigurationType.getUnspecifiedMotorType());
+        return buildEmptyDevices(initialPort, size, MotorConfigurationType.getUnspecifiedMotorType());
         }
 
-    protected static List<MotorConfiguration> buildEmptyMotors(int initialPort, int size, ConfigurationType type)
+    public static List<DeviceConfiguration> buildEmptyServos(int initialPort, int size)
         {
-        ArrayList<MotorConfiguration> list = new ArrayList<MotorConfiguration>();
-        Assert.assertTrue(type.isDeviceFlavor(UserConfigurationType.Flavor.MOTOR));
-        for (int i = 0; i < size; i++)
-            {
-            MotorConfiguration motorConfiguration = new MotorConfiguration(i + initialPort, DeviceConfiguration.DISABLED_DEVICE_NAME, false);
-            Assert.assertTrue(motorConfiguration.getConfigurationType() == MotorConfigurationType.getUnspecifiedMotorType());
-            motorConfiguration.setConfigurationType(type);
-            list.add(motorConfiguration);
-            }
-        return list;
-        }
-
-    protected static List<ServoConfiguration> buildEmptyServos(int initialPort, int size)
-        {
-        return buildEmptyServos(initialPort, size, BuiltInConfigurationType.SERVO);
-        }
-
-    protected static List<ServoConfiguration> buildEmptyServos(int initialPort, int size, ConfigurationType type)
-        {
-        ArrayList<ServoConfiguration> list = new ArrayList<ServoConfiguration>();
-        Assert.assertTrue(type == BuiltInConfigurationType.SERVO || type == BuiltInConfigurationType.CONTINUOUS_ROTATION_SERVO);
-        for (int i = 0; i < size; i++)
-            {
-            list.add(new ServoConfiguration(i + initialPort, type, DeviceConfiguration.DISABLED_DEVICE_NAME, false));
-            }
-        return list;
-        }
-
-    protected static List<LynxI2cDeviceConfiguration> buildEmptyLynxI2cDevices()
-        {
-        return new LinkedList<LynxI2cDeviceConfiguration>();
+        return buildEmptyDevices(initialPort, size, ServoConfigurationType.getStandardServoType());
         }
 
     protected LynxModuleConfiguration buildEmptyLynxModule(String name, int moduleAddress, boolean isParent, boolean isEnabled)
@@ -317,22 +344,8 @@ public class ConfigurationUtility
         //
         LynxModuleConfiguration moduleConfiguration = new LynxModuleConfiguration(name);
         moduleConfiguration.setModuleAddress(moduleAddress);
-        moduleConfiguration.setParent(isParent);
+        moduleConfiguration.setIsParent(isParent);
         moduleConfiguration.setEnabled(isEnabled);
-        //
-        List<ServoConfiguration> servos             = buildEmptyServos(LynxConstants.INITIAL_SERVO_PORT, LynxConstants.NUMBER_OF_SERVO_CHANNELS, BuiltInConfigurationType.SERVO);
-        List<MotorConfiguration> motors             = buildEmptyMotors(LynxConstants.INITIAL_MOTOR_PORT, LynxConstants.NUMBER_OF_MOTORS,         MotorConfigurationType.getUnspecifiedMotorType());
-        List<DeviceConfiguration> pwmOutputs        = buildEmptyDevices(0,                               LynxConstants.NUMBER_OF_PWM_CHANNELS,   BuiltInConfigurationType.PULSE_WIDTH_DEVICE);
-        List<DeviceConfiguration> analogInputs      = buildEmptyDevices(0,                               LynxConstants.NUMBER_OF_ANALOG_INPUTS,  BuiltInConfigurationType.ANALOG_INPUT);
-        List<DeviceConfiguration> digitalIOs        = buildEmptyDevices(0,                               LynxConstants.NUMBER_OF_DIGITAL_IOS,    BuiltInConfigurationType.DIGITAL_DEVICE);
-        List<LynxI2cDeviceConfiguration> i2cDevices = buildEmptyLynxI2cDevices();
-        //
-        moduleConfiguration.setMotors(motors);
-        moduleConfiguration.setServos(servos);
-        moduleConfiguration.setPwmOutputs(pwmOutputs);
-        moduleConfiguration.setAnalogInputs(analogInputs);
-        moduleConfiguration.setDigitalDevices(digitalIOs);
-        moduleConfiguration.setI2cDevices(i2cDevices);
         //
         RobotLog.vv(TAG, "...buildEmptyLynxModule() mod#=%d", moduleAddress);
         return moduleConfiguration;

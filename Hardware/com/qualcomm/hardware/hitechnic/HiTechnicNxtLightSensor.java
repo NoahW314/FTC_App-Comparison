@@ -131,7 +131,7 @@ public class HiTechnicNxtLightSensor extends LegacyModulePortDeviceImpl implemen
   @Override
   public String status() {
     return String.format("NXT Light Sensor, connected via device %s, port %d",
-        module.getSerialNumber().toString(), physicalPort);
+        module.getSerialNumber(), physicalPort);
   }
 
   @Override public Manufacturer getManufacturer() {

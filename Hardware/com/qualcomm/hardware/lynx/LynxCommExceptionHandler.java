@@ -32,6 +32,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package com.qualcomm.hardware.lynx;
 
+import com.qualcomm.hardware.lynx.commands.standard.LynxNack;
 import com.qualcomm.robotcore.util.RobotLog;
 
 /**
@@ -68,18 +69,28 @@ public class LynxCommExceptionHandler
     // Exceptions
     //----------------------------------------------------------------------------------------------
 
-    protected void handleException(Exception e)
+    /** Returns true if command was supported (so: exception was something else) or false if the exception indicated that the command wasn't supported */ 
+    protected boolean handleException(Exception e)
         {
+        boolean commandIsSupported = true;
         if (e instanceof InterruptedException)
             handleSpecificException((InterruptedException)e);
         else if (e instanceof LynxNackException)
-            handleSpecificException((LynxNackException)e);
+            {
+            LynxNackException nackException = (LynxNackException)e;
+            handleSpecificException(nackException);
+            if (nackException.getNack().getNackReasonCode().isUnsupportedReason())
+                {
+                commandIsSupported = false;
+                }
+            }
         else if (e instanceof RuntimeException)
             handleSpecificException((RuntimeException)e);
         else
             {
             RobotLog.ee(getTag(), e, "unexpected exception thrown during lynx communication");
             }
+        return commandIsSupported;
         }
 
     protected void handleSpecificException(InterruptedException e)
@@ -92,18 +103,25 @@ public class LynxCommExceptionHandler
         RobotLog.ee(getTag(), e, "exception thrown during lynx communication");
         }
 
+    /** @see LynxNack.ReasonCode#isUnsupportedReason() */
     protected void handleSpecificException(LynxNackException nackException)
         {
         switch (nackException.getNack().getNackReasonCode())
             {
-            case COMMAND_IMPL_PENDING:
-                RobotLog.ww(getTag(), "%s not implemented by lynx hw; ignoring", nackException.getCommand().getClass().getSimpleName());
-                break;
             case ABANDONED_WAITING_FOR_ACK:
                 RobotLog.ww(getTag(), "%s was abandoned waiting for ack", nackException.getCommand().getClass().getSimpleName());
                 break;
             case ABANDONED_WAITING_FOR_RESPONSE:
                 RobotLog.ww(getTag(), "%s was abandoned waiting for response", nackException.getCommand().getClass().getSimpleName());
+                break;
+            case COMMAND_IMPL_PENDING:
+                RobotLog.ww(getTag(), "%s not implemented by lynx hw; ignoring", nackException.getCommand().getClass().getSimpleName());
+                break;
+            case COMMAND_ROUTING_ERROR:
+                RobotLog.ee(getTag(), "%s not delivered in module mod#=%d cmd#=%d", nackException.getCommand().getClass().getSimpleName(), nackException.getNack().getModuleAddress(), nackException.getNack().getCommandNumber());
+                break;
+            case PACKET_TYPE_ID_UNKNOWN:
+                RobotLog.ee(getTag(), "%s not supported by module mod#=%d cmd#=%d", nackException.getCommand().getClass().getSimpleName(), nackException.getNack().getModuleAddress(), nackException.getNack().getCommandNumber());
                 break;
             default:
                 RobotLog.ee(getTag(), nackException, "exception thrown during lynx communication");

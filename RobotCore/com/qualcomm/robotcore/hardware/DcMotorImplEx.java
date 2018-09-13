@@ -35,7 +35,7 @@ package com.qualcomm.robotcore.hardware;
 import android.support.annotation.NonNull;
 
 import com.qualcomm.robotcore.hardware.configuration.LynxConstants;
-import com.qualcomm.robotcore.hardware.configuration.MotorConfigurationType;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.MotorConfigurationType;
 
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 
@@ -95,10 +95,23 @@ public class DcMotorImplEx extends DcMotorImpl implements DcMotorEx
         return controllerEx.isMotorEnabled(this.getPortNumber());
         }
 
+    @Override public synchronized void setVelocity(double angularRate)
+        {
+        angularRate = adjustAngularRate(angularRate);
+        controllerEx.setMotorVelocity(getPortNumber(), angularRate);
+        }
+
     @Override public synchronized void setVelocity(double angularRate, AngleUnit unit)
         {
         angularRate = adjustAngularRate(angularRate);
         controllerEx.setMotorVelocity(getPortNumber(), angularRate, unit);
+        }
+
+    @Override public synchronized double getVelocity()
+        {
+        double angularRate = controllerEx.getMotorVelocity(this.getPortNumber());
+        angularRate = adjustAngularRate(angularRate);
+        return angularRate;
         }
 
     @Override
@@ -120,9 +133,29 @@ public class DcMotorImplEx extends DcMotorImpl implements DcMotorEx
         controllerEx.setPIDCoefficients(this.getPortNumber(), mode, pidCoefficients);
         }
 
+    @Override public void setPIDFCoefficients(RunMode mode, PIDFCoefficients pidfCoefficients)
+        {
+        controllerEx.setPIDFCoefficients(this.getPortNumber(), mode, pidfCoefficients);
+        }
+
+    @Override public void setVelocityPIDFCoefficients(double p, double i, double d, double f)
+        {
+        setPIDFCoefficients(RunMode.RUN_USING_ENCODER, new PIDFCoefficients(p, i, d, f, MotorControlAlgorithm.PIDF));
+        }
+
+    @Override public void setPositionPIDFCoefficients(double p)
+        {
+        setPIDFCoefficients(RunMode.RUN_TO_POSITION, new PIDFCoefficients(p, 0, 0, 0, MotorControlAlgorithm.PIDF));
+        }
+
     @Override public PIDCoefficients getPIDCoefficients(RunMode mode)
         {
         return controllerEx.getPIDCoefficients(this.getPortNumber(), mode);
+        }
+
+    @Override public PIDFCoefficients getPIDFCoefficients(RunMode mode)
+        {
+        return controllerEx.getPIDFCoefficients(this.getPortNumber(), mode);
         }
 
     @Override public int getTargetPositionTolerance()

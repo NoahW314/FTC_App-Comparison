@@ -40,14 +40,19 @@ import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.ImageButton;
+import android.widget.PopupMenu;
 import android.widget.TextView;
 
+import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.robocol.Command;
 import com.qualcomm.robotcore.util.Device;
 import com.qualcomm.robotcore.util.ThreadPool;
+import com.qualcomm.robotcore.wifi.NetworkType;
 
-import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 import org.firstinspires.ftc.robotcore.internal.network.DeviceNameManager;
+import org.firstinspires.ftc.robotcore.internal.network.DeviceNameManagerFactory;
+import org.firstinspires.ftc.robotcore.internal.network.WifiDirectDeviceNameManager;
+import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 import org.firstinspires.ftc.robotcore.internal.network.NetworkConnectionHandler;
 import org.firstinspires.ftc.robotcore.internal.network.RobotCoreCommandList;
 import org.firstinspires.ftc.robotcore.internal.network.StartResult;
@@ -55,6 +60,7 @@ import org.firstinspires.ftc.robotcore.internal.network.WifiDirectAgent;
 import org.firstinspires.ftc.robotcore.internal.ui.ThemedActivity;
 import org.firstinspires.ftc.robotcore.internal.ui.UILocation;
 
+import java.util.List;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
@@ -68,13 +74,21 @@ public abstract class InspectionActivity extends ThemedActivity
     public static final String TAG = "InspectionActivity";
     @Override public String getTag() { return TAG; }
 
+    /*
+     * To turn on traffic stats on the inspection activities, set this
+     * and RecvLoopRunnable.DO_TRAFFIC_DATA to true.
+     */
+    private static final boolean SHOW_TRAFFIC_STATS = false;
+
     private static final String goodMark = "\u2713";    // a check mark
     private static final String badMark = "X";
     private static final String notApplicable = "N/A";
 
     private final boolean remoteConfigure = AppUtil.getInstance().isDriverStation();
 
-    TextView widiName, widiConnected, wifiEnabled, batteryLevel, osVersion, airplaneMode, bluetooth, wifiConnected, appsStatus;
+    TextView widiName, widiConnected, wifiEnabled, batteryLevel, osVersion, firmwareVersion, airplaneMode, bluetooth, wifiConnected, appsStatus;
+    TextView trafficCount, bytesPerSecond;
+    TextView trafficCountLabel, bytesPerSecondLabel;
     TextView txtManufacturer, txtModel, txtAppVersion;
     TextView txtIsRCInstalled, txtIsDSInstalled, txtIsCCInstalled;
     Pattern teamNoRegex;
@@ -82,8 +96,9 @@ public abstract class InspectionActivity extends ThemedActivity
     int textOk = AppUtil.getInstance().getColor(R.color.text_okay);
     int textWarning = AppUtil.getInstance().getColor(R.color.text_warning);
     int textError = AppUtil.getInstance().getColor(R.color.text_error);
-    DeviceNameManager nameManager;
-    StartResult nameManagerStartResult;
+    StartResult nameManagerStartResult = new StartResult();
+    private boolean properWifiConnectedState;
+    private boolean properBluetoothState;
 
     protected static final int RC_MIN_VERSIONCODE = 21;
     protected static final int DS_MIN_VERSIONCODE = 21;
@@ -104,10 +119,15 @@ public abstract class InspectionActivity extends ThemedActivity
         txtIsCCInstalled = (TextView) findViewById(R.id.txtIsCCInstalled);
 
         widiName = (TextView) findViewById(R.id.widiName);
+        trafficCount = (TextView) findViewById(R.id.trafficCount);
+        bytesPerSecond = (TextView) findViewById(R.id.bytesPerSecond);
+        trafficCountLabel = (TextView) findViewById(R.id.trafficCountLabel);
+        bytesPerSecondLabel = (TextView) findViewById(R.id.bytesPerSecondLabel);
         widiConnected = (TextView) findViewById(R.id.widiConnected);
         wifiEnabled = (TextView) findViewById(R.id.wifiEnabled);
         batteryLevel = (TextView) findViewById(R.id.batteryLevel);
         osVersion = (TextView) findViewById(R.id.osVersion);
+        firmwareVersion = (TextView) findViewById(R.id.hubFirmware);
         airplaneMode = (TextView) findViewById(R.id.airplaneMode);
         bluetooth = (TextView) findViewById(R.id.bluetoothEnabled);
         wifiConnected = (TextView) findViewById(R.id.wifiConnected);
@@ -131,7 +151,15 @@ public abstract class InspectionActivity extends ThemedActivity
                 @Override
                 public void onClick(View v)
                     {
-                    AppUtil.getInstance().openOptionsMenuFor(InspectionActivity.this);
+                    PopupMenu popupMenu = new PopupMenu(InspectionActivity.this, v);
+                    popupMenu.setOnMenuItemClickListener(new PopupMenu.OnMenuItemClickListener() {
+                        @Override
+                        public boolean onMenuItemClick(MenuItem item) {
+                            return onOptionsItemSelected(item); // Delegate to the handler for the hardware menu button
+                        }
+                    });
+                    popupMenu.inflate(R.menu.main_menu);
+                    popupMenu.show();
                     }
                 });
             }
@@ -141,11 +169,47 @@ public abstract class InspectionActivity extends ThemedActivity
             buttonMenu.setVisibility(View.INVISIBLE);
             }
 
-        nameManager = DeviceNameManager.getInstance();
-        nameManagerStartResult = nameManager.start();
+        DeviceNameManagerFactory.getInstance().start(nameManagerStartResult);
+
+        properWifiConnectedState = false;
+        properBluetoothState = false;
+
+        NetworkType networkType = NetworkConnectionHandler.getDefaultNetworkType(this);
+        if (networkType == NetworkType.WIRELESSAP)
+            {
+            makeWirelessAPModeSane();
+            }
+
+        enableTrafficDataReporting(SHOW_TRAFFIC_STATS);
 
         // Off to the races
         refresh();
+        }
+
+    protected void enableTrafficDataReporting(boolean enable)
+        {
+        if (enable)
+            {
+            trafficCount.setVisibility(View.VISIBLE);
+            bytesPerSecond.setVisibility(View.VISIBLE);
+            trafficCountLabel.setVisibility(View.VISIBLE);
+            bytesPerSecondLabel.setVisibility(View.VISIBLE);
+            }
+            else
+            {
+            trafficCount.setVisibility(View.GONE);
+            bytesPerSecond.setVisibility(View.GONE);
+            trafficCountLabel.setVisibility(View.GONE);
+            bytesPerSecondLabel.setVisibility(View.GONE);
+            }
+        }
+
+    protected void makeWirelessAPModeSane()
+        {
+        TextView labelWidiName = (TextView) findViewById(R.id.labelWidiName);
+        labelWidiName.setText(getString(R.string.wifiAccessPointLabel));
+
+        properWifiConnectedState = true;
         }
 
     @Override
@@ -206,7 +270,7 @@ public abstract class InspectionActivity extends ThemedActivity
     @Override protected void onDestroy()
         {
         super.onDestroy();
-        nameManager.stop(nameManagerStartResult);
+        DeviceNameManagerFactory.getInstance().stop(nameManagerStartResult);
         }
 
     //----------------------------------------------------------------------------------------------
@@ -285,11 +349,27 @@ public abstract class InspectionActivity extends ThemedActivity
             }
         return true;
         }
+    private void refreshTrafficCount(TextView view, long rxData, long txData)
+        {
+        view.setText(String.format("%d/%d", rxData, txData));
+        }
+    private void refreshTrafficStats(InspectionState state)
+        {
+        if (SHOW_TRAFFIC_STATS)
+            {
+            refreshTrafficCount(trafficCount, state.rxDataCount, state.txDataCount);
+            refresh(bytesPerSecond, state.bytesPerSecond);
+            }
+        }
+    private void refresh(TextView view, long data)
+        {
+        view.setText(String.format("%d", data));
+        }
 
     protected void refresh()
         {
         InspectionState state = new InspectionState();
-        state.initializeLocal(nameManager);
+        state.initializeLocal(DeviceNameManagerFactory.getInstance(), null);
         refresh(state);
         }
 
@@ -298,12 +378,14 @@ public abstract class InspectionActivity extends ThemedActivity
         // Set values
         refresh(widiConnected, state.wifiDirectConnected);
         refresh(wifiEnabled, state.wifiEnabled);
+        refreshTrafficStats(state);
         refresh(airplaneMode, state.airplaneModeOn);
-        refresh(bluetooth, state.bluetoothOn, false);
-        refresh(wifiConnected, state.wifiConnected, false);
+        refresh(bluetooth, state.bluetoothOn, properBluetoothState);
+        refresh(wifiConnected, state.wifiConnected, properWifiConnectedState);
         txtManufacturer.setText(state.manufacturer);
         txtModel.setText(state.model);
         refresh(osVersion, state.osVersion, isValidOsVersion(state));
+        refresh(firmwareVersion, state.firmwareVersion, isValidFirmwareVersion(state));
         refresh(widiName, state.deviceName, isValidDeviceName(state));
         batteryLevel.setText(Math.round(state.batteryFraction * 100f) + "%");
         batteryLevel.setTextColor(state.batteryFraction > 0.6 ? textOk : textWarning);
@@ -340,6 +422,11 @@ public abstract class InspectionActivity extends ThemedActivity
             // for 2016-2017 season we recommend Marshmallow or higher.
             return (state.sdkInt >= Build.VERSION_CODES.M);
             }
+        }
+
+    public boolean isValidFirmwareVersion(InspectionState state)
+        {
+            return true;
         }
 
     public boolean isValidDeviceName(InspectionState state)

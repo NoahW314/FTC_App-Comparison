@@ -34,11 +34,13 @@ package com.qualcomm.hardware.motors;
 
 import com.qualcomm.robotcore.hardware.configuration.DistributorInfo;
 import com.qualcomm.robotcore.hardware.configuration.ModernRoboticsMotorControllerParams;
-import com.qualcomm.robotcore.hardware.configuration.MotorType;
+import com.qualcomm.robotcore.hardware.configuration.annotations.DeviceProperties;
+import com.qualcomm.robotcore.hardware.configuration.annotations.MotorType;
 
 import org.firstinspires.ftc.robotcore.external.navigation.Rotation;
 
-@MotorType(xmlTag="Matrix12vMotor", name="Matrix 12v Motor", ticksPerRev=1478.4, gearing=52.8, maxRPM=190, orientation= Rotation.CW)
+@MotorType(ticksPerRev=1478.4, gearing=52.8, maxRPM=190, orientation= Rotation.CW)
+@DeviceProperties(xmlTag = "Matrix12vMotor", name = "Matrix 12v Motor", builtIn = true)
 @ModernRoboticsMotorControllerParams(P=192, I=44, D=136, ratio=16)
 @DistributorInfo(distributor="Modern Robotics", model="50-0120", url="http://www.modernroboticsinc.com/12v-6mm-motor-kit-2")
 public interface Matrix12vMotor

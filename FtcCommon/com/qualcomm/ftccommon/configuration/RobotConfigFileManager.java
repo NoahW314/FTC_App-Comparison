@@ -23,9 +23,6 @@ import com.qualcomm.robotcore.exception.DuplicateNameException;
 import com.qualcomm.robotcore.exception.RobotCoreException;
 import com.qualcomm.robotcore.hardware.configuration.ControllerConfiguration;
 import com.qualcomm.robotcore.hardware.configuration.ReadXMLFileHandler;
-import com.qualcomm.robotcore.hardware.configuration.UserConfigurationType;
-import com.qualcomm.robotcore.hardware.configuration.UserConfigurationTypeManager;
-import com.qualcomm.robotcore.hardware.configuration.UserI2cSensorType;
 import com.qualcomm.robotcore.hardware.configuration.WriteXMLFileHandler;
 import com.qualcomm.robotcore.robocol.Command;
 import com.qualcomm.robotcore.util.RobotLog;
@@ -501,8 +498,11 @@ public class RobotConfigFileManager {
         Element rootElement = builder.parseSubTree(xmlConfigTaxonomyParser);
         Document document = rootElement.getOwnerDocument();
 
-        // Augment the DOM to add <Sensor>s corresponding to @I2cSensor elements that might be present
-        for (UserConfigurationType userConfigurationType : UserConfigurationTypeManager.getInstance().allUserTypes(UserConfigurationType.Flavor.I2C)) {
+        // TODO: Adapt this code for the new way of getting annotated types (ConfigTypeManger#getApplicableTypes).
+        // See issue #1249
+
+        /*
+         for (UserConfigurationType userConfigurationType : UserConfigurationTypeManager.getInstance().allUserTypes(UserConfigurationType.Flavor.I2C)) {
             //
             UserI2cSensorType userI2cSensorType = (UserI2cSensorType) userConfigurationType;
             Element sensor = document.createElement("Sensor");
@@ -512,7 +512,7 @@ public class RobotConfigFileManager {
             addChild(document, sensor, "BusDefault", context.getString(R.string.userSensorTypeBusDefault));
             //
             rootElement.appendChild(sensor);
-            }
+        }*/
 
         // Turn that augmented taxonomy into a source
         Source sourceConfigTaxonomy = new DOMSource(rootElement);

@@ -51,12 +51,6 @@ public class LynxConstants
         return SystemProperties.getBoolean("persist.ftcandroid.serialasusb", false);
         }
 
-    /** In the embedded case, we *always* have a lynx module that we can update */
-    public static boolean enableLynxFirmwareUpdateForDragonboard()
-        {
-        return isRevControlHub();
-        }
-
     /** When running on a Dragonboard / Lynx combo device, should the Dragonboard pretend
      * that it's not there and thus allow the Lynx to be used as an stand-alone extension? */
     public static boolean disableDragonboard()
@@ -74,6 +68,7 @@ public class LynxConstants
         return SystemProperties.getBoolean("persist.ftcandroid.autorunrc", false);
         }
 
+    /** Whether to use the tiny little indicator LEDs on the Dragonboard itself for signalling */
     public static boolean useIndicatorLEDS()
         {
         return SystemProperties.getBoolean("persist.ftcandroid.rcuseleds", false);
@@ -83,7 +78,7 @@ public class LynxConstants
     public final static int INDICATOR_LED_BOOT = 4;
 
     public static final int SERIAL_MODULE_BAUD_RATE = 460800;
-    public static final SerialNumber SERIAL_NUMBER_EMBEDDED = new SerialNumber("(embedded)"); // NB: do NOT localize the serial number
+    public static final SerialNumber SERIAL_NUMBER_EMBEDDED = SerialNumber.createEmbedded();
 
     public final static int USB_BAUD_RATE = 460800;
     public final static int LATENCY_TIMER = 1;
@@ -100,6 +95,13 @@ public class LynxConstants
     public final static int EMBEDDED_IMU_BUS = 0;
 
     public final static int DEFAULT_TARGET_POSITION_TOLERANCE = 5;
+
+    public final static int MAX_NUMBER_OF_MODULES = 254;
+    public final static int MAX_MODULES_DISCOVER = MAX_NUMBER_OF_MODULES;   // see LynxDiscoveryCommand: parent uses this count, so we must mirror
+    public final static int MAX_MODULE_ADDRESS_CHOICE = 10;
+    public final static int DEFAULT_PARENT_MODULE_ADDRESS = 1;              // try to avoid using: query the device instead
+
+    public static final String EMBEDDED_IMU_XML_TAG = "LynxEmbeddedIMU";
 
     public static void validateMotorZ(int motorZ)
         {

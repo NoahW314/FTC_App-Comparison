@@ -138,7 +138,7 @@ public class HiTechnicNxtUltrasonicSensor extends LegacyModulePortDeviceImpl imp
   public String status() {
     return String.format("%s, connected via device %s, port %d",
             getDeviceName(),
-            module.getSerialNumber().toString(), physicalPort);  }
+            module.getSerialNumber(), physicalPort);  }
 
   @Override public Manufacturer getManufacturer() {
     return Manufacturer.Lego;

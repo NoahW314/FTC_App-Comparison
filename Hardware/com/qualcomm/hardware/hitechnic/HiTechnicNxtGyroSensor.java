@@ -287,7 +287,7 @@ public class HiTechnicNxtGyroSensor extends LegacyModulePortDeviceImpl implement
   @Override
   public String status() {
     return String.format("NXT Gyro Sensor, connected via device %s, port %d",
-        module.getSerialNumber().toString(), physicalPort);
+        module.getSerialNumber(), physicalPort);
   }
 
   @Override public Manufacturer getManufacturer() {

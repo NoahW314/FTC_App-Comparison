@@ -31,9 +31,13 @@
 package com.qualcomm.robotcore.hardware;
 
 import com.qualcomm.robotcore.R;
+import com.qualcomm.robotcore.hardware.configuration.annotations.DeviceProperties;
+import com.qualcomm.robotcore.hardware.configuration.annotations.DigitalIoDeviceType;
 
 import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 
+@DigitalIoDeviceType
+@DeviceProperties(name = "@string/configTypeLED", xmlTag = "Led", builtIn = true, description = "@string/led_description")
 public class LED implements HardwareDevice, SwitchableLight {
 
   private DigitalChannelController controller = null;

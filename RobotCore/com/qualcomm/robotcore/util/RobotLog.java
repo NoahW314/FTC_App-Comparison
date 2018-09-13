@@ -32,16 +32,20 @@ package com.qualcomm.robotcore.util;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.os.Build;
 import android.util.Log;
 
 import com.qualcomm.robotcore.exception.RobotCoreException;
-import com.qualcomm.robotcore.robocol.Heartbeat;
 
-import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 import org.firstinspires.ftc.robotcore.internal.files.LogOutputStream;
+import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
+import org.firstinspires.ftc.robotcore.internal.system.Misc;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Calendar;
+import java.util.Comparator;
 import java.util.GregorianCalendar;
 import java.util.List;
 import java.util.WeakHashMap;
@@ -51,6 +55,27 @@ import java.util.WeakHashMap;
  */
 @SuppressWarnings("WeakerAccess")
 public class RobotLog {
+
+  /*
+   * Small little utility thread class to hold a RunShellCommand
+   */
+  protected static class LoggingThread extends Thread {
+
+    private RunShellCommand shell;
+
+    LoggingThread(String name) {
+      super(name);
+      this.shell = new RunShellCommand();
+    }
+
+    public void run(String commandLine) {
+      shell.run(commandLine);
+    }
+
+    public void kill() {
+      shell.commitSeppuku();
+    }
+  }
 
   /*
    * Currently only supports android style logging, but may support more in the future.
@@ -65,23 +90,36 @@ public class RobotLog {
   // State
   //------------------------------------------------------------------------------------------------
 
+  public static final String OPMODE_START_TAG = "******************** START - OPMODE %s ********************";
+  public static final String OPMODE_STOP_TAG  = "******************** STOP - OPMODE %s ********************";
+
   public static final String ERROR_PREPEND = "### ERROR: ";
 
+  private static final Object globalErrorLock = new Object();
   private static String       globalErrorMessage = "";
   private static final Object globalWarningLock = new Object();
   private static String       globalWarningMessage = "";
   private static WeakHashMap<GlobalWarningSource,Integer> globalWarningSources = new WeakHashMap<GlobalWarningSource,Integer>();
   private static double       msTimeOffset = 0.0;
+  private static boolean      globalErrorMsgSticky = false;
+  private static boolean      globalWarningMsgSticky = false;
 
-  public static final String TAG = "RobotCore";
+  public  static final String TAG = "RobotCore";
 
-  private static Thread loggingThread = null;
+  private static LoggingThread loggingThread = null;
+  private static String matchLogFilename = null;
 
-  public static String logcatCommand        = "logcat";
-  public static int    kbLogcatQuantum      = 4 * 1024;
-  public static int    logcatRotatedLogsMax = 4;
-  public static String logcatFormat         = "threadtime";
-  public static String logcatFilter         = "UsbRequestJNI:S UsbRequest:S *:V";
+  /*
+   * Prefixing with exec causes the call to destory to kill logcat instead of it's spawning shell.
+   */
+  private static String logcatCommandRaw     = "logcat";
+  private static String logcatCommand        = "exec " + logcatCommandRaw;
+  private static int    kbLogcatQuantum      = 4 * 1024;
+  private static int    logcatRotatedLogsMax = 4;
+  private static String logcatFormat         = "threadtime";
+  private static String logcatFilter         = "UsbRequestJNI:S UsbRequest:S art:W ThreadPool:W System:W ExtendedExtractor:W OMXClient:W MediaPlayer:W dalvikvm:W  *:V";
+
+  private static Calendar matchStartTime     = null;
 
   //------------------------------------------------------------------------------------------------
   // Time Synchronization
@@ -105,6 +143,18 @@ public class RobotLog {
   // Records the time difference between this device and a device with whom we are synchronizing our time
   public static void setMsTimeOffset(double offset) {
     msTimeOffset = offset;
+  }
+
+  public static long getRemoteTime() {
+    return getRemoteTime(AppUtil.getInstance().getWallClockTime());
+  }
+
+  public static long getRemoteTime(long localTime) {
+    return (long)(localTime + msTimeOffset + 0.5);
+  }
+
+  public static long getLocalTime(long remoteTime) {
+    return (long)(remoteTime - msTimeOffset + 0.5);
   }
 
   //------------------------------------------------------------------------------------------------
@@ -193,10 +243,9 @@ public class RobotLog {
     if (msTimeOffset==0) {
       android.util.Log.println(priority, tag, message);
     } else {
-      double offset = msTimeOffset;
-      long now = (long)(Heartbeat.getMsTimeSyncTime() + offset + 0.5);
-      GregorianCalendar tNow = new GregorianCalendar(); tNow.setTimeInMillis(now);
-      android.util.Log.println(priority, tag, String.format("{%5d %2d.%03d} %s", (int)(msTimeOffset+0.5), tNow.get(GregorianCalendar.SECOND), tNow.get(GregorianCalendar.MILLISECOND), message));
+      GregorianCalendar tRemote = new GregorianCalendar();
+      tRemote.setTimeInMillis(getRemoteTime());
+      android.util.Log.println(priority, tag, Misc.formatInvariant("{%5d %2d.%03d} %s", (int)(msTimeOffset+0.5), tRemote.get(GregorianCalendar.SECOND), tRemote.get(GregorianCalendar.MILLISECOND), message));
     }
   }
 
@@ -275,12 +324,14 @@ public class RobotLog {
    * @param message error message
    */
   public static boolean setGlobalErrorMsg(String message) {
-    // don't allow a new error message to overwrite the old error message
-    if (globalErrorMessage.isEmpty()) {
-      globalErrorMessage += message; // using += to force a null pointer exception if message is null
-      return true;
+    synchronized (globalErrorLock) {
+      // don't allow a new error message to overwrite the old error message
+      if (globalErrorMessage.isEmpty()) {
+        globalErrorMessage += message; // using += to force a null pointer exception if message is null
+        return true;
+      }
+      return false;
     }
-    return false;
   }
 
   public static void setGlobalErrorMsg(String format, Object... args) {
@@ -368,7 +419,17 @@ public class RobotLog {
    * @return error message
    */
   public static String getGlobalErrorMsg() {
-    return globalErrorMessage;
+    synchronized (globalErrorLock) {
+      return globalErrorMessage;
+    }
+  }
+
+  /**
+   * Causes all calls to clearGlobalErrorMsg() to be ignored.  Use with caution.
+   * @param sticky true, ignore clears, false, don't ignore.
+   */
+  public static void setGlobalErrorMsgSticky(boolean sticky) {
+    globalErrorMsgSticky = sticky;
   }
 
   /**
@@ -384,6 +445,14 @@ public class RobotLog {
         }
       }
     return combineGlobalWarnings(warnings);
+  }
+
+  /**
+   * Causes all calls to clearGlobalWarningMsg() to be ignored.  Use with caution.
+   * @param sticky true, ignore clears, false, don't ignore.
+   */
+  public static void setGlobalWarningMsgSticky(boolean sticky) {
+    globalWarningMsgSticky = sticky;
   }
 
   /**
@@ -422,13 +491,23 @@ public class RobotLog {
    * Clears the current global error message.
    */
   public static void clearGlobalErrorMsg() {
-    globalErrorMessage = "";
+    if (globalErrorMsgSticky) {
+      return;
+    }
+
+    synchronized (globalErrorLock) {
+      globalErrorMessage = "";
+    }
   }
 
   /**
    * Clears the current global warning message.
    */
   public static void clearGlobalWarningMsg() {
+    if (globalWarningMsgSticky) {
+      return;
+    }
+
     synchronized (globalWarningLock) {
       globalWarningMessage = "";
     }
@@ -446,7 +525,7 @@ public class RobotLog {
   public static void onApplicationStart() {
     // Diskify the log in quanta (all but the last of these will get GZIP'd)
     writeLogcatToDisk(AppUtil.getDefContext(), kbLogcatQuantum);
-    }
+  }
 
   // Synchronized so we can't start and stop logging at the same time
   protected static synchronized void writeLogcatToDisk(final Context context, final int kbFileSize) {
@@ -454,9 +533,8 @@ public class RobotLog {
     if (loggingThread != null) { return; }
 
     // Make a thread that will hang around so long as logging is active
-    loggingThread = new Thread("Logging Thread") {
+    loggingThread = new LoggingThread("Logging Thread") {
       @SuppressLint("DefaultLocale") @Override public void run() {
-        try {
           /**
            * logcat is documented <a href="https://developer.android.com/studio/command-line/logcat.html">here</a>.
            * A brief summary:
@@ -477,12 +555,15 @@ public class RobotLog {
 
           final String commandLine = String.format("%s -f %s -r%d -n%d -v %s %s", logcatCommand, filename, kbFileSize, logcatRotatedLogsMax, logcatFormat, logcatFilter);
 
-          RobotLog.v("saving logcat to " + filename);
-          RobotLog.v("logging command line: " + commandLine);
-          final RunShellCommand shell = new RunShellCommand();
+          RobotLog.vv(TAG, "saving logcat to " + filename);
+          RobotLog.vv(TAG, "logging command line: " + commandLine);
 
           // Paranoia: kill any existing logger we spawned previously
-          RunShellCommand.killSpawnedProcess(logcatCommand, context.getPackageName(), shell);
+          try {
+            RunShellCommand.killSpawnedProcess(logcatCommandRaw, context.getPackageName());
+          } catch (RobotCoreException e) {
+            e.printStackTrace();
+          }
 
           // (Don't) empty the log: while this would avoid the multi-copies-of-log-entries
           // problem, not clearing the log gives us a chance to capture any logcat entries that might
@@ -492,17 +573,78 @@ public class RobotLog {
 
           // Dribble to disk until we're cancelled. Note that this call to run()
           // doesn't return until such cancellation happens.
-          shell.run(commandLine);
+          run(commandLine);
 
-        } catch (RobotCoreException e) {
-          RobotLog.v("Error while initializing RobotLog to disk: " + e.toString());
-        } finally {
+          // Tell the world we are done
           loggingThread = null;
-        }
       }
     };
     // Start that thread a-going
     loggingThread.start();
+  }
+
+  /*
+   * startMatchLogging
+   *
+   * Cache the current time and desired filename.
+   */
+  public static void startMatchLogging(final Context context, final String opModeName, final int matchNum) throws RobotCoreException {
+    matchStartTime = Calendar.getInstance();
+    matchLogFilename = getMatchLogFilename(context, opModeName, matchNum);
+    RobotLog.ii(TAG, String.format(OPMODE_START_TAG, opModeName));
+  }
+
+  /*
+   * stopMatchLogging
+   *
+   * If we have a cached start time, then dump the log to the desired filename and exit.
+   * This has the effect of capturing the log between Init and Stop of any given opmode.
+   */
+  public static void stopMatchLogging() {
+    if (matchStartTime != null) {
+      RobotLog.ii(TAG, String.format(OPMODE_STOP_TAG, matchLogFilename));
+      logMatch();
+    }
+    matchStartTime = null;
+  }
+
+  /*
+   * logMatch
+   *
+   * Dump the log, doing any filesystem maintenance if necessary.
+   */
+  private static void logMatch() {
+    final File   file     = new File(matchLogFilename);
+    final String filename = file.getAbsolutePath();
+
+    if (Build.VERSION.SDK_INT <= android.os.Build.VERSION_CODES.KITKAT) {
+      return;
+    }
+
+    pruneMatchLogsIfNecessary();
+
+    if (file.exists()) {
+      /*
+       * Unceremoniously delete it
+       */
+      if (!file.delete()) {
+        RobotLog.ee(TAG, "Could not delete match log file: " + filename);
+      }
+    }
+
+    String timeFormat = String.format("'%d-%d %d:%d:%d.000'", matchStartTime.get(Calendar.MONTH) + 1, matchStartTime.get(Calendar.DAY_OF_MONTH),
+          matchStartTime.get(Calendar.HOUR_OF_DAY), matchStartTime.get(Calendar.MINUTE), matchStartTime.get(Calendar.SECOND));
+    final String commandLine = String.format("%s -d -T %s -f %s -n%d -v %s %s", logcatCommand, timeFormat, filename, logcatRotatedLogsMax, logcatFormat, logcatFilter);
+
+    LoggingThread matchLoggingThread = new LoggingThread("MatchLogging") {
+      @SuppressLint("DefaultLocale") @Override public void run() {
+        RobotLog.ii(TAG, "saving match logcat to " + filename);
+        RobotLog.ii(TAG, "logging command line: " + commandLine);
+        run(commandLine);
+        RobotLog.ii(TAG, "exiting match logcat for " + filename);
+      }
+    };
+    matchLoggingThread.start();
   }
 
   public static String getLogFilename() {
@@ -526,8 +668,57 @@ public class RobotLog {
     return file.getAbsolutePath();
   }
 
+  /*
+   * pruneMatchLogsIfNecessary
+   *
+   * Some reasonable upper bound on number of files to keep around.  Remove via first in, first out.
+   */
+  protected static void pruneMatchLogsIfNecessary() {
+    File directory = AppUtil.MATCH_LOG_FOLDER;
+    File[] files = directory.listFiles();
+
+    if (files.length >= AppUtil.MAX_MATCH_LOGS_TO_KEEP) {
+      Arrays.sort(files, new Comparator<File>() {
+        public int compare(File f1, File f2) {
+          /*
+           * Reverse sorting on purpose.
+           */
+          return Long.compare(f2.lastModified(), f1.lastModified());
+        }
+      });
+
+      /*
+       * There should never be more than one extra log, but just to be paranoid...
+       */
+      for (int i = 0; i < files.length - AppUtil.MAX_MATCH_LOGS_TO_KEEP; i++) {
+        RobotLog.ii(TAG, "Pruning old logs deleting " + files[i].getName());
+        files[i].delete();
+      }
+    }
+  }
+
+  /*
+   * getMatchLogFilename
+   *
+   * Special formatting of the match log filename.
+   */
+  public static String getMatchLogFilename(Context context, String opModeName, int matchNum) {
+    File directory = AppUtil.MATCH_LOG_FOLDER;
+    //noinspection ResultOfMethodCallIgnored
+    directory.mkdirs(); // paranoia, though we *might* have actually seen this needed, hard to tell
+
+    String name;
+    name = String.format("Match-%d-%s.txt", matchNum, opModeName.replaceAll(" ", "_"));
+    File file = new File(directory, name);
+    return file.getAbsolutePath();
+  }
+
   private static File getLogFile(Context context) {
     return new File(getLogFilename(context));
+  }
+
+  private static File getMatchLogFile(Context context, String opModeName, int matchNum) {
+    return new File(getMatchLogFilename(context, opModeName, matchNum));
   }
 
   // Returns the extant log files, which include the rollovers, eg:
@@ -565,14 +756,7 @@ public class RobotLog {
     }
 
     // Kill off the logging process. That will let the shell.run() in the logging thread return
-    try {
-      RobotLog.v("Killing logcat process.");
-      RunShellCommand shell = new RunShellCommand();
-      RunShellCommand.killSpawnedProcess(logcatCommand, packageName, shell);
-    } catch (RobotCoreException e) {
-      RobotLog.e("Unable to cancel writing log file to disk: " + e.toString());
-      return;
-    }
+    loggingThread.kill();
 
     RobotLog.v("Waiting for the logcat process to die.");
     ElapsedTime timeoutTimer = new ElapsedTime();
@@ -590,6 +774,11 @@ public class RobotLog {
     int versionCode    = getIntStatic(buildConfig, "VERSION_CODE");
     String versionName = getStringStatic(buildConfig, "VERSION_NAME");
     RobotLog.v("BuildConfig: versionCode=%d versionName=%s module=%s", versionCode, versionName, moduleName);
+  }
+
+
+  public static void logDeviceInfo() {
+    RobotLog.i("Android Device: maker=%s model=%s sdk=%d", Build.MANUFACTURER, Build.MODEL, Build.VERSION.SDK_INT);
   }
 
   protected static String getStringStatic(Class clazz, String name) {

@@ -33,6 +33,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 package com.qualcomm.robotcore.hardware.usb;
 
 import com.qualcomm.robotcore.exception.RobotCoreException;
+import com.qualcomm.robotcore.util.RobotLog;
 import com.qualcomm.robotcore.util.SerialNumber;
 
 import java.util.ArrayList;
@@ -50,14 +51,15 @@ public class RobotUsbManagerCombining implements RobotUsbManager
     // State
     //----------------------------------------------------------------------------------------------
 
+    public static final String TAG = "RobotUsbManagerCombining";
+
     protected class ManagerInfo
         {
         public RobotUsbManager  manager;
         public int              scanCount;
         }
 
-    protected List<ManagerInfo>                 managers;
-    protected Map<SerialNumber, ManagerInfo>    enumeratedSerialNumbers;
+    protected List<ManagerInfo> managers;
 
     //----------------------------------------------------------------------------------------------
     // Construction
@@ -66,7 +68,6 @@ public class RobotUsbManagerCombining implements RobotUsbManager
     public RobotUsbManagerCombining()
         {
         this.managers = new ArrayList<ManagerInfo>();
-        this.enumeratedSerialNumbers = new ConcurrentHashMap<SerialNumber, ManagerInfo>();
         }
 
     public void addManager(RobotUsbManager manager)
@@ -81,67 +82,45 @@ public class RobotUsbManagerCombining implements RobotUsbManager
     // RobotUsbManager
     //----------------------------------------------------------------------------------------------
 
-    @Override public synchronized int scanForDevices() throws RobotCoreException
+    @Override public synchronized List<SerialNumber> scanForDevices() throws RobotCoreException
         {
-        int result = 0;
+        List<SerialNumber> result = new ArrayList<>();
         for (ManagerInfo info : managers)
             {
-            info.scanCount = info.manager.scanForDevices();
-            result += info.scanCount;
+            List<SerialNumber> local = null;
+            try {
+                local = info.manager.scanForDevices();
+                }
+            catch (RobotCoreException e)
+                {
+                continue;
+                }
+            result.addAll(local);
             }
         return result;
-        }
-
-    @Override public synchronized int getScanCount()
-        {
-        int result = 0;
-        for (ManagerInfo info : managers)
-            {
-            result += info.scanCount;
-            }
-        return result;
-        }
-
-    @Override public synchronized SerialNumber getDeviceSerialNumberByIndex(final int initialIndex) throws RobotCoreException
-        {
-        int index = initialIndex;
-        for (ManagerInfo info : managers)
-            {
-            if (index < info.scanCount)
-                {
-                // Remember who served up which serial numbers so we know who to ask to open again later
-                SerialNumber serialNumber = info.manager.getDeviceSerialNumberByIndex(index);
-                enumeratedSerialNumbers.put(serialNumber, info);
-                return serialNumber;
-                }
-            index -= info.scanCount;
-            }
-        throw new IndexOutOfBoundsException("index too large: " + initialIndex);
-        }
-
-    @Override public String getDeviceDescriptionByIndex(final int initialIndex) throws RobotCoreException
-        {
-        int index = initialIndex;
-        for (ManagerInfo info : managers)
-            {
-            if (index < info.scanCount)
-                {
-                return info.manager.getDeviceDescriptionByIndex(index);
-                }
-            index -= info.scanCount;
-            }
-        throw new IndexOutOfBoundsException("index too large: " + initialIndex);
         }
 
     @Override public synchronized RobotUsbDevice openBySerialNumber(SerialNumber serialNumber) throws RobotCoreException
         {
-        ManagerInfo info = enumeratedSerialNumbers.get(serialNumber);
-        if (info != null)
+        RobotUsbDevice result = null;
+        for (ManagerInfo info : managers)
             {
-            RobotUsbDevice device = info.manager.openBySerialNumber(serialNumber);
-            if (device != null)
-                return device;
+            try {
+                result = info.manager.openBySerialNumber(serialNumber);
+                if (result != null)
+                    {
+                    break;
+                    }
+                }
+            catch (RobotCoreException e)
+                {
+                // ignore: we'll throw below at the end if needed
+                }
             }
-        throw new RobotCoreException("Combiner unable to open device with serialNumber = " + serialNumber.toString());
+        if (result == null)
+            {
+            throw new RobotCoreException("Combiner unable to open device with serialNumber = " + serialNumber);
+            }
+        return result;
         }
     }

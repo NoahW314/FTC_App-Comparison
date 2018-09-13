@@ -137,14 +137,30 @@ public class PreferenceRemoterDS extends PreferenceRemoter
         // on the robot controller: the RC is the 'master', the DS the 'slave'
         if (rcPrefAndValue.getPrefName().equals(context.getString(R.string.pref_sound_on_off)))
             {
-            // We're being told that the sound setting of the robot controller has changed
-
-            // Remember the remote setting
-            preferencesHelper.writePrefIfDifferent(context.getString(R.string.pref_sound_on_off_rc), rcPrefAndValue.getValue());
-
-            // Our own DS sound setting tracks the RC's setting.
-            preferencesHelper.writePrefIfDifferent(context.getString(R.string.pref_sound_on_off), rcPrefAndValue.getValue());
+            // We're being told the sound setting of the robot controller
+            if (preferencesHelper.readBoolean(context.getString(R.string.pref_has_speaker_rc),true))
+                {
+                preferencesHelper.writePrefIfDifferent(context.getString(R.string.pref_sound_on_off_rc), rcPrefAndValue.getValue());
+                }
+            else
+                {
+                // Can't have sound on if they have no speaker
+                preferencesHelper.writeBooleanPrefIfDifferent(context.getString(R.string.pref_sound_on_off_rc), false);
+                }
             }
+
+        else if (rcPrefAndValue.getPrefName().equals(context.getString(R.string.pref_has_speaker)))
+            {
+            // Remember whether the robot controller has a speaker
+            preferencesHelper.writePrefIfDifferent(context.getString(R.string.pref_has_speaker_rc), rcPrefAndValue.getValue());
+
+            // If they have no speaker, then their sound is off
+            if (!preferencesHelper.readBoolean(context.getString(R.string.pref_has_speaker_rc),true))
+                {
+                preferencesHelper.writeBooleanPrefIfDifferent(context.getString(R.string.pref_sound_on_off_rc), false);
+                }
+            }
+
 
         else if (rcPrefAndValue.getPrefName().equals(context.getString(R.string.pref_app_theme)))
             {
@@ -195,7 +211,7 @@ public class PreferenceRemoterDS extends PreferenceRemoter
             // Remember that setting of the robot controller
             preferencesHelper.writePrefIfDifferent(context.getString(R.string.pref_has_independent_phone_battery_rc), rcPrefAndValue.getValue());
             }
-        
+
         return CallbackResult.HANDLED;
         }
 

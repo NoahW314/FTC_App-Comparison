@@ -37,6 +37,8 @@ import android.support.annotation.Nullable;
 import com.qualcomm.robotcore.hardware.DeviceManager;
 import com.qualcomm.robotcore.util.SerialNumber;
 
+import org.xmlpull.v1.XmlPullParser;
+
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.LinkedList;
@@ -44,7 +46,7 @@ import java.util.List;
 
 /**
  * ControllerConfiguration represents container of DeviceConfigurations.
- * It may or may not be USB attached; in the latter case, its serial number is NO_SERIAL_NUMBER.
+ * It may or may not be USB attached; in the latter case, the serial number will be an instance of FakeSerialNumber.
  */
 public abstract class ControllerConfiguration<ITEM_T extends DeviceConfiguration> extends DeviceConfiguration implements Serializable {
 
@@ -59,7 +61,7 @@ public abstract class ControllerConfiguration<ITEM_T extends DeviceConfiguration
    */
   private List<ITEM_T> devices;
 
-  /** the USB serial number of the controller, if any */
+  /** the serial number of the controller, if any */
   private @NonNull SerialNumber serialNumber;
 
   /** If we're a USB device, then do we know if we are attached, right now, or not? */
@@ -87,11 +89,12 @@ public abstract class ControllerConfiguration<ITEM_T extends DeviceConfiguration
 
     if (type==BuiltInConfigurationType.DEVICE_INTERFACE_MODULE)  return new DeviceInterfaceModuleConfiguration(name, serialNumber);
     if (type==BuiltInConfigurationType.LEGACY_MODULE_CONTROLLER) return new LegacyModuleControllerConfiguration(name, new LinkedList<DeviceConfiguration>(), serialNumber);
-    if (type==BuiltInConfigurationType.MATRIX_CONTROLLER)        return new MatrixControllerConfiguration(name, new LinkedList<MotorConfiguration>(), new LinkedList<ServoConfiguration>(), serialNumber);
-    if (type==BuiltInConfigurationType.MOTOR_CONTROLLER)         return new MotorControllerConfiguration(name, new LinkedList<MotorConfiguration>(), serialNumber);
-    if (type==BuiltInConfigurationType.SERVO_CONTROLLER)         return new ServoControllerConfiguration(name, new LinkedList<ServoConfiguration>(), serialNumber);
+    if (type==BuiltInConfigurationType.MATRIX_CONTROLLER)        return new MatrixControllerConfiguration(name, new LinkedList<DeviceConfiguration>(), new LinkedList<DeviceConfiguration>(), serialNumber);
+    if (type==BuiltInConfigurationType.MOTOR_CONTROLLER)         return new MotorControllerConfiguration(name, new LinkedList<DeviceConfiguration>(), serialNumber);
+    if (type==BuiltInConfigurationType.SERVO_CONTROLLER)         return new ServoControllerConfiguration(name, new LinkedList<DeviceConfiguration>(), serialNumber);
     if (type==BuiltInConfigurationType.LYNX_USB_DEVICE)          return new LynxUsbDeviceConfiguration(name, new LinkedList<LynxModuleConfiguration>(), serialNumber);
     if (type==BuiltInConfigurationType.LYNX_MODULE)              return new LynxModuleConfiguration(name);  // unclear if necessary
+    if (type==BuiltInConfigurationType.WEBCAM)                   return new WebcamConfiguration(name, serialNumber);
 
     return null;
   }
@@ -136,9 +139,20 @@ public abstract class ControllerConfiguration<ITEM_T extends DeviceConfiguration
     this.devices = devices;
   }
 
-  public DeviceManager.DeviceType toUSBDeviceType() {
+  public DeviceManager.UsbDeviceType toUSBDeviceType() {
     return this.getConfigurationType().toUSBDeviceType();
   }
 
+  @Override protected void deserializeAttributes(XmlPullParser parser) {
+    super.deserializeAttributes(parser);
+    String serialNumber = parser.getAttributeValue(null, XMLATTR_SERIAL_NUMBER);
+    if (serialNumber != null) { // The device is USB attached
+      setSerialNumber(SerialNumber.fromString(serialNumber));
+      setPort(-1);
+    } else { // The device is not USB attached
+      // The port was already set in the call to super.deserializeAttributes(), so we just need to set the serial number
+      setSerialNumber(SerialNumber.createFake());
+    }
+  }
 }
 

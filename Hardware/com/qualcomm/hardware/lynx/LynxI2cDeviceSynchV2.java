@@ -57,8 +57,6 @@ public class LynxI2cDeviceSynchV2 extends LynxI2cDeviceSynch
     {
         LynxI2cDeviceSynchV2 deviceHavingProblems = null;
 
-        boolean reportUnhealthy;
-
         try {
             return acquireI2cLockWhile(new Supplier<TimestampedData>()
             {

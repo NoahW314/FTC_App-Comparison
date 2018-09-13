@@ -48,6 +48,8 @@ import com.qualcomm.hardware.lynx.commands.core.LynxGetMotorEncoderPositionComma
 import com.qualcomm.hardware.lynx.commands.core.LynxGetMotorEncoderPositionResponse;
 import com.qualcomm.hardware.lynx.commands.core.LynxGetMotorPIDControlLoopCoefficientsCommand;
 import com.qualcomm.hardware.lynx.commands.core.LynxGetMotorPIDControlLoopCoefficientsResponse;
+import com.qualcomm.hardware.lynx.commands.core.LynxGetMotorPIDFControlLoopCoefficientsCommand;
+import com.qualcomm.hardware.lynx.commands.core.LynxGetMotorPIDFControlLoopCoefficientsResponse;
 import com.qualcomm.hardware.lynx.commands.core.LynxGetMotorTargetPositionCommand;
 import com.qualcomm.hardware.lynx.commands.core.LynxGetMotorTargetPositionResponse;
 import com.qualcomm.hardware.lynx.commands.core.LynxGetMotorTargetVelocityCommand;
@@ -59,22 +61,27 @@ import com.qualcomm.hardware.lynx.commands.core.LynxSetMotorChannelEnableCommand
 import com.qualcomm.hardware.lynx.commands.core.LynxSetMotorChannelModeCommand;
 import com.qualcomm.hardware.lynx.commands.core.LynxSetMotorConstantPowerCommand;
 import com.qualcomm.hardware.lynx.commands.core.LynxSetMotorPIDControlLoopCoefficientsCommand;
+import com.qualcomm.hardware.lynx.commands.core.LynxSetMotorPIDFControlLoopCoefficientsCommand;
 import com.qualcomm.hardware.lynx.commands.core.LynxSetMotorTargetPositionCommand;
 import com.qualcomm.hardware.lynx.commands.core.LynxSetMotorTargetVelocityCommand;
+import com.qualcomm.hardware.lynx.commands.standard.LynxNack;
 import com.qualcomm.robotcore.exception.RobotCoreException;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorController;
 import com.qualcomm.robotcore.hardware.DcMotorControllerEx;
+import com.qualcomm.robotcore.hardware.MotorControlAlgorithm;
 import com.qualcomm.robotcore.hardware.PIDCoefficients;
+import com.qualcomm.robotcore.hardware.PIDFCoefficients;
 import com.qualcomm.robotcore.hardware.configuration.ExpansionHubMotorControllerParamsState;
 import com.qualcomm.robotcore.hardware.configuration.LynxConstants;
-import com.qualcomm.robotcore.hardware.configuration.MotorConfigurationType;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.MotorConfigurationType;
 import com.qualcomm.robotcore.util.LastKnown;
 import com.qualcomm.robotcore.util.Range;
 import com.qualcomm.robotcore.util.RobotLog;
 
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.UnnormalizedAngleUnit;
+import org.firstinspires.ftc.robotcore.internal.system.Misc;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -115,7 +122,9 @@ public class LynxDcMotorController extends LynxController implements DcMotorCont
 
         // The remainder of the data is authoritative, here
         MotorConfigurationType                  motorType = MotorConfigurationType.getUnspecifiedMotorType();
+        MotorConfigurationType                  internalMotorType = null;
         Map<DcMotor.RunMode, ExpansionHubMotorControllerParamsState> desiredPIDParams = new ConcurrentHashMap<DcMotor.RunMode, ExpansionHubMotorControllerParamsState>();
+        Map<DcMotor.RunMode, ExpansionHubMotorControllerParamsState> originalPIDParams = new ConcurrentHashMap<DcMotor.RunMode, ExpansionHubMotorControllerParamsState>();
         }
 
     // this is indexed from zero, not 1 as it is in the legacy and modern motor controllers
@@ -147,7 +156,7 @@ public class LynxDcMotorController extends LynxController implements DcMotorCont
             {
             updateMotorParams(motor);
             }
-        reportPIDControlLoopCoefficients();
+        reportPIDFControlLoopCoefficients();
         }
 
     //----------------------------------------------------------------------------------------------
@@ -246,6 +255,35 @@ public class LynxDcMotorController extends LynxController implements DcMotorCont
     // DcMotorController interface
     //----------------------------------------------------------------------------------------------
 
+    @Override public synchronized void resetDeviceConfigurationForOpMode(int motor)
+        {
+        this.validateMotor(motor); motor -= apiMotorFirst;
+
+        // Clear pid params
+        motors[motor].desiredPIDParams.remove(DcMotor.RunMode.RUN_TO_POSITION);
+        motors[motor].desiredPIDParams.remove(DcMotor.RunMode.RUN_USING_ENCODER);
+
+        // Fill with what we originally learned from the controller, if we've ever set coeffs
+        if (motors[motor].originalPIDParams.containsKey(DcMotor.RunMode.RUN_TO_POSITION))
+            {
+            motors[motor].desiredPIDParams.put(DcMotor.RunMode.RUN_TO_POSITION, motors[motor].originalPIDParams.get(DcMotor.RunMode.RUN_TO_POSITION));
+            }
+        if (motors[motor].originalPIDParams.containsKey(DcMotor.RunMode.RUN_USING_ENCODER))
+            {
+            motors[motor].desiredPIDParams.put(DcMotor.RunMode.RUN_USING_ENCODER, motors[motor].originalPIDParams.get(DcMotor.RunMode.RUN_USING_ENCODER));
+            }
+
+        // Override that with the system-provided motor type, or just send out what we have
+        if (motors[motor].internalMotorType != null)
+            {
+            setMotorType(motor + apiMotorFirst, motors[motor].internalMotorType);
+            }
+        else
+            {
+            updateMotorParams(motor);
+            }
+        }
+
     @Override public synchronized MotorConfigurationType getMotorType(int motor)
         {
         this.validateMotor(motor); motor -= apiMotorFirst;
@@ -256,6 +294,11 @@ public class LynxDcMotorController extends LynxController implements DcMotorCont
         {
         this.validateMotor(motor); motor -= apiMotorFirst;
         motors[motor].motorType = motorType;
+        if (motors[motor].internalMotorType==null)
+            {
+            // First one is the system setting the type
+            motors[motor].internalMotorType = motorType;
+            }
 
         // Remember parameterization, overriding any user-specified values.
         if (motorType.hasExpansionHubVelocityParams())
@@ -280,7 +323,7 @@ public class LynxDcMotorController extends LynxController implements DcMotorCont
             {
             if (!params.isDefault())
                 {
-                internalSetPIDCoefficients(motorZ, params.mode, params.p, params.i, params.d);
+                internalSetPIDFCoefficients(motorZ, params.mode, params.getPidfCoefficients());
                 }
             }
         }
@@ -647,21 +690,26 @@ public class LynxDcMotorController extends LynxController implements DcMotorCont
         return LynxUsbUtil.makePlaceholderValue(0);
         }
 
-    @Override public synchronized void setMotorVelocity(int motor, double angularRate, AngleUnit unit)
+    @Override public synchronized void setMotorVelocity(int motor, double ticksPerSecond)
         {
-        // If we're setting a target velocity, then we have to be in velocity mode, so put us there
+        // If we're setting a target velocity, then we have to be in a velocity mode, so put us there
         // if we aren't already (the alternative would have been to throw an error, which seems pointless).
-        setMotorMode(motor, DcMotor.RunMode.RUN_USING_ENCODER);
+        // Remember that 'velocity' is applicable to both RUN_USING_ENCODER and RUN_TO_POSITION; it's
+        // only RUN_WITHOUT_ENCODER and STOP_AND_RESET_ENCODER that need treatment.
+        switch (getMotorMode(motor))
+            {
+            case RUN_USING_ENCODER:
+            case RUN_TO_POSITION:
+                break;
+            default:
+                setMotorMode(motor, DcMotor.RunMode.RUN_USING_ENCODER);
+            }
 
         this.validateMotor(motor); motor -= apiMotorFirst;
 
-        double degreesPerSecond     = UnnormalizedAngleUnit.DEGREES.fromUnit(unit.getUnnormalized(), angularRate);
-        double revolutionsPerSecond = degreesPerSecond / 360.0;
-        double ticksPerSecond       = motors[motor].motorType.getTicksPerRev() * revolutionsPerSecond;
-
         int iTicksPerSecond = Range.clip((int)Math.round(ticksPerSecond),
-                LynxSetMotorTargetVelocityCommand.apiVelocityFirst,
-                LynxSetMotorTargetVelocityCommand.apiVelocityLast);
+            LynxSetMotorTargetVelocityCommand.apiVelocityFirst,
+            LynxSetMotorTargetVelocityCommand.apiVelocityLast);
 
         try {
             LynxCommand command = new LynxSetMotorTargetVelocityCommand(this.getModule(), motor, iTicksPerSecond);
@@ -673,6 +721,23 @@ public class LynxDcMotorController extends LynxController implements DcMotorCont
             {
             handleException(e);
             }
+        }
+
+    @Override public synchronized void setMotorVelocity(int motor, double angularRate, AngleUnit unit)
+        {
+        this.validateMotor(motor); motor -= apiMotorFirst;
+
+        double degreesPerSecond     = UnnormalizedAngleUnit.DEGREES.fromUnit(unit.getUnnormalized(), angularRate);
+        double revolutionsPerSecond = degreesPerSecond / 360.0;
+        double ticksPerSecond       = motors[motor].motorType.getTicksPerRev() * revolutionsPerSecond;
+
+        setMotorVelocity(motor + apiMotorFirst, ticksPerSecond);
+        }
+
+    @Override public synchronized double getMotorVelocity(int motor)
+        {
+        this.validateMotor(motor); motor -= apiMotorFirst;
+        return internalGetMotorTicksPerSecond(motor);
         }
 
     @Override public synchronized double getMotorVelocity(int motor, AngleUnit unit)
@@ -697,7 +762,12 @@ public class LynxDcMotorController extends LynxController implements DcMotorCont
         return LynxUsbUtil.makePlaceholderValue(0);
         }
 
-    @Override public synchronized void setPIDCoefficients(int motor, DcMotor.RunMode mode, PIDCoefficients pidCoefficients)
+    @Override public void setPIDCoefficients(int motor, DcMotor.RunMode mode, PIDCoefficients pidCoefficients)
+        {
+        setPIDFCoefficients(motor, mode, new PIDFCoefficients(pidCoefficients));
+        }
+
+    @Override public synchronized void setPIDFCoefficients(int motor, DcMotor.RunMode mode, PIDFCoefficients pidfCoefficients)
         {
         this.validatePIDMode(motor, mode);
         this.validateMotor(motor); motor -= apiMotorFirst;
@@ -707,25 +777,75 @@ public class LynxDcMotorController extends LynxController implements DcMotorCont
 
         // Remember that we've overridden the values specified by the motor type so that we don't
         // mistakenly undo this effect in updateMotorParams()
-        rememberPIDParams(motor, new ExpansionHubMotorControllerParamsState(mode, pidCoefficients.p, pidCoefficients.i, pidCoefficients.d));
+        rememberPIDParams(motor, new ExpansionHubMotorControllerParamsState(mode, pidfCoefficients));
 
         // Actually change the values
-        internalSetPIDCoefficients(motor, mode, pidCoefficients.p, pidCoefficients.i, pidCoefficients.d);
+        if (!internalSetPIDFCoefficients(motor, mode, pidfCoefficients))
+            {
+            throw new UnsupportedOperationException(Misc.formatForUser("setting of pidf coefficents not supported: motor=%d mode=%s pidf=%s", motor+apiMotorFirst, mode, pidfCoefficients));
+            }
         }
 
-    protected void internalSetPIDCoefficients(int motorZ, DcMotor.RunMode mode, double pp, double ii, double dd)
+    protected boolean internalSetPIDFCoefficients(int motorZ, DcMotor.RunMode mode, PIDFCoefficients pidfCoefficients) // throws NOTHING
         {
-        int p = LynxSetMotorPIDControlLoopCoefficientsCommand.internalCoefficientFromExternal(pp);
-        int i = LynxSetMotorPIDControlLoopCoefficientsCommand.internalCoefficientFromExternal(ii);
-        int d = LynxSetMotorPIDControlLoopCoefficientsCommand.internalCoefficientFromExternal(dd);
-        LynxSetMotorPIDControlLoopCoefficientsCommand command = new LynxSetMotorPIDControlLoopCoefficientsCommand(this.getModule(), motorZ, mode, p, i, d);
-        try {
-            command.send();
-            }
-        catch (InterruptedException|RuntimeException|LynxNackException e)
+        boolean supported = true;
+
+        // If this is the very first time that we've set coefficients, then remember what params were in use before we set anything
+        if (!motors[motorZ].originalPIDParams.containsKey(mode))
             {
-            handleException(e);
+            PIDFCoefficients originalCoefficients = getPIDFCoefficients(motorZ + apiMotorFirst, mode);
+            motors[motorZ].originalPIDParams.put(mode, new ExpansionHubMotorControllerParamsState(mode, originalCoefficients));
             }
+
+        int p = LynxSetMotorPIDControlLoopCoefficientsCommand.internalCoefficientFromExternal(pidfCoefficients.p);
+        int i = LynxSetMotorPIDControlLoopCoefficientsCommand.internalCoefficientFromExternal(pidfCoefficients.i);
+        int d = LynxSetMotorPIDControlLoopCoefficientsCommand.internalCoefficientFromExternal(pidfCoefficients.d);
+        int f = LynxSetMotorPIDControlLoopCoefficientsCommand.internalCoefficientFromExternal(pidfCoefficients.f);
+
+        if (mode==DcMotor.RunMode.RUN_TO_POSITION && pidfCoefficients.algorithm != MotorControlAlgorithm.LegacyPID)
+            {
+            // In non-legacy run to position avoid having the user give coefficients that cause double-integration (our
+            // fw runs a position loop, that then runs a velocity loop)
+            if (pidfCoefficients.i != 0 || pidfCoefficients.d != 0 || pidfCoefficients.f != 0)
+                {
+                supported = false;
+                RobotLog.ww(TAG, "using unreasonable coefficients for RUN_TO_POSITION: setPIDFCoefficients(%d, %s, %s)", motorZ+apiMotorFirst, mode, pidfCoefficients);
+                }
+            }
+
+        if (supported)
+            {
+            if (getModule().isCommandSupported(LynxSetMotorPIDFControlLoopCoefficientsCommand.class))
+                {
+                LynxSetMotorPIDFControlLoopCoefficientsCommand.InternalMotorControlAlgorithm algorithm = LynxSetMotorPIDFControlLoopCoefficientsCommand.InternalMotorControlAlgorithm.fromExternal(pidfCoefficients.algorithm);
+                LynxSetMotorPIDFControlLoopCoefficientsCommand command = new LynxSetMotorPIDFControlLoopCoefficientsCommand(this.getModule(), motorZ, mode, p, i, d, f, algorithm);
+                try {
+                    command.send();
+                    }
+                catch (InterruptedException|RuntimeException|LynxNackException e)
+                    {
+                    supported = handleException(e);
+                    }
+                }
+            else if (f == 0 && pidfCoefficients.algorithm == MotorControlAlgorithm.LegacyPID)
+                {
+                LynxSetMotorPIDControlLoopCoefficientsCommand command = new LynxSetMotorPIDControlLoopCoefficientsCommand(this.getModule(), motorZ, mode, p, i, d);
+                try {
+                    command.send();
+                    }
+                catch (InterruptedException|RuntimeException|LynxNackException e)
+                    {
+                    supported = handleException(e);
+                    }
+                }
+            else
+                {
+                supported = false;
+                RobotLog.ww(TAG, "not supported: setPIDFCoefficients(%d, %s, %s)", motorZ+apiMotorFirst, mode, pidfCoefficients);
+                }
+            }
+
+        return supported;
         }
 
     @Override public synchronized PIDCoefficients getPIDCoefficients(int motor, DcMotor.RunMode mode)
@@ -740,13 +860,51 @@ public class LynxDcMotorController extends LynxController implements DcMotorCont
                     LynxSetMotorPIDControlLoopCoefficientsCommand.externalCoefficientFromInternal(response.getD())
                 );
             }
-        catch (InterruptedException|RuntimeException|LynxNackException e)
+        catch (LynxNackException e)
+            {
+            if (e.getNack().getNackReasonCode() == LynxNack.ReasonCode.PARAM2)
+                {
+                // There's a non-zero F coefficient; ignore it
+                PIDFCoefficients pidfCoefficients = getPIDFCoefficients(motor + apiMotorFirst, mode);
+                return new PIDCoefficients(pidfCoefficients.p, pidfCoefficients.i, pidfCoefficients.d);
+                }
+            handleException(e);
+            }
+        catch (InterruptedException|RuntimeException e)
             {
             handleException(e);
             }
         return LynxUsbUtil.makePlaceholderValue(new PIDCoefficients());
         }
 
+
+    @Override public synchronized PIDFCoefficients getPIDFCoefficients(int motor, DcMotor.RunMode mode)
+        {
+        if (getModule().isCommandSupported(LynxGetMotorPIDFControlLoopCoefficientsCommand.class))
+            {
+            this.validateMotor(motor); motor -= apiMotorFirst;
+            LynxGetMotorPIDFControlLoopCoefficientsCommand command = new LynxGetMotorPIDFControlLoopCoefficientsCommand(this.getModule(), motor, mode);
+            try {
+                LynxGetMotorPIDFControlLoopCoefficientsResponse response = command.sendReceive();
+                return new PIDFCoefficients(
+                        LynxSetMotorPIDControlLoopCoefficientsCommand.externalCoefficientFromInternal(response.getP()),
+                        LynxSetMotorPIDControlLoopCoefficientsCommand.externalCoefficientFromInternal(response.getI()),
+                        LynxSetMotorPIDControlLoopCoefficientsCommand.externalCoefficientFromInternal(response.getD()),
+                        LynxSetMotorPIDControlLoopCoefficientsCommand.externalCoefficientFromInternal(response.getF()),
+                        response.getInternalMotorControlAlgorithm().toExternal()
+                    );
+                }
+            catch (InterruptedException|RuntimeException|LynxNackException e)
+                {
+                handleException(e);
+                }
+            return LynxUsbUtil.makePlaceholderValue(new PIDFCoefficients());
+            }
+        else
+            {
+            return new PIDFCoefficients(getPIDCoefficients(motor, mode));
+            }
+        }
     //------------------------------------------------------------------------------------------------
     // Utility
     //------------------------------------------------------------------------------------------------
@@ -783,21 +941,22 @@ public class LynxDcMotorController extends LynxController implements DcMotorCont
             }
         }
 
-    private void reportPIDControlLoopCoefficients() throws RobotCoreException, InterruptedException
+    private void reportPIDFControlLoopCoefficients() throws RobotCoreException, InterruptedException
         {
-        reportPIDControlLoopCoefficients(DcMotor.RunMode.RUN_TO_POSITION);
-        reportPIDControlLoopCoefficients(DcMotor.RunMode.RUN_USING_ENCODER);
+        reportPIDFControlLoopCoefficients(DcMotor.RunMode.RUN_TO_POSITION);
+        reportPIDFControlLoopCoefficients(DcMotor.RunMode.RUN_USING_ENCODER);
         }
 
-    private void reportPIDControlLoopCoefficients(DcMotor.RunMode mode) throws RobotCoreException, InterruptedException
+    private void reportPIDFControlLoopCoefficients(DcMotor.RunMode mode) throws RobotCoreException, InterruptedException
         {
-        PIDCoefficients coeffs;
-
-        for (int motor = apiMotorFirst; motor <= apiMotorLast; motor++)
+        if (DEBUG)
             {
-            coeffs = getPIDCoefficients(motor,mode);
-            if (DEBUG) RobotLog.vv(TAG,"mod=%d motor=%d mode=%s p=%f i=%f d=%f",
-                                   getModuleAddress(), motor, mode.toString(), coeffs.p, coeffs.i, coeffs.d);
+            for (int motor = apiMotorFirst; motor <= apiMotorLast; motor++)
+                {
+                PIDFCoefficients coeffs = getPIDFCoefficients(motor,mode);
+                RobotLog.vv(TAG,"mod=%d motor=%d mode=%s p=%f i=%f d=%f f=%f alg=%s",
+                                       getModuleAddress(), motor, mode.toString(), coeffs.p, coeffs.i, coeffs.d, coeffs.f, coeffs.algorithm);
+                }
             }
         }
 

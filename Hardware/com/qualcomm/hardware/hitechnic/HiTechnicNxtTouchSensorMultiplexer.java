@@ -85,7 +85,7 @@ public class HiTechnicNxtTouchSensorMultiplexer extends LegacyModulePortDeviceIm
 
   public String status() {
     return String.format("NXT Touch Sensor Multiplexer, connected via device %s, port %d",
-        module.getSerialNumber().toString(), physicalPort);  }
+        module.getSerialNumber(), physicalPort);  }
 
   @Override public Manufacturer getManufacturer() {
     return Manufacturer.HiTechnic;

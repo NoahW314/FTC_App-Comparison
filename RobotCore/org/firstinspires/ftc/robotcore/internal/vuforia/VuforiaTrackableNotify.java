@@ -32,7 +32,12 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package org.firstinspires.ftc.robotcore.internal.vuforia;
 
+import android.support.annotation.Nullable;
+
 import com.vuforia.TrackableResult;
+
+import org.firstinspires.ftc.robotcore.external.hardware.camera.Camera;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.CameraName;
 
 /**
  * {@link VuforiaTrackableNotify} is an interface through which VuforiaTrackables are informed
@@ -41,7 +46,7 @@ import com.vuforia.TrackableResult;
 @SuppressWarnings("WeakerAccess")
 public interface VuforiaTrackableNotify
     {
-    void noteTracked(TrackableResult trackableResult);
+    void noteTracked(TrackableResult trackableResult, CameraName cameraName, @Nullable Camera camera);
 
     void noteNotTracked();
     }

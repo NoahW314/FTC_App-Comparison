@@ -46,6 +46,7 @@ import android.hardware.usb.UsbManager;
 
 import com.qualcomm.robotcore.util.RobotLog;
 
+import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 import org.firstinspires.ftc.robotcore.internal.usb.exception.RobotUsbException;
 
 import java.util.ArrayList;
@@ -248,6 +249,8 @@ public class FtDeviceManager extends FtConstants
         return result;
         }
 
+    // TODO: Ask AppUtil for the permssion instead of mUsbManager: that will allow us to 
+    // block until we get a definitive yes or no, rather than the interim hit or miss we presently have
     private boolean isPermitted(UsbDevice dev)
         {
         boolean result = false;
@@ -562,7 +565,7 @@ public class FtDeviceManager extends FtConstants
                         {
                         RobotLog.ee(TAG, "***devInfo cannot be null***");
                         }
-                    else if (devInfo.description.equals(description))
+                    else if (devInfo.productName.equals(description))
                         {
                         ftDev = tmpDev;
                         break;
@@ -632,12 +635,13 @@ public class FtDeviceManager extends FtConstants
         {
         RobotLog.vv(TAG, "addOrUpdateUsbDevice(%s)", VendorAndProductIds.from(usbDevice));
         int result = 0;
+        AppUtil.getInstance().setUsbFileSystemRoot(usbDevice);
         if (this.isFtDevice(usbDevice))
             {
             int numInterfaces = usbDevice.getInterfaceCount();
             for (int i = 0; i < numInterfaces; ++i)
                 {
-                if (this.isPermitted(usbDevice))  // TODO: Why keep asking isPermitted() inside of loop?
+                if (this.isPermitted(usbDevice))
                     {
                     if (addOrUpdatePermittedUsbDevice(this.mFtdiDevices, usbDevice, usbDevice.getInterface(i)))
                         {

@@ -154,6 +154,7 @@ public class WifiDirectInviteDialogMonitor extends BroadcastReceiver
         uiLynxModule = null;
         }
 
+    /** Remember which lynx module should be used for UI feedback regarding WiFi connections etc */
     public static void setUILynxModule(Blinker lynxModule)
         {
         RobotLog.vv(TAG, "setUILynxModule()");

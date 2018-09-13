@@ -39,7 +39,6 @@ public class LaunchActivityConstantsList {
 
   public static final String ZTE_WIFI_CHANNEL_EDITOR_PACKAGE = "com.zte.wifichanneleditor";
   public static final String VIEW_LOGS_ACTIVITY_FILENAME     = "org.firstinspires.ftc.ftccommon.logFilename";
-  public static final String ABOUT_ACTIVITY_CONNECTION_TYPE  = "org.firstinspires.ftc.ftccommon.connectionType";
 
   // Related to programming mode.
   /**

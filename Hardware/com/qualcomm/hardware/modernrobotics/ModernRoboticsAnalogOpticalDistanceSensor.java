@@ -33,6 +33,8 @@ package com.qualcomm.hardware.modernrobotics;
 import com.qualcomm.robotcore.hardware.AnalogInputController;
 import com.qualcomm.robotcore.hardware.AnalogSensor;
 import com.qualcomm.robotcore.hardware.OpticalDistanceSensor;
+import com.qualcomm.robotcore.hardware.configuration.annotations.AnalogSensorType;
+import com.qualcomm.robotcore.hardware.configuration.annotations.DeviceProperties;
 import com.qualcomm.robotcore.util.Range;
 
 import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
@@ -42,6 +44,8 @@ import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
  * Distance Sensor.
  * @see <a href="http://www.modernroboticsinc.com/optical-distance-sensor-2">MR Optical Distance Sensor</a>
  */
+@AnalogSensorType
+@DeviceProperties(name = "@string/configTypeOpticalDistanceSensor", xmlTag = "OpticalDistanceSensor", builtIn = true, description = "@string/optical_distance_sensor_description")
 public class ModernRoboticsAnalogOpticalDistanceSensor implements OpticalDistanceSensor, AnalogSensor
   {
   private final AnalogInputController analogInputController;
@@ -99,7 +103,7 @@ public class ModernRoboticsAnalogOpticalDistanceSensor implements OpticalDistanc
 
   public String status() {
     return String.format("Optical Distance Sensor, connected via device %s, port %d",
-            analogInputController.getSerialNumber().toString(), physicalPort);  }
+            analogInputController.getSerialNumber(), physicalPort);  }
 
   @Override public Manufacturer getManufacturer() {
     return Manufacturer.ModernRobotics;

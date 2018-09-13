@@ -42,14 +42,10 @@ import android.widget.TextView;
 
 import com.qualcomm.ftccommon.R;
 import com.qualcomm.hardware.modernrobotics.ModernRoboticsUsbDeviceInterfaceModule;
-import com.qualcomm.robotcore.hardware.configuration.BuiltInConfigurationType;
-import com.qualcomm.robotcore.hardware.configuration.ConfigurationType;
+import com.qualcomm.robotcore.hardware.ControlSystem;
 import com.qualcomm.robotcore.hardware.configuration.DeviceConfiguration;
 import com.qualcomm.robotcore.hardware.configuration.DeviceInterfaceModuleConfiguration;
-import com.qualcomm.robotcore.hardware.configuration.UserConfigurationType;
-import com.qualcomm.robotcore.hardware.configuration.UserConfigurationTypeManager;
 
-import java.util.LinkedList;
 import java.util.List;
 
 public class EditDeviceInterfaceModuleActivity extends EditUSBDeviceActivity {
@@ -113,28 +109,28 @@ public class EditDeviceInterfaceModuleActivity extends EditUSBDeviceActivity {
                 DeviceConfiguration.class,
                 deviceInterfaceModuleConfiguration.getI2cDevices(),
                 ModernRoboticsUsbDeviceInterfaceModule.MAX_I2C_PORT_NUMBER + 1);
-        //
-        List<ConfigurationType> list = new LinkedList<ConfigurationType>();
-        list.add(BuiltInConfigurationType.NOTHING);
-        list.add(BuiltInConfigurationType.IR_SEEKER_V3);
-        list.add(BuiltInConfigurationType.COLOR_SENSOR);
-        list.add(BuiltInConfigurationType.ADAFRUIT_COLOR_SENSOR);
-        list.add(BuiltInConfigurationType.GYRO);
-        list.add(BuiltInConfigurationType.I2C_DEVICE);
-        list.add(BuiltInConfigurationType.I2C_DEVICE_SYNCH);
-        list.addAll(UserConfigurationTypeManager.getInstance().allUserTypes(UserConfigurationType.Flavor.I2C));
-        parameters.setConfigurationTypes(list.toArray(new ConfigurationType[list.size()]));
-        //
+        parameters.setControlSystem(ControlSystem.MODERN_ROBOTICS);
         handleLaunchEdit(key.requestCode, EditI2cDevicesActivity.class, parameters);
       } else if (key.requestCode==EditAnalogInputDevicesActivity.requestCode) {
-        handleLaunchEdit(key.requestCode, EditAnalogInputDevicesActivity.class, deviceInterfaceModuleConfiguration.getAnalogInputDevices());
+        editSimple(key, EditAnalogInputDevicesActivity.class, deviceInterfaceModuleConfiguration.getAnalogInputDevices());
       } else if (key.requestCode==EditDigitalDevicesActivity.requestCode) {
-        handleLaunchEdit(key.requestCode, EditDigitalDevicesActivity.class, deviceInterfaceModuleConfiguration.getDigitalDevices());
+        editSimple(key, EditDigitalDevicesActivity.class, deviceInterfaceModuleConfiguration.getDigitalDevices());
       } else if (key.requestCode==EditAnalogOutputDevicesActivity.requestCode) {
-        handleLaunchEdit(key.requestCode, EditAnalogOutputDevicesActivity.class, deviceInterfaceModuleConfiguration.getAnalogOutputDevices());
+        editSimple(key, EditAnalogOutputDevicesActivity.class, deviceInterfaceModuleConfiguration.getAnalogOutputDevices());
       }
     }
   };
+
+  private EditParameters initParameters(List<DeviceConfiguration> devices) {
+    EditParameters result = new EditParameters<DeviceConfiguration>(this, DeviceConfiguration.class, devices);
+    result.setControlSystem(ControlSystem.MODERN_ROBOTICS);
+    return result;
+  }
+
+  private void editSimple(DisplayNameAndRequestCode key, Class launchClass, List<DeviceConfiguration> devices) {
+    EditParameters parameters = initParameters(devices);
+    handleLaunchEdit(key.requestCode, launchClass, parameters);
+  }
 
   @Override
   protected void onActivityResult(int requestCodeValue, int resultCode, Intent data) {

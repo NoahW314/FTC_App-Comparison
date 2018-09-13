@@ -64,11 +64,18 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 package com.qualcomm.ftccommon.configuration;
 
 import com.qualcomm.ftccommon.R;
+import com.qualcomm.robotcore.hardware.configuration.ConfigurationType;
 
 public class EditAnalogOutputDevicesActivity extends EditPortListSpinnerActivity
     {
 	@Override public String getTag() { return this.getClass().getSimpleName(); }
     public static final RequestCode requestCode = RequestCode.EDIT_ANALOG_OUTPUT;
+
+    @Override
+    protected ConfigurationType.DeviceFlavor getDeviceFlavorBeingConfigured()
+        {
+        return ConfigurationType.DeviceFlavor.ANALOG_OUTPUT;
+        }
 
     public EditAnalogOutputDevicesActivity()
         {
@@ -80,4 +87,5 @@ public class EditAnalogOutputDevicesActivity extends EditPortListSpinnerActivity
         this.idItemEditTextResult   = R.id.editTextResult;
         this.idItemPortNumber       = R.id.port_number;
         }
+
     }

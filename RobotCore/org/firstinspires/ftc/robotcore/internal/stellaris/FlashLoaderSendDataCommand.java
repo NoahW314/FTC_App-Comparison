@@ -50,8 +50,10 @@ import java.util.Arrays;
 public class FlashLoaderSendDataCommand extends FlashLoaderCommand
     {
     // The documentation says that the quantum should be 8, but in practice, the LM Flash
-    // Programmer actually uses 60 bytes
-    public static final int QUANTUM = 60;
+    // Programmer actually uses 60 bytes. sflash uses 8 (by default). Hmmm... we'll use
+    // a small number, to be on the safe side. The firmware update will run more slowly,
+    // but (probably) has less chance of bricking.
+    public static final int QUANTUM = 16;
 
     public FlashLoaderSendDataCommand(byte[] data)
         {

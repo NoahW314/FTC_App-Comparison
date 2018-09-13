@@ -48,6 +48,7 @@ import com.qualcomm.robotcore.hardware.PwmControl;
 import com.qualcomm.robotcore.hardware.ServoController;
 import com.qualcomm.robotcore.hardware.ServoControllerEx;
 import com.qualcomm.robotcore.hardware.configuration.LynxConstants;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.ServoConfigurationType;
 import com.qualcomm.robotcore.util.LastKnown;
 import com.qualcomm.robotcore.util.Range;
 
@@ -76,6 +77,7 @@ public class LynxServoController extends LynxController implements ServoControll
     protected final LastKnown<Double>[]     lastKnownCommandedPosition;
     protected final LastKnown<Boolean>[]    lastKnownEnabled;
     protected       PwmControl.PwmRange[]   pwmRanges;
+    protected       PwmControl.PwmRange[]   defaultPwmRanges;
 
     //----------------------------------------------------------------------------------------------
     // Construction
@@ -88,11 +90,13 @@ public class LynxServoController extends LynxController implements ServoControll
         this.lastKnownCommandedPosition = LastKnown.createArray(LynxConstants.NUMBER_OF_SERVO_CHANNELS);
         this.lastKnownEnabled           = LastKnown.createArray(LynxConstants.NUMBER_OF_SERVO_CHANNELS);
         this.pwmRanges                  = new PwmControl.PwmRange[LynxConstants.NUMBER_OF_SERVO_CHANNELS];
+        this.defaultPwmRanges           = new PwmControl.PwmRange[LynxConstants.NUMBER_OF_SERVO_CHANNELS];
 
         // Paranoia: *always* initialize to something reasonable to as to avoid null pointer issues
         for (int i = 0; i < this.pwmRanges.length; i++)
             {
             this.pwmRanges[i] = PwmControl.PwmRange.defaultRange;
+            this.defaultPwmRanges[i] = PwmControl.PwmRange.defaultRange;
             }
 
         this.finishConstruction();
@@ -103,7 +107,7 @@ public class LynxServoController extends LynxController implements ServoControll
         for (int servo = apiServoFirst; servo <= apiServoLast; servo++)
             {
             this.pwmRanges[servo-apiServoFirst] = null;     // clear so that setServoPwmRange will always transmit
-            setServoPwmRange(servo, PwmControl.PwmRange.defaultRange);
+            setServoPwmRange(servo, defaultPwmRanges[servo-apiServoFirst]);
             }
         floatHardware();
         forgetLastKnown();
@@ -187,6 +191,15 @@ public class LynxServoController extends LynxController implements ServoControll
         {
         this.validateServo(servo); servo -= apiServoFirst;
         return internalGetPwmEnable(servo);
+        }
+
+    @Override
+    public void setServoType(int servo, ServoConfigurationType servoType)
+        {
+        this.validateServo(servo); servo -= apiServoFirst;
+        PwmControl.PwmRange newDefaultPwmRange = new PwmControl.PwmRange(servoType.getUsPulseLower(), servoType.getUsPulseUpper(), servoType.getUsFrame());
+        this.defaultPwmRanges[servo] = newDefaultPwmRange;
+        setServoPwmRange(servo, newDefaultPwmRange);
         }
 
     private void internalSetPwmEnable(int servoZ, boolean enable)

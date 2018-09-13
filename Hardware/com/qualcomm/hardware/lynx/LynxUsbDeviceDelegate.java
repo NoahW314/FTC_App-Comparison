@@ -33,6 +33,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 package com.qualcomm.hardware.lynx;
 
 import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 
 import com.qualcomm.hardware.lynx.commands.LynxMessage;
 import com.qualcomm.robotcore.exception.RobotCoreException;
@@ -159,6 +160,11 @@ public class LynxUsbDeviceDelegate implements LynxUsbDevice, HardwareDeviceClose
         {
         assertOpen();
         delegate.addConfiguredModule(module);
+        }
+    @Nullable public LynxModule getConfiguredModule(int moduleAddress)
+        {
+        assertOpen();
+        return delegate.getConfiguredModule(moduleAddress);
         }
     @Override public void removeConfiguredModule(LynxModule module)
         {
@@ -303,10 +309,10 @@ public class LynxUsbDeviceDelegate implements LynxUsbDevice, HardwareDeviceClose
         assertOpen();
         delegate.suppressGlobalWarning(suppress);
         }
-    @Override public boolean setGlobalWarning(String warning)
+    @Override public void setGlobalWarning(String warning)
         {
         assertOpen();
-        return delegate.setGlobalWarning(warning);
+        delegate.setGlobalWarning(warning);
         }
     @Override public void clearGlobalWarning()
         {

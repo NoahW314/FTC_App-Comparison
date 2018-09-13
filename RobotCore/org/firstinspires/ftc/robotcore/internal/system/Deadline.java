@@ -34,16 +34,31 @@ package org.firstinspires.ftc.robotcore.internal.system;
 
 import com.qualcomm.robotcore.util.ElapsedTime;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
 
 /**
  * {@link Deadline} enhances {@link ElapsedTime} with an explicit duration.
+ * A {@link Deadline} can also be cancelled, causing it to expire earlier than
+ * it originally would have.
  */
 @SuppressWarnings("WeakerAccess")
 public class Deadline extends ElapsedTime
     {
+    //----------------------------------------------------------------------------------------------
+    // State
+    //----------------------------------------------------------------------------------------------
+
     protected final long nsDuration;
     protected       long nsDeadline;
+    protected       TimeUnit awaitUnit = TimeUnit.NANOSECONDS;
+    protected       long msPollInterval = 125;
+
+    //----------------------------------------------------------------------------------------------
+    // Construction
+    //----------------------------------------------------------------------------------------------
 
     public Deadline(long duration, TimeUnit unit)
         {
@@ -55,6 +70,16 @@ public class Deadline extends ElapsedTime
         {
         super.reset();
         nsDeadline = nsStartTime + nsDuration;
+        }
+
+    public void cancel() // a handy and usefully-rememberable synonym
+        {
+        expire();
+        }
+
+    public void expire()
+        {
+        nsDeadline = nsStartTime;
         }
 
     public long getDuration(TimeUnit unit)
@@ -76,5 +101,62 @@ public class Deadline extends ElapsedTime
     public boolean hasExpired()
         {
         return timeRemaining(TimeUnit.NANOSECONDS) <= 0;
+        }
+
+    //----------------------------------------------------------------------------------------------
+    // Awaiting while allowing expire() to be called while that is happening.
+    // Note that there are probably other synchronization objects whose awaiting
+    // we should also provide for here.
+    //----------------------------------------------------------------------------------------------
+
+    public boolean await(CountDownLatch latch) throws InterruptedException
+        {
+        long pollInterval = awaitUnit.convert(msPollInterval, TimeUnit.MILLISECONDS);
+        for (;;)
+            {
+            long waitInterval = Math.min(pollInterval, timeRemaining(awaitUnit));
+            if (waitInterval <= 0)
+                {
+                return false; // deadline expired
+                }
+            if (latch.await(waitInterval, awaitUnit))
+                {
+                return true;
+                }
+            }
+        }
+
+    public boolean tryLock(Lock lock) throws InterruptedException
+        {
+        long pollInterval = awaitUnit.convert(msPollInterval, TimeUnit.MILLISECONDS);
+        for (;;)
+            {
+            long waitInterval = Math.min(pollInterval, timeRemaining(awaitUnit));
+            if (waitInterval <= 0)
+                {
+                return false; // deadline expired
+                }
+            if (lock.tryLock(waitInterval, awaitUnit))
+                {
+                return true;
+                }
+            }
+        }
+
+    public boolean tryAcquire(Semaphore semaphore) throws InterruptedException
+        {
+        long pollInterval = awaitUnit.convert(msPollInterval, TimeUnit.MILLISECONDS);
+        for (;;)
+            {
+            long waitInterval = Math.min(pollInterval, timeRemaining(awaitUnit));
+            if (waitInterval <= 0)
+                {
+                return false; // deadline expired
+                }
+            if (semaphore.tryAcquire(waitInterval, awaitUnit))
+                {
+                return true;
+                }
+            }
         }
     }

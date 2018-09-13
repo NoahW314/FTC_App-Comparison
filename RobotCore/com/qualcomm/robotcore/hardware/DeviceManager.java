@@ -34,20 +34,24 @@ import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 
 import com.qualcomm.robotcore.exception.RobotCoreException;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.AnalogSensorConfigurationType;
 import com.qualcomm.robotcore.hardware.configuration.DeviceConfiguration;
-import com.qualcomm.robotcore.hardware.configuration.MotorConfigurationType;
-import com.qualcomm.robotcore.hardware.configuration.UserI2cSensorType;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.DigitalIoDeviceConfigurationType;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.MotorConfigurationType;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.ServoConfigurationType;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.I2cDeviceConfigurationType;
 import com.qualcomm.robotcore.util.SerialNumber;
 
-import java.util.Map;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.CameraManager;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
 
 @SuppressWarnings("javadoc")
 public interface DeviceManager {
 
   /**
-   * Enum of known USB Device Types (Note that the MR .AAR library has an internal copy of this)
+   * Enum of known USB Device Types
    */
-  enum DeviceType {
+  enum UsbDeviceType {
     FTDI_USB_UNKNOWN_DEVICE,
     MODERN_ROBOTICS_USB_UNKNOWN_DEVICE,
     MODERN_ROBOTICS_USB_DC_MOTOR_CONTROLLER,
@@ -56,11 +60,22 @@ public interface DeviceManager {
     MODERN_ROBOTICS_USB_DEVICE_INTERFACE_MODULE,
     MODERN_ROBOTICS_USB_SENSOR_MUX,   // does this really exist? probably not
     LYNX_USB_DEVICE,
-    UNKNOWN_DEVICE
+    /** a camera managed by {@link CameraManager}. See {@link WebcamName} */
+    WEBCAM,
+    UNKNOWN_DEVICE;
+
+    public static UsbDeviceType from(String string) {
+      for (UsbDeviceType type : values()) {
+        if (type.toString().equals(string)) {
+          return type;
+        }
+      }
+    return UNKNOWN_DEVICE;
+    }
   }
 
   /**
-   * Get a listing of all Modern Robotics devices connected.
+   * Get a listing of currently connected USB devices
    * <p>
    * This method will attempt to open all USB devices that are using an FTDI USB chipset. It will
    * then probe the device to determine if it is a Modern Robotics device. Finally, it will close the
@@ -72,7 +87,7 @@ public interface DeviceManager {
    * @return a map of serial numbers to Modern Robotics device types
    * @throws RobotCoreException if unable to open a device
    */
-  Map<SerialNumber, DeviceType> scanForUsbDevices() throws RobotCoreException;
+  ScannedDevices scanForUsbDevices() throws RobotCoreException;
 
   /**
    * Create an instance of a DcMotorController
@@ -115,10 +130,13 @@ public interface DeviceManager {
    * @return an instance of a Servo
    */
   Servo createServo(ServoController controller, int portNumber, String name);
-  Servo createServoEx(ServoController controller, int portNumber, String name);
+  Servo createServoEx(ServoControllerEx controller, int portNumber, String name, ServoConfigurationType servoType);
 
   CRServo createCRServo(ServoController controller, int portNumber, String name);
-  CRServo createCRServoEx(ServoController controller, int portNumber, String name);
+  CRServo createCRServoEx(ServoControllerEx controller, int portNumber, String name, ServoConfigurationType servoType);
+
+  HardwareDevice createCustomServoDevice(ServoController controller, int portNumber, ServoConfigurationType servoConfigurationType);
+  HardwareDevice createLynxCustomServoDevice(ServoControllerEx controller, int portNumber, ServoConfigurationType servoConfigurationType);
 
   /**
    * Create an instance of a LegacyModule
@@ -162,7 +180,7 @@ public interface DeviceManager {
    * @param controller Analog Input Controller Module this device is connected to
    * @return - an instance of an Analog Input device
    */
-  AnalogInput createAnalogInputDevice(AnalogInputController controller, int channel, String name);
+  HardwareDevice createAnalogSensor(AnalogInputController controller, int channel, AnalogSensorConfigurationType type);
 
   /**
    *
@@ -174,9 +192,10 @@ public interface DeviceManager {
   /**
    *
    * @param controller Device Interface Module this device is connected to
+   * @param type
    * @return - an instance of an Digital Channel device
    */
-  DigitalChannel createDigitalChannelDevice(DigitalChannelController controller, int channel, String name);
+  HardwareDevice createDigitalDevice(DigitalChannelController controller, int channel, DigitalIoDeviceConfigurationType type);
 
   /**
    *
@@ -184,7 +203,6 @@ public interface DeviceManager {
    * @return - an instance of an Digital Channel device
    */
   PWMOutput createPwmOutputDevice(PWMOutputController controller, int channel, String name);
-  PWMOutput createPwmOutputDeviceEx(PWMOutputController controller, int channel, String name);
 
   /**
    *
@@ -198,8 +216,8 @@ public interface DeviceManager {
   /**
    * Returns a new instance of a user-defined sensor type.
    */
-  @Nullable HardwareDevice createUserI2cDevice(I2cController controller, DeviceConfiguration.I2cChannel channel, UserI2cSensorType type, String name);
-  @Nullable HardwareDevice createUserI2cDevice(RobotCoreLynxModule lynxModule, DeviceConfiguration.I2cChannel channel, UserI2cSensorType type, String name);
+  @Nullable HardwareDevice createUserI2cDevice(I2cController controller, DeviceConfiguration.I2cChannel channel, I2cDeviceConfigurationType type, String name);
+  @Nullable HardwareDevice createUserI2cDevice(RobotCoreLynxModule lynxModule, DeviceConfiguration.I2cChannel channel, I2cDeviceConfigurationType type, String name);
 
   /**
    * Create an instance of an NXT DcMotorController
@@ -216,7 +234,7 @@ public interface DeviceManager {
    * @throws RobotCoreException
    * @throws InterruptedException
    */
-  RobotCoreLynxUsbDevice createLynxUsbDevice(SerialNumber serialNumber, String name) throws RobotCoreException, InterruptedException;
+  RobotCoreLynxUsbDevice createLynxUsbDevice(SerialNumber serialNumber, @Nullable String name) throws RobotCoreException, InterruptedException;
 
   /**
    * Creates an instance of a LynxModule
@@ -225,6 +243,12 @@ public interface DeviceManager {
    * @return
    */
   RobotCoreLynxModule createLynxModule(RobotCoreLynxUsbDevice lynxUsbDevice, int moduleAddress, boolean isParent, String name);
+
+
+  /**
+   * Creates a {@link WebcamName} from the indicated serialized contents
+   */
+  @Nullable WebcamName createWebcamName(SerialNumber serialNumber, String name) throws RobotCoreException, InterruptedException;
 
   /**
    * Create an instance of an NXT ServoController
@@ -250,15 +274,6 @@ public interface DeviceManager {
    * @return a TouchSensor
    */
   TouchSensor createMRDigitalTouchSensor(DigitalChannelController digitalController, int physicalPort, String name);
-
-  /**
-   * Create an instance of a Modern Robotics TouchSensor on an analog controller
-   * @param analogInputController   controller this device is connected to
-   * @param physicalPort            the port number of the device on that controller
-   * @param name                    the name of this device in the hardware map
-   * @return a TouchSensor
-   */
-  TouchSensor createMRAnalogTouchSensor(AnalogInputController analogInputController, int physicalPort, String name);
 
   /**
    * Create an instance of a AccelerationSensor
@@ -317,14 +332,6 @@ public interface DeviceManager {
    */
   GyroSensor createModernRoboticsI2cGyroSensor(I2cController i2cController, DeviceConfiguration.I2cChannel channel, String name);
   GyroSensor createModernRoboticsI2cGyroSensor(RobotCoreLynxModule module, DeviceConfiguration.I2cChannel channel, String name);
-
-  /**
-   * Create an instance of an OpticalDistanceSensor
-   * @param analogInputController controller this sensor is connected to
-   * @param physicalPort the port number on the controller it's plugged into
-   * @return an OpticalDistanceSensor
-   */
-  OpticalDistanceSensor createMRAnalogOpticalDistanceSensor(AnalogInputController analogInputController, int physicalPort, String name);
 
   /**
    * Create an instance of a ColorSensor

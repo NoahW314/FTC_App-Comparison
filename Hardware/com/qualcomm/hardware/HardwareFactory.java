@@ -31,6 +31,7 @@
 package com.qualcomm.hardware;
 
 import android.content.Context;
+import android.support.annotation.NonNull;
 
 import com.qualcomm.hardware.hitechnic.HiTechnicNxtDcMotorController;
 import com.qualcomm.hardware.lynx.LynxAnalogInputController;
@@ -47,21 +48,18 @@ import com.qualcomm.hardware.matrix.MatrixMasterController;
 import com.qualcomm.hardware.matrix.MatrixServoController;
 import com.qualcomm.hardware.modernrobotics.ModernRoboticsUsbDcMotorController;
 import com.qualcomm.hardware.modernrobotics.ModernRoboticsUsbLegacyModule;
-import com.qualcomm.robotcore.eventloop.EventLoopManager;
+import com.qualcomm.robotcore.eventloop.SyncdDevice;
 import com.qualcomm.robotcore.exception.RobotCoreException;
 import com.qualcomm.robotcore.hardware.AccelerationSensor;
-import com.qualcomm.robotcore.hardware.AnalogInput;
 import com.qualcomm.robotcore.hardware.AnalogInputController;
 import com.qualcomm.robotcore.hardware.AnalogOutput;
 import com.qualcomm.robotcore.hardware.AnalogOutputController;
-import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.ColorSensor;
 import com.qualcomm.robotcore.hardware.CompassSensor;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorController;
 import com.qualcomm.robotcore.hardware.DeviceInterfaceModule;
 import com.qualcomm.robotcore.hardware.DeviceManager;
-import com.qualcomm.robotcore.hardware.DigitalChannel;
 import com.qualcomm.robotcore.hardware.DigitalChannelController;
 import com.qualcomm.robotcore.hardware.GyroSensor;
 import com.qualcomm.robotcore.hardware.HardwareDevice;
@@ -77,32 +75,37 @@ import com.qualcomm.robotcore.hardware.LightSensor;
 import com.qualcomm.robotcore.hardware.OpticalDistanceSensor;
 import com.qualcomm.robotcore.hardware.PWMOutput;
 import com.qualcomm.robotcore.hardware.PWMOutputController;
-import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.hardware.ServoController;
+import com.qualcomm.robotcore.hardware.ServoControllerEx;
 import com.qualcomm.robotcore.hardware.TouchSensor;
 import com.qualcomm.robotcore.hardware.TouchSensorMultiplexer;
 import com.qualcomm.robotcore.hardware.UltrasonicSensor;
 import com.qualcomm.robotcore.hardware.VoltageSensor;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.AnalogSensorConfigurationType;
 import com.qualcomm.robotcore.hardware.configuration.BuiltInConfigurationType;
 import com.qualcomm.robotcore.hardware.configuration.ConfigurationType;
 import com.qualcomm.robotcore.hardware.configuration.ControllerConfiguration;
 import com.qualcomm.robotcore.hardware.configuration.DeviceConfiguration;
 import com.qualcomm.robotcore.hardware.configuration.DeviceInterfaceModuleConfiguration;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.DigitalIoDeviceConfigurationType;
 import com.qualcomm.robotcore.hardware.configuration.LegacyModuleControllerConfiguration;
 import com.qualcomm.robotcore.hardware.configuration.LynxConstants;
 import com.qualcomm.robotcore.hardware.configuration.LynxI2cDeviceConfiguration;
 import com.qualcomm.robotcore.hardware.configuration.LynxModuleConfiguration;
 import com.qualcomm.robotcore.hardware.configuration.LynxUsbDeviceConfiguration;
 import com.qualcomm.robotcore.hardware.configuration.MatrixControllerConfiguration;
-import com.qualcomm.robotcore.hardware.configuration.MotorConfiguration;
 import com.qualcomm.robotcore.hardware.configuration.MotorControllerConfiguration;
 import com.qualcomm.robotcore.hardware.configuration.ReadXMLFileHandler;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.MotorConfigurationType;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.ServoConfigurationType;
 import com.qualcomm.robotcore.hardware.configuration.ServoControllerConfiguration;
-import com.qualcomm.robotcore.hardware.configuration.UserConfigurationType;
-import com.qualcomm.robotcore.hardware.configuration.UserI2cSensorType;
+import com.qualcomm.robotcore.hardware.configuration.ServoFlavor;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.I2cDeviceConfigurationType;
+import com.qualcomm.robotcore.hardware.configuration.WebcamConfiguration;
 import com.qualcomm.robotcore.util.RobotLog;
 import com.qualcomm.robotcore.util.SerialNumber;
 
+import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
 import org.firstinspires.ftc.robotcore.internal.network.WifiDirectInviteDialogMonitor;
 import org.xmlpull.v1.XmlPullParser;
 
@@ -112,9 +115,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Modern Robotics hardware factory.
- *
- * Populates the hardware map with Modern Robotics devices.
+ * Populates the hardware map.
  */
 @SuppressWarnings("unused")
 public class HardwareFactory {
@@ -127,8 +128,6 @@ public class HardwareFactory {
 
   private Context       context;
   private XmlPullParser xmlPullParser = null;
-
-  protected static final HashMap<String,String> deviceDisplayNames = new HashMap<String, String>();
 
   //------------------------------------------------------------------------------------------------
   // Construction
@@ -147,7 +146,7 @@ public class HardwareFactory {
    *
    * @return HardwareMap
    */
-  public HardwareMap createHardwareMap(EventLoopManager manager) throws RobotCoreException, InterruptedException  {
+  public @NonNull HardwareMap createHardwareMap(SyncdDevice.Manager manager) throws RobotCoreException, InterruptedException  {
 
     // We synchronize with scanning so that there's only one thread trying to open *new* FTDI devices at a time
     synchronized (HardwareDeviceManager.scanDevicesLock) {
@@ -163,36 +162,51 @@ public class HardwareFactory {
       if (xmlPullParser != null) {
         DeviceManager deviceMgr = new HardwareDeviceManager(context, manager);
 
-        ReadXMLFileHandler readXmlFileHandler = new ReadXMLFileHandler();
+        ReadXMLFileHandler readXmlFileHandler = new ReadXMLFileHandler(deviceMgr);
 
         List<ControllerConfiguration> ctrlConfList = readXmlFileHandler.parse(xmlPullParser);
 
         for (ControllerConfiguration ctrlConf : ctrlConfList) {
-          ConfigurationType type = ctrlConf.getConfigurationType();
-          if (type==BuiltInConfigurationType.MOTOR_CONTROLLER) {
-            mapUsbMotorController(map, deviceMgr, (MotorControllerConfiguration)ctrlConf);
-          }
-          else if (type==BuiltInConfigurationType.SERVO_CONTROLLER) {
-            mapUsbServoController(map, deviceMgr, (ServoControllerConfiguration)ctrlConf);
-          }
-          else if (type==BuiltInConfigurationType.LEGACY_MODULE_CONTROLLER) {
-            mapUsbLegacyModule(map, deviceMgr, (LegacyModuleControllerConfiguration)ctrlConf);
-          }
-          else if (type==BuiltInConfigurationType.DEVICE_INTERFACE_MODULE) {
-            mapCoreInterfaceDeviceModule(map, deviceMgr, (DeviceInterfaceModuleConfiguration)ctrlConf);
-          }
-          else if (type==BuiltInConfigurationType.LYNX_USB_DEVICE) {
-            mapLynxUsbDevice(map, deviceMgr, (LynxUsbDeviceConfiguration)ctrlConf);
-          }
-          else {
-            RobotLog.ee(TAG, "Unexpected controller type while parsing XML: " + type.toString());
-          }
+          mapControllerConfiguration(map, deviceMgr, ctrlConf);
         }
+
       } else {
         // no XML to parse, just return empty map
         RobotLog.vv(TAG, "no xml to parse: using empty map");
       }
       return map;
+    }
+  }
+
+  public void instantiateConfiguration(HardwareMap hardwareMap, ControllerConfiguration controllerConfiguration, SyncdDevice.Manager manager) throws RobotCoreException, InterruptedException {
+    synchronized (HardwareDeviceManager.scanDevicesLock) {
+      DeviceManager deviceMgr = new HardwareDeviceManager(context, manager);
+      mapControllerConfiguration(hardwareMap, deviceMgr, controllerConfiguration);
+    }
+  }
+
+  protected void mapControllerConfiguration(HardwareMap map, DeviceManager deviceMgr, ControllerConfiguration ctrlConf) throws RobotCoreException, InterruptedException {
+    ConfigurationType type = ctrlConf.getConfigurationType();
+    if (type==BuiltInConfigurationType.MOTOR_CONTROLLER) {
+      mapUsbMotorController(map, deviceMgr, (MotorControllerConfiguration)ctrlConf);
+    }
+    else if (type==BuiltInConfigurationType.SERVO_CONTROLLER) {
+      mapUsbServoController(map, deviceMgr, (ServoControllerConfiguration)ctrlConf);
+    }
+    else if (type==BuiltInConfigurationType.LEGACY_MODULE_CONTROLLER) {
+      mapUsbLegacyModule(map, deviceMgr, (LegacyModuleControllerConfiguration)ctrlConf);
+    }
+    else if (type==BuiltInConfigurationType.DEVICE_INTERFACE_MODULE) {
+      mapCoreInterfaceDeviceModule(map, deviceMgr, (DeviceInterfaceModuleConfiguration)ctrlConf);
+    }
+    else if (type==BuiltInConfigurationType.LYNX_USB_DEVICE) {
+      mapLynxUsbDevice(map, deviceMgr, (LynxUsbDeviceConfiguration)ctrlConf);
+    }
+    else if (type==BuiltInConfigurationType.WEBCAM) {
+      mapWebcam(map, deviceMgr, (WebcamConfiguration)ctrlConf);
+    }
+    else {
+      RobotLog.ee(TAG, "unexpected controller configuration type: %s", type);
     }
   }
 
@@ -206,9 +220,10 @@ public class HardwareFactory {
 
   private void mapUsbMotorController(HardwareMap map, DeviceManager deviceMgr, MotorControllerConfiguration ctrlConf) throws RobotCoreException, InterruptedException {
     if (!ctrlConf.isEnabled()) return;
-    ModernRoboticsUsbDcMotorController dcMotorController = (ModernRoboticsUsbDcMotorController) deviceMgr.createUsbDcMotorController(ctrlConf.getSerialNumber(), ctrlConf.getName());
-    map.dcMotorController.put(ctrlConf.getName(), dcMotorController);
-    for (MotorConfiguration motorConf : ctrlConf.getMotors()) {
+    SerialNumber serialNumber = ctrlConf.getSerialNumber();
+    ModernRoboticsUsbDcMotorController dcMotorController = (ModernRoboticsUsbDcMotorController) deviceMgr.createUsbDcMotorController(serialNumber, ctrlConf.getName());
+    map.dcMotorController.put(serialNumber, ctrlConf.getName(), dcMotorController);
+    for (DeviceConfiguration motorConf : ctrlConf.getMotors()) {
       mapMotor(map, deviceMgr, motorConf, dcMotorController);
     }
 
@@ -218,46 +233,63 @@ public class HardwareFactory {
 
   private void mapUsbServoController(HardwareMap map, DeviceManager deviceMgr, ServoControllerConfiguration ctrlConf) throws RobotCoreException, InterruptedException {
     if (!ctrlConf.isEnabled()) return;
-    ServoController servoController = deviceMgr.createUsbServoController(ctrlConf.getSerialNumber(), ctrlConf.getName());
-    map.servoController.put(ctrlConf.getName(), servoController);
+    SerialNumber serialNumber = ctrlConf.getSerialNumber();
+    ServoController servoController = deviceMgr.createUsbServoController(serialNumber, ctrlConf.getName());
+    map.servoController.put(serialNumber, ctrlConf.getName(), servoController);
     for (DeviceConfiguration servoConf : ctrlConf.getDevices()) {
-      mapServo(map, deviceMgr, servoConf, servoController);
+      mapServoDevice(map, deviceMgr, servoConf, servoController);
     }
   }
 
-  private void mapMotor(HardwareMap map, DeviceManager deviceMgr, MotorConfiguration motorConf, DcMotorController dcMotorController) {
+  private void mapMotor(HardwareMap map, DeviceManager deviceMgr, DeviceConfiguration motorConf, DcMotorController dcMotorController) {
     if (!motorConf.isEnabled()) return;
-    DcMotor dcMotor = deviceMgr.createDcMotor(dcMotorController, motorConf.getPort(), motorConf.getMotorType(), motorConf.getName());
+    DcMotor dcMotor = deviceMgr.createDcMotor(dcMotorController, motorConf.getPort(), (MotorConfigurationType) motorConf.getConfigurationType(), motorConf.getName());
     map.dcMotor.put(motorConf.getName(), dcMotor);
   }
 
-  private void mapServo(HardwareMap map, DeviceManager deviceMgr, DeviceConfiguration servoConf, ServoController servoController) {
-    if (!servoConf.isEnabled()) return;
-    if (servoConf.getConfigurationType() == BuiltInConfigurationType.SERVO) {
-      Servo s = deviceMgr.createServo(servoController, servoConf.getPort(), servoConf.getName());
-      map.servo.put(servoConf.getName(), s);
-    } else if (servoConf.getConfigurationType() == BuiltInConfigurationType.CONTINUOUS_ROTATION_SERVO) {
-      CRServo s = deviceMgr.createCRServo(servoController, servoConf.getPort(), servoConf.getName());
-      map.crservo.put(servoConf.getName(), s);
+  private void mapServoDevice(HardwareMap map, DeviceManager deviceMgr, DeviceConfiguration servoConf, ServoController servoController) {
+    if (!servoConf.isEnabled() || !servoConf.getConfigurationType().isDeviceFlavor(ConfigurationType.DeviceFlavor.SERVO)) {
+        return;
+    }
+    HardwareDevice servoDevice = null;
+
+    ServoConfigurationType servoType = (ServoConfigurationType) servoConf.getConfigurationType();
+    if (servoType.getServoFlavor() == ServoFlavor.STANDARD) {
+      servoDevice = deviceMgr.createServo(servoController, servoConf.getPort(), servoConf.getName());
+    } else if (servoType.getServoFlavor() == ServoFlavor.CONTINUOUS) {
+      servoDevice = deviceMgr.createCRServo(servoController, servoConf.getPort(), servoConf.getName());
+    } else {
+      servoDevice = deviceMgr.createCustomServoDevice(servoController, servoConf.getPort(), servoType);
+    }
+    if (servoDevice != null) {
+      addUserDeviceToMap(map, servoConf, servoDevice);
     }
   }
 
-  private void mapServoEx(HardwareMap map, DeviceManager deviceMgr, DeviceConfiguration servoConf, ServoController servoController) {
-    if (servoConf.isEnabled()) {
-      if (servoConf.getConfigurationType() == BuiltInConfigurationType.SERVO) {
-        Servo s = deviceMgr.createServoEx(servoController, servoConf.getPort(), servoConf.getName());
-        map.servo.put(servoConf.getName(), s);
-      } else if (servoConf.getConfigurationType() == BuiltInConfigurationType.CONTINUOUS_ROTATION_SERVO) {
-        CRServo s = deviceMgr.createCRServoEx(servoController, servoConf.getPort(), servoConf.getName());
-        map.crservo.put(servoConf.getName(), s);
-      }
+  private void mapLynxServoDevice(HardwareMap map, DeviceManager deviceMgr, DeviceConfiguration servoConf, ServoControllerEx servoController) {
+    if (!servoConf.isEnabled() || !servoConf.getConfigurationType().isDeviceFlavor(ConfigurationType.DeviceFlavor.SERVO)) {
+      return;
+    }
+    HardwareDevice servoDevice = null;
+
+    ServoConfigurationType servoType = (ServoConfigurationType) servoConf.getConfigurationType();
+    if (servoType.getServoFlavor() == ServoFlavor.STANDARD) {
+      servoDevice = deviceMgr.createServoEx(servoController, servoConf.getPort(), servoConf.getName(), servoType);
+    } else if (servoType.getServoFlavor() == ServoFlavor.CONTINUOUS) {
+      servoDevice = deviceMgr.createCRServoEx(servoController, servoConf.getPort(), servoConf.getName(), servoType);
+    } else {
+      servoDevice = deviceMgr.createLynxCustomServoDevice(servoController, servoConf.getPort(), servoType);
+    }
+    if (servoDevice != null) {
+      addUserDeviceToMap(map, servoConf, servoDevice);
     }
   }
 
   private void mapCoreInterfaceDeviceModule(HardwareMap map, DeviceManager deviceMgr, DeviceInterfaceModuleConfiguration ctrlConf) throws RobotCoreException, InterruptedException {
     if (!ctrlConf.isEnabled()) return;
-    DeviceInterfaceModule deviceInterfaceModule = deviceMgr.createDeviceInterfaceModule(ctrlConf.getSerialNumber(), ctrlConf.getName());
-    map.deviceInterfaceModule.put(ctrlConf.getName(), deviceInterfaceModule);
+    SerialNumber serialNumber = ctrlConf.getSerialNumber();
+    DeviceInterfaceModule deviceInterfaceModule = deviceMgr.createDeviceInterfaceModule(serialNumber, ctrlConf.getName());
+    map.deviceInterfaceModule.put(serialNumber, ctrlConf.getName(), deviceInterfaceModule);
 
     List<DeviceConfiguration> pwmDevices = ctrlConf.getPwmOutputs();
     buildDevices(pwmDevices, map, deviceMgr, deviceInterfaceModule);
@@ -278,19 +310,11 @@ public class HardwareFactory {
   private void buildDevices(List<DeviceConfiguration> list, HardwareMap map, DeviceManager deviceMgr, DeviceInterfaceModule deviceInterfaceModule) {
     for (DeviceConfiguration deviceConfiguration : list) {
       ConfigurationType devType = deviceConfiguration.getConfigurationType();
-      if (devType==BuiltInConfigurationType.OPTICAL_DISTANCE_SENSOR) {
-        mapOpticalDistanceSensor(map, deviceMgr, deviceInterfaceModule, deviceConfiguration);
+
+      if (devType.isDeviceFlavor(ConfigurationType.DeviceFlavor.ANALOG_SENSOR)) {
+        mapAnalogSensor(map, deviceMgr, deviceInterfaceModule, deviceConfiguration);
       }
-      else if (devType==BuiltInConfigurationType.ANALOG_INPUT) {
-        mapAnalogInputDevice(map, deviceMgr, deviceInterfaceModule, deviceConfiguration);
-      }
-      else if (devType==BuiltInConfigurationType.TOUCH_SENSOR) {
-        mapTouchSensor(map, deviceMgr, deviceInterfaceModule, deviceConfiguration);
-      }
-      else if (devType==BuiltInConfigurationType.MR_ANALOG_TOUCH_SENSOR) {
-        mapAnalogTouchSensor(map, deviceMgr, deviceInterfaceModule, deviceConfiguration);
-      }
-      else if (devType==BuiltInConfigurationType.DIGITAL_DEVICE) {
+      else if (devType.isDeviceFlavor(ConfigurationType.DeviceFlavor.DIGITAL_IO)) {
         mapDigitalDevice(map, deviceMgr, deviceInterfaceModule, deviceConfiguration);
       }
       else if (devType==BuiltInConfigurationType.PULSE_WIDTH_DEVICE) {
@@ -298,9 +322,6 @@ public class HardwareFactory {
       }
       else if (devType==BuiltInConfigurationType.ANALOG_OUTPUT) {
         mapAnalogOutputDevice(map, deviceMgr, deviceInterfaceModule, deviceConfiguration);
-      }
-      else if (devType==BuiltInConfigurationType.LED) {
-        mapLED(map, deviceMgr, deviceInterfaceModule, deviceConfiguration);
       }
       else if (devType==BuiltInConfigurationType.NOTHING) {
         // nothing to do
@@ -323,14 +344,8 @@ public class HardwareFactory {
   private void buildLynxDevices(List<DeviceConfiguration> list, HardwareMap map, DeviceManager deviceMgr, AnalogInputController lynxModule) {
     for (DeviceConfiguration deviceConfiguration : list) {
       ConfigurationType devType = deviceConfiguration.getConfigurationType();
-      if (devType==BuiltInConfigurationType.OPTICAL_DISTANCE_SENSOR) {
-        mapOpticalDistanceSensor(map, deviceMgr, lynxModule, deviceConfiguration);
-      }
-      else if (devType==BuiltInConfigurationType.ANALOG_INPUT) {
-        mapAnalogInputDevice(map, deviceMgr, lynxModule, deviceConfiguration);
-      }
-      else if (devType==BuiltInConfigurationType.MR_ANALOG_TOUCH_SENSOR) {
-        mapAnalogTouchSensor(map, deviceMgr, lynxModule, deviceConfiguration);
+      if (devType.isDeviceFlavor(ConfigurationType.DeviceFlavor.ANALOG_SENSOR)) {
+        mapAnalogSensor(map, deviceMgr, lynxModule, deviceConfiguration);
       }
     }
   }
@@ -338,14 +353,8 @@ public class HardwareFactory {
   private void buildLynxDevices(List<DeviceConfiguration> list, HardwareMap map, DeviceManager deviceMgr, DigitalChannelController lynxModule) {
     for (DeviceConfiguration deviceConfiguration : list) {
       ConfigurationType devType = deviceConfiguration.getConfigurationType();
-      if (devType==BuiltInConfigurationType.TOUCH_SENSOR) {
-        mapTouchSensor(map, deviceMgr, lynxModule, deviceConfiguration);
-      }
-      else if (devType==BuiltInConfigurationType.DIGITAL_DEVICE) {
+      if (devType.isDeviceFlavor(ConfigurationType.DeviceFlavor.DIGITAL_IO)) {
         mapDigitalDevice(map, deviceMgr, lynxModule, deviceConfiguration);
-      }
-      else if (devType==BuiltInConfigurationType.LED) {
-        mapLED(map, deviceMgr, lynxModule, deviceConfiguration);
       }
     }
   }
@@ -381,8 +390,8 @@ public class HardwareFactory {
         // nothing to do
         continue;
       }
-      if (devType.isDeviceFlavor(UserConfigurationType.Flavor.I2C)) {
-        if (devType instanceof UserI2cSensorType) {
+      if (devType.isDeviceFlavor(ConfigurationType.DeviceFlavor.I2C)) {
+        if (devType instanceof I2cDeviceConfigurationType) {
           mapUserI2cDevice(map, deviceMgr, i2cController, deviceConfiguration);
           continue;
         }
@@ -416,8 +425,8 @@ public class HardwareFactory {
       else if (devType==BuiltInConfigurationType.NOTHING) {
         // nothing to do
       }
-      else if (devType.isDeviceFlavor(UserConfigurationType.Flavor.I2C)) {
-        if (devType instanceof UserI2cSensorType) {
+      else if (devType.isDeviceFlavor(ConfigurationType.DeviceFlavor.I2C)) {
+        if (devType instanceof I2cDeviceConfigurationType) {
           mapUserI2cDevice(map, deviceMgr, module, deviceConfiguration);
         }
       }
@@ -429,8 +438,9 @@ public class HardwareFactory {
 
   private void mapUsbLegacyModule(HardwareMap map, DeviceManager deviceMgr, LegacyModuleControllerConfiguration ctrlConf) throws RobotCoreException, InterruptedException {
     if (!ctrlConf.isEnabled()) return;
-    LegacyModule legacyModule = deviceMgr.createUsbLegacyModule(ctrlConf.getSerialNumber(), ctrlConf.getName());
-    map.legacyModule.put(ctrlConf.getName(), legacyModule);
+    SerialNumber serialNumber = ctrlConf.getSerialNumber();
+    LegacyModule legacyModule = deviceMgr.createUsbLegacyModule(serialNumber, ctrlConf.getName());
+    map.legacyModule.put(serialNumber, ctrlConf.getName(), legacyModule);
 
     for (DeviceConfiguration devConf : ctrlConf.getDevices()) {
       ConfigurationType devType = devConf.getConfigurationType();
@@ -492,26 +502,28 @@ public class HardwareFactory {
 
   private void mapDigitalDevice(HardwareMap map, DeviceManager deviceMgr, DigitalChannelController digitalChannelController, DeviceConfiguration devConf) {
     if (!devConf.isEnabled()) return;
-    DigitalChannel digitalChannel = deviceMgr.createDigitalChannelDevice(digitalChannelController, devConf.getPort(), devConf.getName());
-    map.digitalChannel.put(devConf.getName(), digitalChannel);
+    HardwareDevice digitalDevice = null;
+
+    if (devConf.getConfigurationType() == BuiltInConfigurationType.TOUCH_SENSOR) {
+      digitalDevice = deviceMgr.createMRDigitalTouchSensor(digitalChannelController, devConf.getPort(), devConf.getName());
+    } else if (devConf.getConfigurationType().isDeviceFlavor(ConfigurationType.DeviceFlavor.DIGITAL_IO)) {
+      DigitalIoDeviceConfigurationType digitalDeviceType = (DigitalIoDeviceConfigurationType) devConf.getConfigurationType();
+      digitalDevice = deviceMgr.createDigitalDevice(digitalChannelController, devConf.getPort(), digitalDeviceType);
+    }
+    if (digitalDevice != null) {
+      addUserDeviceToMap(map, devConf, digitalDevice);
+    }
   }
 
-  private void mapTouchSensor(HardwareMap map, DeviceManager deviceMgr, DigitalChannelController digitalChannelController, DeviceConfiguration devConf) {
+  private void mapAnalogSensor(HardwareMap map, DeviceManager deviceMgr, AnalogInputController analogInputController, DeviceConfiguration devConf) {
     if (!devConf.isEnabled()) return;
-    TouchSensor touchSensor = deviceMgr.createMRDigitalTouchSensor(digitalChannelController, devConf.getPort(), devConf.getName());
-    map.touchSensor.put(devConf.getName(), touchSensor);
-  }
-
-  private void mapAnalogTouchSensor(HardwareMap map, DeviceManager deviceMgr, AnalogInputController analogInputController, DeviceConfiguration devConf) {
-    if (!devConf.isEnabled()) return;
-    TouchSensor touchSensor = deviceMgr.createMRAnalogTouchSensor(analogInputController, devConf.getPort(), devConf.getName());
-    map.touchSensor.put(devConf.getName(), touchSensor);
-  }
-
-  private void mapAnalogInputDevice(HardwareMap map, DeviceManager deviceMgr, AnalogInputController analogInputController, DeviceConfiguration devConf) {
-    if (!devConf.isEnabled()) return;
-    AnalogInput analogInput = deviceMgr.createAnalogInputDevice(analogInputController, devConf.getPort(), devConf.getName());
-    map.analogInput.put(devConf.getName(), analogInput);
+    if (devConf.getConfigurationType().isDeviceFlavor(ConfigurationType.DeviceFlavor.ANALOG_SENSOR)) {
+      AnalogSensorConfigurationType analogSensorType = (AnalogSensorConfigurationType) devConf.getConfigurationType();
+      HardwareDevice analogSensorDevice = deviceMgr.createAnalogSensor(analogInputController, devConf.getPort(), analogSensorType);
+      if (analogSensorDevice != null) {
+        addUserDeviceToMap(map, devConf, analogSensorDevice);
+      }
+    }
   }
 
   private void mapPwmOutputDevice(HardwareMap map, DeviceManager deviceMgr, PWMOutputController pwmOutputController, DeviceConfiguration devConf) {
@@ -540,17 +552,20 @@ public class HardwareFactory {
 
   private void mapUserI2cDevice(HardwareMap map, DeviceManager deviceMgr, I2cController i2cController, DeviceConfiguration devConf) {
     if (!devConf.isEnabled()) return;
-    UserI2cSensorType userType = (UserI2cSensorType)devConf.getConfigurationType();
+    I2cDeviceConfigurationType userType = (I2cDeviceConfigurationType)devConf.getConfigurationType();
     HardwareDevice hardwareDevice = deviceMgr.createUserI2cDevice(i2cController, devConf.getI2cChannel(), userType, devConf.getName());
     if (hardwareDevice != null) {
-      // Put the device in the overall map
-      map.put(devConf.getName(), hardwareDevice);
-      // For improved legacy support, also put the device in any categorized map in
-      // which it belongs, but don't overwrite any user-named sensor that might be there.
-      for (HardwareMap.DeviceMapping mapping : map.allDeviceMappings) {
-        if (mapping.getDeviceTypeClass().isInstance(hardwareDevice)) {
-          maybeAddToMapping(mapping, devConf.getName(), mapping.cast(hardwareDevice));
-        }
+      addUserDeviceToMap(map, devConf, hardwareDevice);
+    }
+  }
+
+  private void addUserDeviceToMap(HardwareMap map, DeviceConfiguration deviceConf, HardwareDevice deviceInstance) {
+    map.put(deviceConf.getName(), deviceInstance);
+
+    // Put in the appropriate device-specific mappings
+    for (HardwareMap.DeviceMapping mapping : map.allDeviceMappings) {
+      if (mapping.getDeviceTypeClass().isInstance(deviceInstance)) {
+        maybeAddToMapping(mapping, deviceConf.getName(), mapping.cast(deviceInstance));
       }
     }
   }
@@ -563,7 +578,7 @@ public class HardwareFactory {
 
   private void mapUserI2cDevice(HardwareMap map, DeviceManager deviceMgr, LynxModule lynxModule, DeviceConfiguration devConf) {
     if (!devConf.isEnabled()) return;
-    UserI2cSensorType userType = (UserI2cSensorType)devConf.getConfigurationType();
+    I2cDeviceConfigurationType userType = (I2cDeviceConfigurationType)devConf.getConfigurationType();
     HardwareDevice hardwareDevice = deviceMgr.createUserI2cDevice(lynxModule, devConf.getI2cChannel(), userType, devConf.getName());
     if (hardwareDevice != null) {
       // User-defined types don't live in a type-specific mapping, only in the overall one
@@ -575,12 +590,6 @@ public class HardwareFactory {
     if (!devConf.isEnabled()) return;
     AnalogOutput analogOutput = deviceMgr.createAnalogOutputDevice(analogOutputController, devConf.getPort(), devConf.getName());
     map.analogOutput.put(devConf.getName(), analogOutput);
-  }
-
-  private void mapOpticalDistanceSensor(HardwareMap map, DeviceManager deviceMgr, AnalogInputController analogInputController, DeviceConfiguration devConf) {
-    if (!devConf.isEnabled()) return;
-    OpticalDistanceSensor opticalDistanceSensor = deviceMgr.createMRAnalogOpticalDistanceSensor(analogInputController, devConf.getPort(), devConf.getName());
-    map.opticalDistanceSensor.put(devConf.getName(), opticalDistanceSensor);
   }
 
   private void mapNxtTouchSensor(HardwareMap map, DeviceManager deviceMgr, LegacyModule legacyModule, DeviceConfiguration devConf) {
@@ -641,7 +650,7 @@ public class HardwareFactory {
     if (!ctrlConf.isEnabled()) return;
     HiTechnicNxtDcMotorController dcMotorController = (HiTechnicNxtDcMotorController)deviceMgr.createHTDcMotorController(legacyModule, ctrlConf.getPort(), ctrlConf.getName());
     map.dcMotorController.put(ctrlConf.getName(), dcMotorController);
-    for (MotorConfiguration motorConf : ((MotorControllerConfiguration) ctrlConf).getMotors()) {
+    for (DeviceConfiguration motorConf : ((MotorControllerConfiguration) ctrlConf).getMotors()) {
       mapMotor(map, deviceMgr, motorConf, dcMotorController);
     }
 
@@ -654,14 +663,28 @@ public class HardwareFactory {
     ServoController sc = deviceMgr.createHTServoController(legacyModule, devConf.getPort(), devConf.getName());
     map.servoController.put(devConf.getName(), sc);
     for (DeviceConfiguration servoConf : ((ServoControllerConfiguration) devConf).getServos()) {
-      mapServo(map, deviceMgr, servoConf, sc);
+      mapServoDevice(map, deviceMgr, servoConf, sc);
+    }
+  }
+
+  private void mapWebcam(HardwareMap map, DeviceManager deviceManager, WebcamConfiguration webcamConfiguration) throws RobotCoreException, InterruptedException {
+    if (!webcamConfiguration.isEnabled()) return;
+    SerialNumber serialNumber = webcamConfiguration.getSerialNumber();
+    if (webcamConfiguration.getAutoOpen()) {
+      RobotLog.ee(TAG, "support for auto-opening webcams is not yet implemented: %s", serialNumber);
+      return;
+    }
+    WebcamName webcamName = deviceManager.createWebcamName(serialNumber, webcamConfiguration.getName());
+    if (webcamName != null) {
+      map.put(serialNumber, webcamConfiguration.getName(), webcamName);
     }
   }
 
   private void mapLynxUsbDevice(HardwareMap map, DeviceManager deviceMgr, LynxUsbDeviceConfiguration lynxUsbDeviceConfiguration) throws RobotCoreException, InterruptedException {
     if (!lynxUsbDeviceConfiguration.isEnabled()) return;
     // Make a new LynxUsbDevice
-    LynxUsbDevice lynxUsbDevice = (LynxUsbDevice)deviceMgr.createLynxUsbDevice(lynxUsbDeviceConfiguration.getSerialNumber(), lynxUsbDeviceConfiguration.getName());
+    SerialNumber serialNumber = lynxUsbDeviceConfiguration.getSerialNumber();
+    LynxUsbDevice lynxUsbDevice = (LynxUsbDevice)deviceMgr.createLynxUsbDevice(serialNumber, lynxUsbDeviceConfiguration.getName());
     try {
       // If the system made up this device, let the live device know that too
       if (lynxUsbDeviceConfiguration.isSystemSynthetic()) {
@@ -669,7 +692,7 @@ public class HardwareFactory {
       }
 
       // Are we the first USB-attached (as opposed to embedded) LynxUsbDevice?
-      boolean isFirstLynxUsbDevice = !LynxConstants.isEmbeddedSerialNumber(lynxUsbDeviceConfiguration.getSerialNumber());
+      boolean isFirstLynxUsbDevice = !LynxConstants.isEmbeddedSerialNumber(serialNumber);
       for (LynxUsbDevice usbDevice : map.getAll(LynxUsbDevice.class)) {
         if (!LynxConstants.isEmbeddedSerialNumber(usbDevice.getSerialNumber())) {
           isFirstLynxUsbDevice = false;
@@ -716,17 +739,18 @@ public class HardwareFactory {
       // For the things that worked, remember the module names in the hwmap
       for (Map.Entry<Integer, LynxModule> pair : connectedModules.entrySet()) {
         int moduleAddress = pair.getKey();
-        map.put(moduleNames.get(moduleAddress), pair.getValue());
+        LynxModule lynxModule = pair.getValue();
+        map.put(lynxModule.getModuleSerialNumber(), moduleNames.get(moduleAddress), lynxModule);
       }
 
       // Remember the LynxUsbDevice too, so we we'll only enable one to charge the RC battery
-      map.put(lynxUsbDeviceConfiguration.getName(), lynxUsbDevice);
+      map.put(serialNumber, lynxUsbDeviceConfiguration.getName(), lynxUsbDevice);
 
     } catch (LynxNackException e) {
       throw e.wrap();
     } catch (RobotCoreException|RuntimeException e) {
       lynxUsbDevice.close();
-      map.remove(lynxUsbDeviceConfiguration.getName(), lynxUsbDevice);
+      map.remove(serialNumber, lynxUsbDeviceConfiguration.getName(), lynxUsbDevice);
       throw e;
     }
   }
@@ -765,9 +789,9 @@ public class HardwareFactory {
       // For each module, hook up motor controller and motors
       LynxDcMotorController mc = new LynxDcMotorController(context, module);
       map.dcMotorController.put(moduleConfiguration.getName(), mc);
-      for (MotorConfiguration motorConf : lynxModuleConfiguration.getMotors()) {
+      for (DeviceConfiguration motorConf : lynxModuleConfiguration.getMotors()) {
         if (motorConf.isEnabled()) {
-          DcMotor m = deviceMgr.createDcMotorEx(mc, motorConf.getPort(), motorConf.getMotorType(), motorConf.getName());
+          DcMotor m = deviceMgr.createDcMotorEx(mc, motorConf.getPort(), (MotorConfigurationType) motorConf.getConfigurationType(), motorConf.getName());
           map.dcMotor.put(motorConf.getName(), m);
         }
       }
@@ -776,7 +800,7 @@ public class HardwareFactory {
       LynxServoController sc = new LynxServoController(context, module);
       map.servoController.put(moduleConfiguration.getName(), sc);
       for (DeviceConfiguration servoConf : lynxModuleConfiguration.getServos()) {
-        mapServoEx(map, deviceMgr, servoConf, sc);
+        mapLynxServoDevice(map, deviceMgr, servoConf, sc);
       }
 
       // And a voltage sensor
@@ -811,14 +835,14 @@ public class HardwareFactory {
     map.dcMotorController.put(devConf.getName()+"Motor", mc);
     map.dcMotorController.put(devConf.getName(), mc);
     for (DeviceConfiguration motorConf : ((MatrixControllerConfiguration) devConf).getMotors()) {
-      mapMotor(map, deviceMgr, (MotorConfiguration) motorConf, mc);
+      mapMotor(map, deviceMgr, motorConf, mc);
     }
 
     ServoController sc = new MatrixServoController(master);
     map.servoController.put(devConf.getName()+"Servo", sc);
     map.servoController.put(devConf.getName(), sc);
     for (DeviceConfiguration servoConf : ((MatrixControllerConfiguration) devConf).getServos()) {
-      mapServo(map, deviceMgr, servoConf, sc);
+      mapServoDevice(map, deviceMgr, servoConf, sc);
     }
   }
 
@@ -874,18 +898,10 @@ public class HardwareFactory {
   //------------------------------------------------------------------------------------------------
 
   public static void noteSerialNumberType(Context context, SerialNumber serialNumber, String typeName) {
-    synchronized (deviceDisplayNames) {
-      deviceDisplayNames.put(serialNumber.toString(), String.format("%s [%s]", typeName, serialNumber.toString(context)));
-    }
+    SerialNumber.noteSerialNumberType(serialNumber, typeName);
   }
 
   public static String getDeviceDisplayName(Context context, SerialNumber serialNumber) {
-    synchronized (deviceDisplayNames) {
-      String result = deviceDisplayNames.get(serialNumber.toString());
-      if (result == null) {
-        result = String.format(context.getString(R.string.deviceDisplayNameUnknownUSBDevice), serialNumber.toString(context));
-      }
-      return result;
-    }
+    return SerialNumber.getDeviceDisplayName(serialNumber);
   }
 }

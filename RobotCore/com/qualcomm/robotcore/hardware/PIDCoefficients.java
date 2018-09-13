@@ -32,6 +32,8 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package com.qualcomm.robotcore.hardware;
 
+import org.firstinspires.ftc.robotcore.internal.system.Misc;
+
 /**
  * {@link PIDCoefficients} conveys a set of configuration parameters for a PID algorithm.
  * @see <a href="https://en.wikipedia.org/wiki/PID_controller">PID controller</a>
@@ -41,6 +43,11 @@ public class PIDCoefficients
     public double p;
     public double i;
     public double d;
+
+    @Override public String toString()
+        {
+        return Misc.formatForUser("%s(p=%f i=%f d=%f)", getClass().getSimpleName(), p, i, d);
+        }
 
     public PIDCoefficients()
         {

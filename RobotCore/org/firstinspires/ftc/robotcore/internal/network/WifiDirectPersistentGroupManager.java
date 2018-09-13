@@ -92,20 +92,20 @@ public class WifiDirectPersistentGroupManager extends WifiStartStoppable
             classPersistentGroupInfoListener = Class.forName("android.net.wifi.p2p.WifiP2pManager$PersistentGroupInfoListener");
 
             // Find the 'public Collection<WifiP2pGroup> getGroupList()' method
-            methodGetGroupList = ClassUtil.getHiddenMethod(classWifiP2pGroupList, "getGroupList");
+            methodGetGroupList = ClassUtil.getDeclaredMethod(classWifiP2pGroupList, "getGroupList");
 
             // WifiP2pManger: public void requestPersistentGroupInfo(Channel c, PersistentGroupInfoListener listener) {
-            methodRequestPersistentGroupInfo = ClassUtil.getHiddenMethod(WifiP2pManager.class,
+            methodRequestPersistentGroupInfo = ClassUtil.getDeclaredMethod(WifiP2pManager.class,
                     "requestPersistentGroupInfo",
                     WifiP2pManager.Channel.class, classPersistentGroupInfoListener);
 
             // WifiP2pManger: public void deletePersistentGroup(Channel c, int netId, ActionListener listener) {
-            methodDeletePersistentGroup = ClassUtil.getHiddenMethod(WifiP2pManager.class,
+            methodDeletePersistentGroup = ClassUtil.getDeclaredMethod(WifiP2pManager.class,
                     "deletePersistentGroup",
                     WifiP2pManager.Channel.class, int.class, WifiP2pManager.ActionListener.class);
 
             // WifiP2pGroup: public int getNetworkId()
-            methodGetNetworkId = ClassUtil.getHiddenMethod(WifiP2pGroup.class, "getNetworkId");
+            methodGetNetworkId = ClassUtil.getDeclaredMethod(WifiP2pGroup.class, "getNetworkId");
             }
         catch (ClassNotFoundException e)
             {

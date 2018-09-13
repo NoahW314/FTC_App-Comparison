@@ -5,7 +5,8 @@ package org.firstinspires.ftc.robotcore.internal.webserver;
 import com.qualcomm.robotcore.hardware.configuration.LynxConstants;
 
 import org.firstinspires.ftc.robotcore.internal.collections.SimpleGson;
-import org.firstinspires.ftc.robotcore.internal.network.DeviceNameManager;
+import org.firstinspires.ftc.robotcore.internal.network.DeviceNameManagerFactory;
+import org.firstinspires.ftc.robotcore.internal.network.WifiDirectDeviceNameManager;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
@@ -38,8 +39,8 @@ public class RobotControllerWebInfo {
   public RobotControllerWebInfo(
       String networkName, String passphrase, String serverUrl,
       boolean serverIsAlive, long timeServerStartedMillis) {
-    this.deviceName = DeviceNameManager.getInstance().getDeviceName();
-    this.networkName = networkName;
+    this.deviceName = DeviceNameManagerFactory.getInstance().getDeviceName();
+    this.networkName = (networkName == null) ? this.deviceName : networkName;
     this.passphrase = passphrase;
     this.serverUrl = serverUrl;
     this.serverIsAlive = serverIsAlive;

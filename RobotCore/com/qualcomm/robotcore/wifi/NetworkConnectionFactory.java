@@ -32,7 +32,6 @@ package com.qualcomm.robotcore.wifi;
 
 import android.content.Context;
 
-import com.qualcomm.robotcore.util.Network;
 import com.qualcomm.robotcore.util.RobotLog;
 
 public class NetworkConnectionFactory {
@@ -48,6 +47,10 @@ public static NetworkConnection getNetworkConnection(NetworkType type, Context c
         return null;  // not yet implemented
       case SOFTAP:
         return SoftApAssistant.getSoftApAssistant(context);
+      case WIRELESSAP:
+        return DriverStationAccessPointAssistant.getDriverStationAccessPointAssistant(context);
+      case RCWIRELESSAP:
+        return RobotControllerAccessPointAssistant.getRobotControllerAccessPointAssistant(context);
       default:
         return null;
     }

@@ -32,11 +32,16 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package org.firstinspires.ftc.robotcore.internal.vuforia;
 
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
+
 import com.vuforia.Trackable;
 import com.vuforia.TrackableResult;
 import com.vuforia.VuMarkTarget;
 import com.vuforia.VuMarkTemplate;
 
+import org.firstinspires.ftc.robotcore.external.hardware.camera.Camera;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.CameraName;
 import org.firstinspires.ftc.robotcore.external.matrices.OpenGLMatrix;
 import org.firstinspires.ftc.robotcore.external.navigation.VuMarkInstanceId;
 import org.firstinspires.ftc.robotcore.external.navigation.VuforiaTrackableDefaultListener;
@@ -68,7 +73,7 @@ public class VuforiaTrackableImpl implements VuforiaTrackable, VuforiaTrackableN
     protected Object                userData;
 
     protected final Object          locationLock = new Object();
-    protected OpenGLMatrix          location;
+    protected @NonNull OpenGLMatrix ftcFieldFromTarget;
 
     protected Class<? extends VuforiaTrackable.Listener> listenerClass;
     protected final Map<VuMarkInstanceId, VuforiaTrackable> vuMarkMap = new HashMap<>();
@@ -87,7 +92,7 @@ public class VuforiaTrackableImpl implements VuforiaTrackable, VuforiaTrackableN
         this.trackable = trackable;
         this.trackables = trackables;
         this.userData = null;
-        this.location = null;
+        this.ftcFieldFromTarget = OpenGLMatrix.identityMatrix();
         this.name = null;
         this.listenerClass = listenerClass;
         try {
@@ -167,6 +172,9 @@ public class VuforiaTrackableImpl implements VuforiaTrackable, VuforiaTrackableN
         {
         // We *always* have a listener
         this.listener = listener==null ? new VuforiaTrackableDefaultListener(this) : listener;
+
+        // Make sure they know they're listening to us
+        this.listener.addTrackable(this);
         }
 
     @Override public synchronized Listener getListener()
@@ -189,22 +197,33 @@ public class VuforiaTrackableImpl implements VuforiaTrackable, VuforiaTrackableN
         return trackables;
         }
 
-    @Override public void setLocation(OpenGLMatrix location)
+    @Override public void setLocationFtcFieldFromTarget(@NonNull OpenGLMatrix ftcFieldFromTarget)
         {
         /** Separate lock so as to accommodate upcalls from {@link VuforiaTrackableDefaultListener} */
         synchronized (this.locationLock)
             {
-            this.location = location;
+            this.ftcFieldFromTarget = ftcFieldFromTarget;
             }
         }
 
-    @Override public OpenGLMatrix getLocation()
+    @Override public void setLocation(@NonNull OpenGLMatrix location)
+        {
+        setLocationFtcFieldFromTarget(location);
+        }
+
+    @Override public @NonNull OpenGLMatrix getFtcFieldFromTarget()
         {
         synchronized (this.locationLock)
             {
-            return this.location;
+            return this.ftcFieldFromTarget;
             }
         }
+
+    @Override public @NonNull OpenGLMatrix getLocation()
+        {
+        return getFtcFieldFromTarget();
+        }
+
 
     @Override public String getName()
         {
@@ -235,12 +254,12 @@ public class VuforiaTrackableImpl implements VuforiaTrackable, VuforiaTrackableN
         // of this relationship is thus the responsibility of our caller.
         }
 
-    @Override public synchronized void noteTracked(TrackableResult trackableResult)
+    @Override public synchronized void noteTracked(TrackableResult trackableResult, CameraName cameraName, @Nullable Camera camera)
         {
-        this.getListener().onTracked(trackableResult, null);
+        this.getListener().onTracked(trackableResult, cameraName, camera, null);
         if (parent instanceof VuforiaTrackableNotify)
             {
-            parent.getListener().onTracked(trackableResult, this);
+            parent.getListener().onTracked(trackableResult, cameraName, camera, this);
             }
         }
     }

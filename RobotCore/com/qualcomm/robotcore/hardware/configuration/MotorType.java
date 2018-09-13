@@ -43,6 +43,10 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
+ * @deprecated
+ *
+ * Use {@link com.qualcomm.robotcore.hardware.configuration.annotations.MotorType} instead.
+ *
  * {@link MotorType} is an annotation with which a class or interface can be decorated in
  * order to define a new kind of motor that can be configured in the robot configuration user
  * interface.
@@ -51,6 +55,7 @@ import java.lang.annotation.Target;
 @Documented
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
+@Deprecated
 public @interface MotorType
     {
     /**

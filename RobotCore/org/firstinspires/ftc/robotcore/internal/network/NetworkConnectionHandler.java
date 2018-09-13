@@ -41,10 +41,13 @@ import android.support.annotation.Nullable;
 
 import com.qualcomm.robotcore.R;
 import com.qualcomm.robotcore.exception.RobotCoreException;
+import com.qualcomm.robotcore.exception.RobotProtocolException;
 import com.qualcomm.robotcore.robocol.Command;
 import com.qualcomm.robotcore.robocol.PeerDiscovery;
 import com.qualcomm.robotcore.robocol.RobocolDatagram;
 import com.qualcomm.robotcore.robocol.RobocolDatagramSocket;
+import com.qualcomm.robotcore.robot.Robot;
+import com.qualcomm.robotcore.util.Device;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.RobotLog;
 import com.qualcomm.robotcore.wifi.NetworkConnection;
@@ -86,11 +89,11 @@ public class NetworkConnectionHandler {
     protected Context context;
     protected ElapsedTime lastRecvPacket = new ElapsedTime();
     protected InetAddress remoteAddr;
-    protected RobocolDatagramSocket socket;
-    protected ScheduledExecutorService sendLoopService = Executors.newSingleThreadScheduledExecutor();
+    protected volatile RobocolDatagramSocket socket;
+    protected ScheduledExecutorService sendLoopService = null;
     protected ScheduledFuture<?> sendLoopFuture;
-    protected SendOnceRunnable sendOnceRunnable;
-    protected SetupRunnable setupRunnable;
+    protected volatile SendOnceRunnable sendOnceRunnable;
+    protected volatile SetupRunnable setupRunnable;
     protected @Nullable String connectionOwner;
     protected @Nullable String connectionOwnerPassword;
 
@@ -109,12 +112,27 @@ public class NetworkConnectionHandler {
         return wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "");
     }
 
-    public NetworkType getDefaultNetworkType(Context context) {
-        SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(context);
-        return NetworkType.fromString(preferences.getString(context.getString(R.string.pref_network_connection_type), NetworkType.WIFIDIRECT.toString()));
+    /**
+     * getDefaultNetworkType
+     *
+     * On the control hub we force the network type into wireless ap mode.  On any other device we'll
+     * use the stored preference while defaulting to wifi direct.
+     */
+    public static NetworkType getDefaultNetworkType(Context context) {
+
+        if (Device.isRevControlHub() == true) {
+            return NetworkType.RCWIRELESSAP;
+        } else {
+            SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(context);
+            return NetworkType.fromString(preferences.getString(context.getString(R.string.pref_pairing_kind), NetworkType.globalDefaultAsString()));
+        }
     }
 
-    // Init on DS
+    /**
+     * init
+     *
+     * The driver station version.
+     */
     public void init(@NonNull WifiManager.WifiLock wifiLock, @NonNull NetworkType networkType, @NonNull String owner, @NonNull String password, @NonNull Context context) {
         this.wifiLock = wifiLock;
         this.connectionOwner = owner;
@@ -128,7 +146,11 @@ public class NetworkConnectionHandler {
         startWifiAndDiscoverConnections();
     }
 
-    // Init on RC. This method is idempotent.
+    /**
+     * init
+     *
+     * Init on the robot controller. This method is idempotent.
+     */
     public void init(@NonNull NetworkType networkType, @NonNull Context context) {
         this.context = context;
         initNetworkConnection(networkType);
@@ -155,8 +177,16 @@ public class NetworkConnectionHandler {
         }
     }
 
+    public NetworkConnection getNetworkConnection() {
+        return networkConnection;
+    }
+
     public NetworkType getNetworkType() {
-        return networkConnection.getNetworkType();
+        if (networkConnection == null) {
+            return NetworkType.UNKNOWN_NETWORK_TYPE;
+        } else {
+            return networkConnection.getNetworkType();
+        }
     }
 
     public void startWifiAndDiscoverConnections() {
@@ -171,8 +201,16 @@ public class NetworkConnectionHandler {
         networkConnection.connect(connectionOwner, connectionOwnerPassword);
     }
 
+    /**
+     * connectedWithUnexpectedDevice
+     *
+     * If a driver station is in wireless ap mode, then it always simply connects
+     * to a robot controller at the known ip on the same LAN, otherwise compare
+     * with the cached connection owner (pulled from preferences).  Note this only
+     * runs on the driver station.
+     */
     public boolean connectedWithUnexpectedDevice() {
-        if (connectionOwner != null) {
+        if ((getNetworkType() != NetworkType.WIRELESSAP) && (connectionOwner != null)) {
             if (!connectionOwner.equals(networkConnection.getConnectionOwnerMacAddress())) {
                 RobotLog.ee(TAG,"Network Connection - connected to " + networkConnection.getConnectionOwnerMacAddress() + ", expected " + connectionOwner);
                 return true;
@@ -228,12 +266,25 @@ public class NetworkConnectionHandler {
         return connectionOwner != null && connectionOwner.equals(name);
     }
 
+    /**
+     * handleConnectionInfoAvailable
+     *
+     * We are on a LAN.  Do the network setup in SetupRunnable.  Since we know we were disconnected
+     * prior to this time reset lastRecvPacket so that the command sending thread won't think we are
+     * immediately disconnected again.
+     */
     public synchronized CallbackResult handleConnectionInfoAvailable(SocketConnect socketConnect) {
         CallbackResult result = CallbackResult.HANDLED;
+        RobotLog.ii(TAG, "Handling new network connection infomation, connected: " + networkConnection.isConnected() + " setup needed: " + setupNeeded);
+        lastRecvPacket.reset();
         if (networkConnection.isConnected() && setupNeeded ) {
             setupNeeded = false;
 
-            if (networkConnection.getNetworkType() == NetworkType.SOFTAP) {
+            /*
+             * This appears to be necessary as it may take some time for wlan0 to be bound to
+             * the default ip address when not in wifi direct mode.
+             */
+            if (networkConnection.getNetworkType() != NetworkType.WIFIDIRECT) {
                 try {
                     Thread.sleep(2000); // in milliseconds.
                 } catch (InterruptedException e) {
@@ -296,14 +347,20 @@ public class NetworkConnectionHandler {
         return result;
     }
 
-    public synchronized void updateConnection
-            (
-            @NonNull RobocolDatagram packet,
-            @Nullable SendOnceRunnable.Parameters parameters,
-            SendOnceRunnable.ClientCallback clientCallback
-            ) throws RobotCoreException {
+    /**
+     * updateConnection()
+     *
+     * We received a peer discovery packet, 'connect' the udp socket so that
+     * this endpoint knows who our peer is and start the service that will
+     * send datagrams back to the peer.  This is symmetric vis-a-vis the RC and DS.
+     */
+    public synchronized void updateConnection(@NonNull RobocolDatagram packet, @Nullable SendOnceRunnable.Parameters parameters,
+                                              SendOnceRunnable.ClientCallback clientCallback ) throws RobotCoreException, RobotProtocolException {
 
         if (packet.getAddress().equals(remoteAddr)) {
+            /*
+             * We already received a peer discovery packet.  Don't do all the setup below.
+             */
             if (sendOnceRunnable != null) sendOnceRunnable.onPeerConnected(false);
             if (clientCallback != null) clientCallback.peerConnected(false);
             return;
@@ -312,14 +369,22 @@ public class NetworkConnectionHandler {
         if (parameters==null) parameters = new SendOnceRunnable.Parameters();
 
         // Actually parse the packet in order to verify Robocol version compatibility
-        PeerDiscovery peerDiscovery = PeerDiscovery.forReceive();
-        peerDiscovery.fromByteArray(packet.getData());
+        try {
+            PeerDiscovery peerDiscovery = PeerDiscovery.forReceive();
+            peerDiscovery.fromByteArray(packet.getData());
+        } catch (RobotProtocolException e) {
+            RobotLog.ee(TAG, e.getMessage());
+            throw e;
+        }
 
         // update remoteAddr with latest address
         remoteAddr = packet.getAddress();
         RobotLog.vv(PeerDiscovery.TAG,"new remote peer discovered: " + remoteAddr.getHostAddress());
 
-        if (socket==null && setupRunnable != null) {
+        /*
+         * Always get the socket so our handle is not stale. (It may have been closed and a new one opened).
+         */
+        if (setupRunnable != null) {
             socket = setupRunnable.getSocket();
         }
 
@@ -334,6 +399,7 @@ public class NetworkConnectionHandler {
             if (sendLoopFuture == null || sendLoopFuture.isDone()) {
                 RobotLog.vv(TAG, "starting sending loop");
                 sendOnceRunnable = new SendOnceRunnable(context, clientCallback,  socket, lastRecvPacket, parameters);
+                sendLoopService = Executors.newSingleThreadScheduledExecutor();
                 sendLoopFuture = sendLoopService.scheduleAtFixedRate(sendOnceRunnable, 0, 40, TimeUnit.MILLISECONDS);
             }
 
@@ -342,18 +408,17 @@ public class NetworkConnectionHandler {
         }
     }
 
-    // synchronized avoids race with shutdown()
-    public synchronized boolean removeCommand(Command cmd) {
+    public boolean removeCommand(Command cmd) {
+        SendOnceRunnable sendOnceRunnable = this.sendOnceRunnable;
         return (sendOnceRunnable != null) && sendOnceRunnable.removeCommand(cmd);
     }
 
-    // synchronized avoids race with shutdown()
-    public synchronized void sendCommand(Command cmd) {
+    public void sendCommand(Command cmd) {
+        SendOnceRunnable sendOnceRunnable = this.sendOnceRunnable;
         if (sendOnceRunnable != null) sendOnceRunnable.sendCommand(cmd);
     }
 
-    // synchronized avoids race with shutdown()
-    public synchronized void sendReply(Command commandRequest, Command commandResponse) {
+    public void sendReply(Command commandRequest, Command commandResponse) {
         if (wasTransmittedRemotely(commandRequest)) {
             sendCommand(commandResponse);
         } else {
@@ -366,7 +431,8 @@ public class NetworkConnectionHandler {
     }
 
     /** Inject the indicated command into the reception infrastructure as if it had been transmitted remotely */
-    public synchronized void injectReceivedCommand(Command cmd) {
+    public void injectReceivedCommand(Command cmd) {
+        SetupRunnable setupRunnable = this.setupRunnable;
         if (setupRunnable != null) {
             cmd.setIsInjected(true);
             setupRunnable.injectReceivedCommand(cmd);
@@ -387,7 +453,8 @@ public class NetworkConnectionHandler {
         return CallbackResult.NOT_HANDLED;
     }
 
-    public synchronized void sendDatagram(RobocolDatagram datagram) {
+    public void sendDatagram(RobocolDatagram datagram) {
+        RobocolDatagramSocket socket = this.socket;
         if (socket!=null && socket.getInetAddress()!=null ) socket.send(datagram);
     }
 
@@ -410,10 +477,9 @@ public class NetworkConnectionHandler {
             sendLoopFuture = null;
         }
 
-        // close the socket as well
-        if (socket != null) {
-            socket.close();
-            socket = null;
+        if (sendLoopService != null) {
+            sendLoopService.shutdown();
+            sendLoopService = null;
         }
 
         // reset the client
@@ -423,7 +489,44 @@ public class NetworkConnectionHandler {
         setupNeeded = true;
     }
 
-    //----------------------------------------------------------------------------------------------
+    public void stopPeerDiscovery() {
+        if (setupRunnable != null) {
+            setupRunnable.stopPeerDiscovery();
+        }
+    }
+
+    public long getRxDataCount() {
+        SetupRunnable setupRunnable = this.setupRunnable;
+        if (setupRunnable != null) {
+            return setupRunnable.getRxDataCount();
+        } else {
+            return 0;
+        }
+    }
+
+    public long getTxDataCount() {
+        SetupRunnable setupRunnable = this.setupRunnable;
+        if (setupRunnable != null) {
+            return setupRunnable.getTxDataCount();
+        } else {
+            return 0;
+        }
+    }
+
+    public long getBytesPerSecond() {
+        SetupRunnable setupRunnable = this.setupRunnable;
+        if (setupRunnable != null) {
+            return setupRunnable.getBytesPerSecond();
+        } else {
+            return 0;
+        }
+    }
+
+    public int getWifiChannel() {
+        return networkConnection.getWifiChannel();
+    }
+
+//----------------------------------------------------------------------------------------------
     // Callback chainers
     // Here we find the *actual* classes we register for callback notifications of various
     // forms. Internally, they maintain chains of external, registered callbacks, to whom they
@@ -461,7 +564,7 @@ public class NetworkConnectionHandler {
             }
         }
 
-        @Override public CallbackResult onNetworkConnectionEvent(NetworkConnection.Event event) {
+        @Override public CallbackResult onNetworkConnectionEvent(NetworkConnection.NetworkEvent event) {
             for (NetworkConnection.NetworkConnectionCallback callback : callbacks) {
                 CallbackResult result = callback.onNetworkConnectionEvent(event);
                 if (result.stopDispatch()) {

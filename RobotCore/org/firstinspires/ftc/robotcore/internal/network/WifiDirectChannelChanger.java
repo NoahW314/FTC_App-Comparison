@@ -56,6 +56,7 @@ public class WifiDirectChannelChanger
     private PreferencesHelper   preferencesHelper = new PreferencesHelper(TAG, context);
     private WifiDirectAgent     wifiDirectAgent = WifiDirectAgent.getInstance();
     private int                 channel = 0;
+    private int                 listenChannel = 0;
     private volatile boolean    isChangingChannels = false;
 
     private void issueSuccessToast()
@@ -99,7 +100,17 @@ public class WifiDirectChannelChanger
             {
             @Override public void run()
                 {
-                wifiDirectAgent.setWifiP2pChannels(channel, channel, new WifiP2pManager.ActionListener()
+                // it appears that the listen channel must be a 2.4GHz or auto channel.
+                // if the new channel is > 11 (i.e., it's a 5GHz channel) use 0 as the listen channel.
+                if (channel > 11)
+                    {
+                    listenChannel = 0;
+                    }
+                else
+                    {
+                    listenChannel = channel;
+                    }
+                wifiDirectAgent.setWifiP2pChannels(listenChannel, channel, new WifiP2pManager.ActionListener()
                     {
                     @Override public void onSuccess()
                         {
@@ -114,7 +125,25 @@ public class WifiDirectChannelChanger
 
                     @Override public void onFailure(int reason)
                         {
-                        RobotLog.vv(TAG, "callSetWifiP2pChannels() failure");
+                        // Log reason for failure.
+                        switch(reason)
+                            {
+                            case WifiP2pManager.P2P_UNSUPPORTED:
+                                RobotLog.vv(TAG, "callSetWifiP2pChannels() failure (P2P_UNSUPPORTED)");
+                                break;
+
+                            case WifiP2pManager.BUSY:
+                                RobotLog.vv(TAG, "callSetWifiP2pChannels() failure (BUSY)");
+                                break;
+
+                            case WifiP2pManager.ERROR:
+                                RobotLog.vv(TAG, "callSetWifiP2pChannels() failure (ERROR)");
+                                break;
+
+                            default:
+                                RobotLog.vv(TAG, "callSetWifiP2pChannels() failure (unknown reason)");
+                            }
+
                         finishChannelChange(false);
                         }
                     });

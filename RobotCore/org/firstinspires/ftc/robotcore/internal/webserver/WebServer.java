@@ -55,6 +55,7 @@ public class WebServer
     public static final String TAG = WebServer.class.getSimpleName();
 
     private static final int DEFAULT_PORT = 8080;
+    private static final boolean DBG = false;
 
     private final NetworkType networkType;
     private final NanoHTTPD nanoHttpd;
@@ -71,15 +72,15 @@ public class WebServer
     private boolean serverIsAlive;
     private int port;
 
-    public WebServer()
+    public WebServer(NetworkType networkType)
     {
-        this(DEFAULT_PORT);
+        this(DEFAULT_PORT, networkType);
     }
 
-    public WebServer(int port)
+    public WebServer(int port, NetworkType networkType)
     {
         this.port = port;
-        this.networkType = NetworkType.WIFIDIRECT;
+        this.networkType = networkType;
         this.nanoHttpd = createNanoHttpd(port);
         this.webHandlerManager = new WebHandlerManager(this);
         this.lock = new Object();
@@ -119,6 +120,7 @@ public class WebServer
             try {
                 if (wasStarted())
                 {
+                    RobotLog.vv(TAG, "Asked an already running WebServer to start");
                     return;
                 }
                 RobotLog.vv(TAG, "starting port=%d", port);
@@ -142,7 +144,7 @@ public class WebServer
                     }
                     else
                     {
-                        networkName = networkConnection.getConnectionOwnerName();
+                        networkName = null;
                     }
                     passphrase = networkConnection.getPassphrase();
                     connectionOwnerAddress = networkConnection.getConnectionOwnerAddress();
@@ -225,6 +227,7 @@ public class WebServer
             {
                 Method method = session.getMethod();
                 if (Method.GET==method || Method.PUT==method || Method.POST==method) {
+                    if (DBG) { logSession(session, false); }
                     return webHandlerManager.serve(session);
                 } else {
                     return newFixedLengthResponse(Response.Status.NOT_FOUND, NanoHTTPD.MIME_PLAINTEXT, "");
@@ -234,8 +237,13 @@ public class WebServer
     }
 
     /** a debugging utility */
-    public static void logSession(NanoHTTPD.IHTTPSession session)
+    public static void logSession(NanoHTTPD.IHTTPSession session, boolean logPings)
     {
+        String uri = session.getUri();
+        if ((logPings == false) && (uri.equals("/ping"))) {
+            return;
+        }
+
         String prefix = "\n   ";
         StringBuilder builder = new StringBuilder();
         builder.append(prefix).append(String.format("uri='%s'", session.getUri()));

@@ -31,13 +31,12 @@
 package com.qualcomm.robotcore.eventloop;
 
 import android.content.Context;
-import android.hardware.usb.UsbDevice;
 import android.support.annotation.NonNull;
 
 import com.qualcomm.robotcore.eventloop.opmode.EventLoopManagerClient;
-import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.OpModeManager;
 import com.qualcomm.robotcore.exception.RobotCoreException;
+import com.qualcomm.robotcore.exception.RobotProtocolException;
 import com.qualcomm.robotcore.hardware.Gamepad;
 import com.qualcomm.robotcore.hardware.usb.RobotUsbModule;
 import com.qualcomm.robotcore.robocol.Command;
@@ -49,13 +48,10 @@ import com.qualcomm.robotcore.robot.RobotState;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
 import com.qualcomm.robotcore.util.RobotLog;
-import com.qualcomm.robotcore.util.SerialNumber;
 import com.qualcomm.robotcore.util.ThreadPool;
 import com.qualcomm.robotcore.wifi.NetworkConnection;
 import com.qualcomm.robotcore.wifi.NetworkType;
-import com.qualcomm.robotcore.wifi.WifiDirectAssistant;
 
-import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 import org.firstinspires.ftc.robotcore.internal.network.CallbackResult;
 import org.firstinspires.ftc.robotcore.internal.network.NetworkConnectionHandler;
 import org.firstinspires.ftc.robotcore.internal.network.RecvLoopRunnable;
@@ -63,6 +59,7 @@ import org.firstinspires.ftc.robotcore.internal.network.RobotCoreCommandList;
 import org.firstinspires.ftc.robotcore.internal.network.SendOnceRunnable;
 import org.firstinspires.ftc.robotcore.internal.network.SocketConnect;
 import org.firstinspires.ftc.robotcore.internal.opmode.OpModeManagerImpl;
+import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 import org.firstinspires.ftc.robotcore.internal.webserver.WebServer;
 
 import java.net.InetAddress;
@@ -79,7 +76,7 @@ import java.util.concurrent.TimeUnit;
  * to the current EventLoop.
  */
 @SuppressWarnings("unused,WeakerAccess")
-public class EventLoopManager implements RecvLoopRunnable.RecvLoopCallback, NetworkConnection.NetworkConnectionCallback, SendOnceRunnable.ClientCallback {
+public class EventLoopManager implements RecvLoopRunnable.RecvLoopCallback, NetworkConnection.NetworkConnectionCallback, SendOnceRunnable.ClientCallback, SyncdDevice.Manager {
 
   //------------------------------------------------------------------------------------------------
   // Types
@@ -122,8 +119,9 @@ public class EventLoopManager implements RecvLoopRunnable.RecvLoopCallback, Netw
   private final         Object                eventLoopLock             = new Object();
   private final         Gamepad               gamepads[]                = { new Gamepad(), new Gamepad() };
   private               Heartbeat             heartbeat                 = new Heartbeat();
+  private               boolean               attemptedSetTime          = false;
   private               EventLoopMonitor      callback                  = null;
-  private final         Set<SyncdDevice>      syncdDevices              = new CopyOnWriteArraySet<SyncdDevice>();
+  private final         Set<SyncdDevice>      syncdDevices              = new CopyOnWriteArraySet<SyncdDevice>(); // Would be nice if this held weak references
   private final         Command[]             commandRecvCache          = new Command[MAX_COMMAND_CACHE];
   private               int                   commandRecvCachePosition  = 0;
   private               InetAddress           remoteAddr;
@@ -410,13 +408,14 @@ public class EventLoopManager implements RecvLoopRunnable.RecvLoopCallback, Netw
     }
   }
 
-  @Override public CallbackResult onNetworkConnectionEvent(NetworkConnection.Event event) {
+  @Override public CallbackResult onNetworkConnectionEvent(NetworkConnection.NetworkEvent event) {
     CallbackResult result = CallbackResult.NOT_HANDLED;
     switch (event) {
       case PEERS_AVAILABLE:
         result = networkConnectionHandler.handlePeersAvailable();
         break;
       case CONNECTION_INFO_AVAILABLE:
+        RobotLog.ii(RobocolDatagram.TAG, "Received network connection event");
         result = networkConnectionHandler.handleConnectionInfoAvailable(SocketConnect.DEFER);
         break;
     }
@@ -448,7 +447,9 @@ public class EventLoopManager implements RecvLoopRunnable.RecvLoopCallback, Netw
       // spoof a wifi direct event. Some devices won't send this event out,
       // so to complete our setup, we will spoof it to get all the necessary information.
       RobotLog.vv(RobocolDatagram.TAG, "Spoofing a Network Connection event...");
-      onNetworkConnectionEvent(WifiDirectAssistant.Event.CONNECTION_INFO_AVAILABLE);
+      onNetworkConnectionEvent(NetworkConnection.NetworkEvent.CONNECTION_INFO_AVAILABLE);
+    } else {
+      RobotLog.vv(RobocolDatagram.TAG, "Network not yet available, deferring network connection event...");
     }
 
     // setEventLoop() will throw if there's a hardware configuration issue. So
@@ -644,10 +645,33 @@ public class EventLoopManager implements RecvLoopRunnable.RecvLoopCallback, Netw
     currentHeartbeat.fromByteArray(packet.getData());
     currentHeartbeat.setRobotState(state);
 
+    /**
+     * We've just received an indication of our partner's time. If our own time is insane, and theirs
+     * is sane, and we haven't bothered trying before, then try to make our own time sane using their
+     * sane value.
+     */
+    if (!attemptedSetTime) {
+      boolean ourSanity = appUtil.isSaneWalkClockTime(appUtil.getWallClockTime());
+      if (!ourSanity) {
+        long theirMillis = currentHeartbeat.t0;
+        boolean theirSanity = appUtil.isSaneWalkClockTime(theirMillis);
+        // RobotLog.vv(TAG, "our sanity: %s their sanity: %s", ourSanity, theirSanity);
+        if (theirSanity && !ourSanity) {
+          attemptedSetTime = true;
+          appUtil.setWallClockTime(theirMillis);
+          appUtil.setTimeZone(currentHeartbeat.getTimeZoneId());
+        }
+      }
+    }
+
+    // Build up a response packet and send it on back, providing the clock information necessary
+    // to understand the clock offsets between us and our partner.
     currentHeartbeat.t1 = tReceived;
 
-    // keep next three lines as close together in time as possible to maximize accuracy of timing calculation
-    currentHeartbeat.t2 = Heartbeat.getMsTimeSyncTime();
+    // Keep next three lines as close together in time as possible to maximize accuracy of timing calculation
+    // Also, the refetch of the local wall clock time is intentional, for both the accuracy reasons and the
+    // fact that we might have just adjusted the time.
+    currentHeartbeat.t2 = appUtil.getWallClockTime();
     packet.setData(currentHeartbeat.toByteArrayForTransmission());
     networkConnectionHandler.sendDatagram(packet);
 
@@ -690,7 +714,11 @@ public class EventLoopManager implements RecvLoopRunnable.RecvLoopCallback, Netw
 
   public CallbackResult peerDiscoveryEvent(RobocolDatagram packet) throws RobotCoreException {
 
-    networkConnectionHandler.updateConnection(packet, null, this);
+    try {
+      networkConnectionHandler.updateConnection(packet, null, this);
+    } catch (RobotProtocolException e) {
+      RobotLog.ee(TAG, e.getMessage());
+    }
 
     // Send a second PeerDiscovery() packet in response. That will inform the fellow
     // who sent the incoming PeerDiscovery() who *we* are.

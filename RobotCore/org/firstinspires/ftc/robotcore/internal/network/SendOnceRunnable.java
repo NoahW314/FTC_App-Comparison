@@ -11,6 +11,7 @@ import com.qualcomm.robotcore.robocol.Command;
 import com.qualcomm.robotcore.robocol.Heartbeat;
 import com.qualcomm.robotcore.robocol.RobocolDatagram;
 import com.qualcomm.robotcore.robocol.RobocolDatagramSocket;
+import com.qualcomm.robotcore.robot.Robot;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.RobotLog;
 
@@ -19,6 +20,7 @@ import org.firstinspires.ftc.robotcore.internal.ui.RobotCoreGamepadManager;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.TimeZone;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 @SuppressWarnings("WeakerAccess")
@@ -104,19 +106,22 @@ public class SendOnceRunnable implements Runnable {
     public void onPeerConnected(boolean peerLikelyChanged) {
         synchronized (issuedDisconnectLogMessageLock) {
             if (this.issuedDisconnectLogMessage) {
-                RobotLog.vv(TAG, "resetting peerDisconnected()");
+                RobotLog.vv(TAG, "SendOnce Runnable detected a peer, resetting peerDisconnected()");
                 this.issuedDisconnectLogMessage = false;
             }
         }
+
+        lastRecvPacket.reset();
     }
 
     @Override
     public void run() {
+        AppUtil appUtil = AppUtil.getInstance();
         try {
             // skip if we haven't received a packet in a while. The RC is the center
             // of the world and never disconnects from anyone.
             double seconds = lastRecvPacket.seconds();
-            if (parameters.disconnectOnTimeout && lastRecvPacket != null && seconds > ASSUME_DISCONNECT_TIMER) {
+            if (parameters.disconnectOnTimeout && seconds > ASSUME_DISCONNECT_TIMER) {
                 if (clientCallback != null ) {
                     synchronized (issuedDisconnectLogMessageLock) {
                         if (!issuedDisconnectLogMessage) {
@@ -134,8 +139,10 @@ public class SendOnceRunnable implements Runnable {
             if (parameters.originateHeartbeats && heartbeatSend.getElapsedSeconds() > 0.001 * MS_HEARTBEAT_TRANSMISSION_INTERVAL) {
                 // generate a new heartbeat packet and send it
                 heartbeatSend = Heartbeat.createWithTimeStamp();
-                // keep the next three lines as close together in time as possible
-                heartbeatSend.t0 = Heartbeat.getMsTimeSyncTime();
+                // Add the timezone in there too!
+                heartbeatSend.setTimeZoneId(TimeZone.getDefault().getID());
+                // keep the next three lines as close together in time as possible in order to improve the quality of time synchronization
+                heartbeatSend.t0 = appUtil.getWallClockTime();
                 RobocolDatagram packetHeartbeat = new RobocolDatagram(heartbeatSend);
                 send(packetHeartbeat);
                 // Do any logging after the transmission so as to minimize disruption of timing calculation
@@ -163,8 +170,8 @@ public class SendOnceRunnable implements Runnable {
             List<Command> commandsToRemove = new ArrayList<Command>();
             for (Command command : pendingCommands) {
 
-                // if this command has exceeded max attempts, give up
-                if (command.getAttempts() > MAX_COMMAND_ATTEMPTS) {
+                // if this command has exceeded max attempts or is no longer worth transmitting, give up
+                if (command.getAttempts() > MAX_COMMAND_ATTEMPTS || command.hasExpired()) {
                     String msg = String.format(context.getString(R.string.configGivingUpOnCommand), command.getName(), command.getSequenceNumber(), command.getAttempts());
                     RobotLog.vv(TAG, msg);
                     commandsToRemove.add(command);
@@ -202,6 +209,8 @@ public class SendOnceRunnable implements Runnable {
     private void send(RobocolDatagram datagram) {
         if (socket.getInetAddress() != null) {
             socket.send(datagram);
+        } else {
+            RobotLog.ww(TAG, "Sending a datagram to a null address");
         }
     }
 
@@ -213,5 +222,7 @@ public class SendOnceRunnable implements Runnable {
         return pendingCommands.remove(cmd);
     }
 
-    public void clearCommands() { pendingCommands.clear();}
+    public void clearCommands() {
+        pendingCommands.clear();
+    }
 }

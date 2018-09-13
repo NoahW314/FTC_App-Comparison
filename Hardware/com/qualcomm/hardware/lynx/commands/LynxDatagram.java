@@ -35,7 +35,7 @@ package com.qualcomm.hardware.lynx.commands;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 
-import com.qualcomm.hardware.lynx.LynxUnsupportedCommandNumberException;
+import com.qualcomm.hardware.lynx.LynxUnsupportedCommandException;
 import com.qualcomm.robotcore.exception.RobotCoreException;
 import com.qualcomm.robotcore.util.TypeConversion;
 
@@ -149,12 +149,12 @@ public class LynxDatagram
         this.payloadData = new byte[0];
         }
 
-    public LynxDatagram(LynxMessage command) throws LynxUnsupportedCommandNumberException
+    public LynxDatagram(LynxMessage command) throws LynxUnsupportedCommandException
         {
         this();
 
         int commandNumber = command.getCommandNumber();
-        command.getModule().validateCommandNumber(commandNumber);
+        command.getModule().validateCommand(command);
 
         this.setDestModuleAddress(command.getDestModuleAddress());
         this.setMessageNumber(command.getMessageNumber());

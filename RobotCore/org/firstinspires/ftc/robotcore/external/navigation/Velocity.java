@@ -35,7 +35,10 @@ package org.firstinspires.ftc.robotcore.external.navigation;
 import java.util.Locale;
 
 /**
- * Instances of {@link Velocity} represent an integration of {@link Position} over time.
+ * Instances of {@link Velocity} represent the derivative of {@link Position} over time.
+ *
+ * @see Position
+ * @see Acceleration
  */
 public class Velocity
     {

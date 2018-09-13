@@ -32,12 +32,11 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package org.firstinspires.ftc.robotcore.internal.stellaris;
 
-import android.annotation.SuppressLint;
-
 import com.qualcomm.robotcore.hardware.usb.RobotUsbDevice;
-import com.qualcomm.robotcore.util.RobotLog;
+import com.qualcomm.robotcore.util.TypeConversion;
 
 import org.firstinspires.ftc.robotcore.external.Consumer;
+import org.firstinspires.ftc.robotcore.internal.system.Tracer;
 import org.firstinspires.ftc.robotcore.internal.ui.ProgressParameters;
 import org.firstinspires.ftc.robotcore.internal.usb.exception.RobotUsbException;
 
@@ -48,6 +47,11 @@ import java.util.concurrent.TimeoutException;
  * {@link FlashLoaderManager} manages the process of writing a new firmware image.
  * to a Stellaris flash loader. The target system must be put into firmware update mode
  * by external means before using the functionality herein.
+ *
+ * The best documentation of the protocol used here that the author has found is
+ *      "LM3S102 Microcontroller DATA SHEET", Luminary Micro, DS-LM3S102-2972
+ * See in particular "Appendix A: Serial Flash Loader" which describes the "Stellaris®
+ * serial flash loader"
  */
 @SuppressWarnings("WeakerAccess")
 public class FlashLoaderManager
@@ -58,12 +62,22 @@ public class FlashLoaderManager
 
     public static final String TAG = "FlashLoaderManager";
     public static boolean DEBUG = false;
+    protected Tracer tracer = Tracer.create(TAG, true);
+    protected Tracer verboseTracer = Tracer.create(TAG, DEBUG);
 
     protected byte[]            firmwareImage;
     protected RobotUsbDevice    robotUsbDevice;
-    protected int               retryCount = 4;
-    protected int               msRetryPause = 40;
-    protected int               msReadTimeout = 500;
+
+    /* How before we timeout a UI that governs the whole updating process. Is sensitive to FlashLoaderSendDataCommand.QUANTUM */
+    public static int secondsFirmwareUpdateTimeout = 120; // not well tuned
+
+    // Retry counts are stuff we made up
+    protected int retryAutobaudCount = 10;
+    protected int retrySendWithRetriesCount = 10;
+    protected int retryVerifyStatusCount = 10;
+    protected int retrySendWithRetriesAndVerifyCount = 4;
+    protected int msRetryPause = 40;          // just seems prudent
+    protected int msReadTimeout = 1000;       // sflash example uses very long timeouts; ours aren't quite as long, but still hefty
 
     //----------------------------------------------------------------------------------------------
     // Construction
@@ -84,84 +98,116 @@ public class FlashLoaderManager
      *
      * @param fractionCompleteFeedback called periodically with the fraction completion
      *
-     * @throws IOException
      * @throws InterruptedException
-     * @throws TimeoutException
      * @throws FlashLoaderProtocolException
      */
-    public void updateFirmware(Consumer<ProgressParameters> fractionCompleteFeedback) throws IOException, InterruptedException, TimeoutException, FlashLoaderProtocolException
+    public void updateFirmware(Consumer<ProgressParameters> fractionCompleteFeedback) throws InterruptedException, FlashLoaderProtocolException
         {
         doAutobaud();
-        sendWithRetries(new FlashLoaderPingCommand());
-        verifyStatus();
+        sendWithRetriesAndVerify(new FlashLoaderPingCommand());
 
-        sendWithRetries(new FlashLoaderDownloadCommand(0x0000, firmwareImage.length));
-        verifyStatus();
+        sendWithRetriesAndVerify(new FlashLoaderDownloadCommand(0x0000, firmwareImage.length));
 
         for (int ib = 0; ib < firmwareImage.length; ib += FlashLoaderSendDataCommand.QUANTUM)
             {
+            tracer.trace("flashing [%d,%d) of %d", ib, Math.min(ib + FlashLoaderSendDataCommand.QUANTUM, firmwareImage.length), firmwareImage.length);
             fractionCompleteFeedback.accept(new ProgressParameters(ib, firmwareImage.length));
             //
-            sendWithRetries(new FlashLoaderSendDataCommand(firmwareImage, ib));
-            verifyStatus();
+            sendWithRetriesAndVerify(new FlashLoaderSendDataCommand(firmwareImage, ib));
             }
 
         fractionCompleteFeedback.accept(new ProgressParameters(firmwareImage.length, firmwareImage.length));
-        sendWithRetries(new FlashLoaderResetCommand());
+
+        // Don't wait around for a response to the reset. Documentation differs on whether we can
+        // reliably count on receiving same.
+        sendWithRetries(new FlashLoaderResetCommand(), false);
         }
 
     //----------------------------------------------------------------------------------------------
     // Commands
     //----------------------------------------------------------------------------------------------
 
-    protected void doAutobaud() throws IOException, InterruptedException, FlashLoaderProtocolException
+    protected void doAutobaud() throws InterruptedException, FlashLoaderProtocolException
         {
-        for (int i = 0; i < retryCount; i++)
+        for (int i = 0; i < retryAutobaudCount; i++)
             {
-            if (i > 0) Thread.sleep(msRetryPause);
-
-            write(new byte[] { 0x55, 0x55 });
-            if (readAckOrNack())
+            if (i > 0) pauseBetweenRetryWrites();
+            try {
+                // Send the synchronization bytes
+                verboseTracer.trace("sending autobaud sync bytes");
+                write(new byte[] { 0x55, 0x55 });
+                if (readAckOrNack())
+                    {
+                    return;
+                    }
+                }
+            catch (IOException e)
                 {
-                return;
+                // write() failed
+                tracer.traceError(e, "doAutobaud exception: might retry");
                 }
             }
 
-        throw new FlashLoaderProtocolException(makeExceptionMessage("unable to execute autobaud"));
+        throw new FlashLoaderProtocolException(makeExceptionMessage("unable to successfully autobaud"));
         }
 
-    /** Sends a Get Status command and reads the response, returning the status code byte */
-    protected byte readStatus() throws IOException, TimeoutException, FlashLoaderProtocolException, InterruptedException
+    /** Sends a Get Status command and reads the response, verifying it's successful */
+    protected void verifyStatus() throws FlashLoaderProtocolException, InterruptedException
         {
-        for (int i = 0; i < retryCount; i++)
+        for (int i = 0; i < retryVerifyStatusCount; i++)
             {
-            if (i > 0) Thread.sleep(msRetryPause);
-
+            verboseTracer.trace("sending getStatus");
             FlashLoaderGetStatusCommand command = new FlashLoaderGetStatusCommand();
-            sendWithRetries(command);
+            sendWithRetries(command,true);
 
             FlashLoaderGetStatusResponse response = new FlashLoaderGetStatusResponse();
-            read(response.data);
-            if (response.isChecksumValid())
+            try {
+                // Wait until we get a non-zero byte: sender is free to send zeros as they idle,
+                // as this is in fact necessary if some forms of synchronous serial connections
+                // are in use.
+                do  {
+                    read(response.data, 0, 1); // ignore filler/idling bytes
+                    }
+                while(response.data[0] == 0);
+
+                // That first byte is a size byte. It should match what we're expecting
+                if (TypeConversion.unsignedByteToInt(response.data[0]) != response.data.length)
+                    {
+                    throw new FlashLoaderProtocolException(makeExceptionMessage("invalid length: expected=%d found=%d", response.data.length, TypeConversion.unsignedByteToInt(response.data[0])));
+                    }
+
+                // Read the rest of the data and verify the checksum
+                read(response.data, 1, response.data.length-1);
+                if (response.isChecksumValid())
+                    {
+                    sendAckOrIgnore();
+
+                    // Is the returned status 'success'?
+                    byte status = response.data[FlashLoaderGetStatusResponse.IB_PAYLOAD];
+                    if (status != FlashLoaderGetStatusResponse.STATUS_SUCCESS)
+                        {
+                        throw new FlashLoaderProtocolException(makeExceptionMessage("invalid status: 0x%02x", status));
+                        }
+                    return;
+                    }
+                else
+                    {
+                    sendNakOrIgnore();
+                    continue;
+                    }
+                }
+            catch (IOException|TimeoutException e)
                 {
-                // RobotLog.vv(TAG, "readStatus: xsum valid");
-                sendAck();
-                return response.data[FlashLoaderGetStatusResponse.IB_PAYLOAD];
+                // read() failed
+                tracer.traceError(e, "verifyStatus() exception: i=%d might retry", i);
+                sendNakOrIgnore();
+                continue;
                 }
 
-            RobotLog.vv(TAG, "readStatus: xsum invalid");
-            sendNak();
+            // Not reached
+            /* sendNakOrIgnore(); */
             }
-        throw new FlashLoaderProtocolException(makeExceptionMessage("unable to retrieve status"));
-        }
-
-    protected void verifyStatus() throws IOException, TimeoutException, FlashLoaderProtocolException, InterruptedException
-        {
-        byte status = readStatus();
-        if (status != FlashLoaderGetStatusResponse.STATUS_SUCCESS)
-            {
-            throw new FlashLoaderProtocolException(makeExceptionMessage("invalid status: 0x%02x", status));
-            }
+        throw new FlashLoaderProtocolException(makeExceptionMessage("unable to verify status"));
         }
 
     //----------------------------------------------------------------------------------------------
@@ -170,32 +216,80 @@ public class FlashLoaderManager
 
     /** Sends the command until it either gets an ack or exhausts its retry count, whereupon
      * it throws a protocol exception. */
-    protected void sendWithRetries(FlashLoaderCommand command) throws IOException, TimeoutException, FlashLoaderProtocolException, InterruptedException
+    protected void sendWithRetries(FlashLoaderCommand command, boolean ackExpected) throws FlashLoaderProtocolException, InterruptedException
         {
         command.updateChecksum();
 
-        for (int i = 0; i < retryCount; i++)
+        for (int i = 0; i < retrySendWithRetriesCount; i++)
             {
-            if (i > 0) Thread.sleep(msRetryPause);
-
-            write(command.data);
-            if (readAckOrNack())
+            if (i > 0) pauseBetweenRetryWrites();
+            try {
+                write(command.data);
+                if (!ackExpected || readAckOrNack())
+                    {
+                    return;
+                    }
+                }
+            catch (IOException e)
                 {
-                return;
+                tracer.traceError(e, "sendWithRetries exception: i=%d might retry", i);
                 }
             }
 
         throw new FlashLoaderProtocolException(makeExceptionMessage("unable to send command"), command);
         }
 
-    protected void sendAck() throws IOException, InterruptedException
+    protected void sendWithRetriesAndVerify(FlashLoaderCommand command) throws InterruptedException, FlashLoaderProtocolException
+        {
+        for (int i = 0; i < retrySendWithRetriesAndVerifyCount; i++)
+            {
+            sendWithRetries(command, true);
+            try {
+                verifyStatus();
+                }
+            catch (FlashLoaderProtocolException e)
+                {
+                tracer.traceError(e, "exception in sendWithRetriesAndVerify(): might retry");
+                continue;
+                }
+            return;
+            }
+        throw new FlashLoaderProtocolException("sendWithRetriesAndVerify() failed: ", command);
+        }
+
+    protected void sendAckOrException() throws IOException, InterruptedException
         {
         write(new byte[] { FlashLoaderDatagram.ACK });
         }
 
-    protected void sendNak() throws IOException, InterruptedException
+    protected void sendNakOrException() throws IOException, InterruptedException
         {
         write(new byte[] { FlashLoaderDatagram.NAK });
+        }
+
+    protected void sendAckOrIgnore() throws InterruptedException
+        {
+        try {
+            sendAckOrException();
+            }
+        catch (IOException e)
+            {
+            tracer.traceError(e, "sendAckOrIgnore exception: ignored");
+            // ignore
+            }
+        }
+
+    protected void sendNakOrIgnore() throws InterruptedException
+        {
+        try {
+            tracer.traceError("sending nak");
+            sendNakOrException();
+            }
+        catch (IOException e)
+            {
+            tracer.traceError(e, "sendNakOrIgnore exception: ignored");
+            // ignore
+            }
         }
 
     protected boolean readAckOrNack()
@@ -205,7 +299,7 @@ public class FlashLoaderManager
             }
         catch (TimeoutException|IOException e)
             {
-            RobotLog.logExceptionHeader(TAG, e, "readAckOrNack exception");
+            tracer.traceError(e, "readAckOrNack exception");
             return false;
             }
         catch (InterruptedException e)
@@ -223,19 +317,26 @@ public class FlashLoaderManager
             read(payload);
             switch (payload[0])
                 {
-                case 0:                         continue;       // filler byte?
+                case 0:                         continue;       // filler/idling byte
                 case FlashLoaderDatagram.ACK:   return true;    // explicit ack
-                case FlashLoaderDatagram.NAK:   return false;   // explicit nak
+                case FlashLoaderDatagram.NAK:
+                    tracer.traceError("nak received");
+                    return false;   // explicit nak
                 default:
-                    RobotLog.ee(TAG, "readAckOrNackOrException: unexpected: 0x%02x", payload[0]);
+                    tracer.traceError("readAckOrNackOrException: unexpected: 0x%02x: treat as nak", payload[0]);
                     return false;   // unexpected byte: treat as nak
                 }
             }
         }
 
+    protected void pauseBetweenRetryWrites() throws InterruptedException
+        {
+        Thread.sleep(msRetryPause);
+        }
+
     protected void write(byte[] data) throws IOException, InterruptedException
         {
-        if (DEBUG) RobotLog.logBytes(TAG, "sent", data, data.length);
+        verboseTracer.trace("writing %d bytes", data.length);
         try {
             robotUsbDevice.write(data);
             }
@@ -245,23 +346,27 @@ public class FlashLoaderManager
             }
         }
 
-    @SuppressLint("DefaultLocale")
     protected void read(byte[] data) throws IOException, TimeoutException, InterruptedException
         {
-        if (data.length > 0)
+        read(data, 0, data.length);
+        }
+
+    protected void read(byte[] data, int ibFirst, int cbToRead) throws IOException, TimeoutException, InterruptedException
+        {
+        if (cbToRead > 0)
             {
             try {
-                int cbRead = robotUsbDevice.read(data, 0, data.length, msReadTimeout, null);
-                if (DEBUG) RobotLog.logBytes(TAG, "received", data, cbRead);
+                int cbRead = robotUsbDevice.read(data, ibFirst, cbToRead, msReadTimeout, null);
+                verboseTracer.trace("received %d bytes", cbRead);
 
                 if (cbRead == 0)
                     {
-                    throw new TimeoutException(makeExceptionMessage("unable to read %d bytes from flash loader", data.length));
+                    throw new TimeoutException(makeExceptionMessage("unable to read %d bytes from flash loader", cbToRead));
                     }
                 }
             catch (RobotUsbException e)
                 {
-                throw new IOException(makeExceptionMessage("unable to read %d bytes from flash loader", data.length), e);
+                throw new IOException(makeExceptionMessage("unable to read %d bytes from flash loader", cbToRead), e);
                 }
             }
         }

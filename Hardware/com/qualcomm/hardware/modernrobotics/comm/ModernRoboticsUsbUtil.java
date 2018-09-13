@@ -62,7 +62,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 package com.qualcomm.hardware.modernrobotics.comm;
 
 import com.qualcomm.robotcore.exception.RobotCoreException;
-import com.qualcomm.robotcore.hardware.DeviceManager.DeviceType;
+import com.qualcomm.robotcore.hardware.DeviceManager.UsbDeviceType;
 import com.qualcomm.robotcore.hardware.configuration.ModernRoboticsConstants;
 import com.qualcomm.robotcore.hardware.usb.RobotUsbDevice;
 import com.qualcomm.robotcore.hardware.usb.RobotUsbManager;
@@ -110,37 +110,21 @@ public class ModernRoboticsUsbUtil
     // Device management
     //----------------------------------------------------------------------------------------------
 
-    /** Note: when doScan is false, several openUsbDevice() calls (for different serial numbers) can execute concurrently. */
-    public static RobotUsbDevice openUsbDevice(boolean doScan, RobotUsbManager robotUsbManager, SerialNumber serialNumber) throws RobotCoreException
+    public static RobotUsbDevice openRobotUsbDevice(boolean doScan, RobotUsbManager robotUsbManager, SerialNumber serialNumber) throws RobotCoreException
         {
-        String description = "";
-        boolean found = false;
-        int deviceCount = doScan ? robotUsbManager.scanForDevices() : robotUsbManager.getScanCount();
-
-        for (int index = 0; index < deviceCount; ++index)
+        if (doScan)
             {
-            if (serialNumber.equals(robotUsbManager.getDeviceSerialNumberByIndex(index)))
-                {
-                found = true;
-                description = robotUsbManager.getDeviceDescriptionByIndex(index) + " [" + serialNumber.toString() + "]";
-                break;
-                }
-            }
-
-        if (!found)
-            {
-            RobotLog.logAndThrow("Unable to find USB device with serial number " + serialNumber.toString());
+            robotUsbManager.scanForDevices();
             }
 
         RobotUsbDevice robotUsbDevice = null;
-
         try
             {
             robotUsbDevice = robotUsbManager.openBySerialNumber(serialNumber);
             }
         catch (Exception e)
             {
-            throw RobotCoreException.createChained(e, "Unable to open USB device " + serialNumber + " - " + description + ": " + e.getMessage());
+            throw RobotCoreException.createChained(e, "Unable to open USB device " + serialNumber + ": " + e.getMessage());
             }
 
         try
@@ -152,22 +136,22 @@ public class ModernRoboticsUsbUtil
         catch (Exception e)
             {
             robotUsbDevice.close();
-            throw RobotCoreException.createChained(e, "Unable to parameterize USB device " + serialNumber + " - " + description + ": " + e.getMessage());
+            throw RobotCoreException.createChained(e, "Unable to parameterize USB device " + serialNumber + " - " + robotUsbDevice.getProductName() + ": " + e.getMessage());
             }
 
         try
             {
             /**
-             * TODO: This timeout of 400ms can almost assuredly be reduced with some further analysis.
-             *
-             * "From: Berling, Jonathan
-             * Sent: Tuesday, January 3, 2017
-             *
-             * [...] When we were developing that code, if we tried to open too many USB devices too
-             * quickly they would sometimes fail. We never looked into the cause. It could have been
-             * anything from the USB devices themselves, to Android, to the type of hub we were using,
-             * etc. (This was long before MR was even considering making a USB hub.)"
-             */
+                * TODO: This timeout of 400ms can almost assuredly be reduced with some further analysis.
+                *
+                * "From: Berling, Jonathan
+                * Sent: Tuesday, January 3, 2017
+                *
+                * [...] When we were developing that code, if we tried to open too many USB devices too
+                * quickly they would sometimes fail. We never looked into the cause. It could have been
+                * anything from the USB devices themselves, to Android, to the type of hub we were using,
+                * etc. (This was long before MR was even considering making a USB hub.)"
+                */
             Thread.sleep(400L);
             }
         catch (InterruptedException e)
@@ -197,21 +181,21 @@ public class ModernRoboticsUsbUtil
         return deviceHeaderData;
         }
 
-    public static DeviceType getDeviceType(byte[] deviceHeader)
+    public static UsbDeviceType getDeviceType(byte[] deviceHeader)
         {
         if (deviceHeader[ADDRESS_MANUFACTURER_CODE] != MFG_CODE_MODERN_ROBOTICS)
             {
-            return DeviceType.FTDI_USB_UNKNOWN_DEVICE;
+            return UsbDeviceType.FTDI_USB_UNKNOWN_DEVICE;
             }
         else
             {
             switch (deviceHeader[ADDRESS_DEVICE_ID])
                 {
-                case DEVICE_ID_DEVICE_INTERFACE_MODULE: return DeviceType.MODERN_ROBOTICS_USB_DEVICE_INTERFACE_MODULE;
-                case DEVICE_ID_LEGACY_MODULE:           return DeviceType.MODERN_ROBOTICS_USB_LEGACY_MODULE;
-                case DEVICE_ID_DC_MOTOR_CONTROLLER:     return DeviceType.MODERN_ROBOTICS_USB_DC_MOTOR_CONTROLLER;
-                case DEVICE_ID_SERVO_CONTROLLER:        return DeviceType.MODERN_ROBOTICS_USB_SERVO_CONTROLLER;
-                default:                                return DeviceType.MODERN_ROBOTICS_USB_UNKNOWN_DEVICE;
+                case DEVICE_ID_DEVICE_INTERFACE_MODULE: return UsbDeviceType.MODERN_ROBOTICS_USB_DEVICE_INTERFACE_MODULE;
+                case DEVICE_ID_LEGACY_MODULE:           return UsbDeviceType.MODERN_ROBOTICS_USB_LEGACY_MODULE;
+                case DEVICE_ID_DC_MOTOR_CONTROLLER:     return UsbDeviceType.MODERN_ROBOTICS_USB_DC_MOTOR_CONTROLLER;
+                case DEVICE_ID_SERVO_CONTROLLER:        return UsbDeviceType.MODERN_ROBOTICS_USB_SERVO_CONTROLLER;
+                default:                                return UsbDeviceType.MODERN_ROBOTICS_USB_UNKNOWN_DEVICE;
                 }
             }
         }

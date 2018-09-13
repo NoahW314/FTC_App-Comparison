@@ -34,11 +34,13 @@ package com.qualcomm.hardware.motors;
 
 import com.qualcomm.robotcore.hardware.configuration.DistributorInfo;
 import com.qualcomm.robotcore.hardware.configuration.ModernRoboticsMotorControllerParams;
-import com.qualcomm.robotcore.hardware.configuration.MotorType;
+import com.qualcomm.robotcore.hardware.configuration.annotations.DeviceProperties;
+import com.qualcomm.robotcore.hardware.configuration.annotations.MotorType;
 
 import org.firstinspires.ftc.robotcore.external.navigation.Rotation;
 
-@MotorType(xmlTag="NeveRest60Gearmotor", name="NeveRest 60 Gearmotor", ticksPerRev=1680, gearing=60, maxRPM=105, orientation=Rotation.CCW)
+@MotorType(ticksPerRev=1680, gearing=60, maxRPM=105, orientation=Rotation.CCW)
+@DeviceProperties(xmlTag="NeveRest60Gearmotor", name="NeveRest 60 Gearmotor", builtIn = true)
 @DistributorInfo(distributor="AndyMark", model="am-3103", url="http://www.andymark.com/NeveRest-60-Gearmotor-p/am-3103.htm")
 @ModernRoboticsMotorControllerParams(P=160, I=32, D=112, ratio=25)
 public interface NeveRest60Gearmotor

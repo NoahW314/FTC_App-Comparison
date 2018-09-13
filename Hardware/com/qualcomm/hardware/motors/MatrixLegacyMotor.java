@@ -33,11 +33,13 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 package com.qualcomm.hardware.motors;
 
 import com.qualcomm.robotcore.hardware.configuration.DistributorInfo;
-import com.qualcomm.robotcore.hardware.configuration.MotorType;
+import com.qualcomm.robotcore.hardware.configuration.annotations.DeviceProperties;
+import com.qualcomm.robotcore.hardware.configuration.annotations.MotorType;
 
 import org.firstinspires.ftc.robotcore.external.navigation.Rotation;
 
-@MotorType(xmlTag="MatrixLegacyMotor", name="Matrix Legacy 9.6v Motor", ticksPerRev=757.12, gearing=27.04, maxRPM=195, orientation=Rotation.CW)
+@MotorType(ticksPerRev=757.12, gearing=27.04, maxRPM=195, orientation=Rotation.CW)
+@DeviceProperties(xmlTag="MatrixLegacyMotor", name="Matrix Legacy 9.6v Motor", builtIn = true)
 @DistributorInfo(distributor="Modern Robotics", model="50-0001", url="http://modernroboticsinc.com/standard-motor-kit-50-0001-2")
 public interface MatrixLegacyMotor
     {

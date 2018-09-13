@@ -32,28 +32,62 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package org.firstinspires.ftc.robotcore.external;
 
+import org.firstinspires.ftc.robotcore.external.hardware.camera.CameraManager;
 import org.firstinspires.ftc.robotcore.external.navigation.VuforiaLocalizer;
-import org.firstinspires.ftc.robotcore.internal.vuforia.VuforiaLocalizerImpl;
 
 /**
  * {@link ClassFactory} provides a means by which various objects in the SDK may be logically
  * instantiated without exposing their external class identities to user's programs.
  */
-public class ClassFactory
+@SuppressWarnings("WeakerAccess")
+public abstract class ClassFactory
     {
+    //----------------------------------------------------------------------------------------------
+    // Construction
+    //----------------------------------------------------------------------------------------------
+
+    public static ClassFactory getInstance()
+        {
+        return InstanceHolder.theInstance;
+        }
+
+    //----------------------------------------------------------------------------------------------
+    // Accessing
+    //----------------------------------------------------------------------------------------------
+
     /**
-     * {@link #createVuforiaLocalizer(VuforiaLocalizer.Parameters) createVuforiaLocalizer} instantiates
-     * an instance of the Vuforia robot localization engine.
+     * {@link #createVuforia(VuforiaLocalizer.Parameters) createVuforia} returns
+     * an instance of the Vuforia localizer engine configured with the indicated set of parameters.
      *
-     * @param parameters the parameters used to configure the new instance of the engine
-     * @return a new instance of the Vuforia robot localization engine.
+     * @param parameters the parameters used to configure the instance of the engine
+     * @return an instance of the Vuforia robot localization engine.
      *
      * @see VuforiaLocalizer
      * @see org.firstinspires.ftc.robotcore.external.navigation.Orientation
      * @see <a href="http://www.vuforia.com/">vuforia.com</a>
      */
+    public abstract VuforiaLocalizer createVuforia(VuforiaLocalizer.Parameters parameters);
+
+    /**
+     * Returns a {@link CameraManager} which can be used to access the USB webcams
+     * attached to the robot controller.
+     * @see CameraManager
+     */
+    public abstract CameraManager getCameraManager();
+
+    //----------------------------------------------------------------------------------------------
+    // Internal
+    //----------------------------------------------------------------------------------------------
+
+    /** @deprecated Use {@link #createVuforia(VuforiaLocalizer.Parameters)} instead */
+    @Deprecated
     public static VuforiaLocalizer createVuforiaLocalizer(VuforiaLocalizer.Parameters parameters)
         {
-        return new VuforiaLocalizerImpl(parameters);
+        return getInstance().createVuforia(parameters);
+        }
+
+    protected static class InstanceHolder
+        {
+        public static ClassFactory theInstance = null;
         }
     }

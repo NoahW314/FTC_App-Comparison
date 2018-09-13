@@ -32,6 +32,8 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package com.qualcomm.robotcore.hardware;
 
+import org.firstinspires.ftc.robotcore.internal.system.Misc;
+
 /**
  * {@link LynxModuleMeta} has simple lynx module meta information for transmission from RC to DS
  */
@@ -67,5 +69,10 @@ public class LynxModuleMeta
     public boolean isParent()
         {
         return isParent;
+        }
+
+    @Override public String toString()
+        {
+        return Misc.formatForUser("LynxModuleMeta(#%d,%s)", moduleAddress, isParent);
         }
     }

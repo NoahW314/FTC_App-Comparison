@@ -34,6 +34,7 @@ import com.qualcomm.robotcore.exception.RobotCoreException;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 
 /**
  * Run shell commands
@@ -42,9 +43,9 @@ import java.io.InputStream;
  */
 public class RunShellCommand {
 
-  private final static int BUFFER_SIZE = 512 * 1024;
-
-  boolean logging = false;
+  private Process process = null;
+  private boolean logging = false;
+  private static int BUFFER_SIZE = 512 * 1024;
 
   /**
    * Constructor
@@ -66,11 +67,8 @@ public class RunShellCommand {
    * @param cmd command to run
    * @return the commands output
    */
-  public String run(String cmd) {
-    if (logging) RobotLog.v("running command: " + cmd);
-    String output = runCommand(cmd, false);
-    if (logging) RobotLog.v("         output: " + output);
-    return output;
+  public void run(String cmd) {
+    runCommand(cmd, false);
   }
 
   /**
@@ -78,20 +76,16 @@ public class RunShellCommand {
    * @param cmd command to run
    * @return the commands output
    */
-  public String runAsRoot(String cmd) {
-    if (logging) RobotLog.v("running command: " + cmd);
-    String output = runCommand(cmd, true);
-    if (logging) RobotLog.v("         output: " + output);
-    return output;
+  public void runAsRoot(String cmd) {
+    runCommand(cmd, true);
   }
 
   private String runCommand(String cmd, boolean asRoot) {
 
-    byte[] buffer = new byte[BUFFER_SIZE];
-    int length = 0;
-    String output = "";
     ProcessBuilder processBuilder = new ProcessBuilder();
-    Process process = null;
+    int length;
+    String output = "";
+    byte[] buffer = new byte[BUFFER_SIZE];
 
     try {
       if (asRoot) {
@@ -99,39 +93,51 @@ public class RunShellCommand {
       } else {
         processBuilder.command("sh", "-c", cmd).redirectErrorStream(true);
       }
+
       process = processBuilder.start();
       process.waitFor();
+      RobotLog.i("Done running " + cmd);
 
       InputStream in = process.getInputStream();
-      //OutputStreamWriter out = new OutputStreamWriter(process.getOutputStream());
 
       length = in.read(buffer);
       if (length > 0) output = new String(buffer, 0, length);
 
     } catch (IOException e) {
-      RobotLog.logStacktrace(e);
+      RobotLog.logStackTrace(e);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
     } finally {
       if (process != null) process.destroy();
     }
+
     return output;
+  }
+
+  public void commitSeppuku() {
+    if (process != null) {
+      process.destroy();
+      try {
+        process.waitFor();
+      } catch (InterruptedException e) {
+        e.printStackTrace();
+      }
+    }
   }
 
   /**
    * Kill any spawn processes matching a given process name
    * @param processName name of process to kill
    * @param packageName name of this package
-   * @param shell an instance of RunShellCommand
    * @throws RobotCoreException if unable to kill process
    */
-  public static void killSpawnedProcess(String processName, String packageName, RunShellCommand shell) throws RobotCoreException {
+  public static void killSpawnedProcess(String processName, String packageName) throws RobotCoreException {
     try {
-      int pid = getSpawnedProcessPid(processName, packageName, shell);
+      int pid = getSpawnedProcessPid(processName, packageName);
       while (pid != -1) {
         RobotLog.v("Killing PID " + pid);
-        shell.run(String.format("kill %d", pid));
-        pid = getSpawnedProcessPid(processName, packageName, shell);
+        new RunShellCommand().run(String.format("kill %d", pid));
+        pid = getSpawnedProcessPid(processName, packageName);
       }
     } catch (Exception e) {
       throw new RobotCoreException(String.format("Failed to kill %s instances started by this app", processName));
@@ -142,14 +148,13 @@ public class RunShellCommand {
    * return the PID of a given process name started a given package name
    * @param processName name of process to search for
    * @param packageName name of this package
-   * @param shell an instance of RunShellCommand
    * @return PID, or -1 if none found
    */
-  public static int getSpawnedProcessPid(String processName, String packageName, RunShellCommand shell) {
+  public static int getSpawnedProcessPid(String processName, String packageName) {
     // This method has a heavy dependency on the Android version of 'ps'.
 
     // run ps
-    String psOutput = shell.run("ps");
+    String psOutput = new RunShellCommand().runCommand("ps", false);
     String username = "invalid";
 
     // determine the username of this app

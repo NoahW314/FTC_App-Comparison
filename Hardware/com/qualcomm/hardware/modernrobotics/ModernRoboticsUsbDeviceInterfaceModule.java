@@ -37,7 +37,7 @@ import com.qualcomm.hardware.R;
 import com.qualcomm.hardware.modernrobotics.comm.ReadWriteRunnable;
 import com.qualcomm.hardware.modernrobotics.comm.ReadWriteRunnableSegment;
 import com.qualcomm.hardware.modernrobotics.comm.ReadWriteRunnableStandard;
-import com.qualcomm.robotcore.eventloop.EventLoopManager;
+import com.qualcomm.robotcore.eventloop.SyncdDevice;
 import com.qualcomm.robotcore.exception.RobotCoreException;
 import com.qualcomm.robotcore.hardware.DeviceInterfaceModule;
 import com.qualcomm.robotcore.hardware.DigitalChannel;
@@ -292,7 +292,7 @@ public class ModernRoboticsUsbDeviceInterfaceModule extends ModernRoboticsUsbI2c
    * Use ModernRoboticsUsbDeviceManager to create an instance of this class
    */
   public ModernRoboticsUsbDeviceInterfaceModule(
-      final Context context, final SerialNumber serialNumber, OpenRobotUsbDevice openRobotUsbDevice, EventLoopManager manager)
+      final Context context, final SerialNumber serialNumber, OpenRobotUsbDevice openRobotUsbDevice, SyncdDevice.Manager manager)
           throws RobotCoreException, InterruptedException {
 
     super(NUMBER_OF_PORTS, context, serialNumber, manager, openRobotUsbDevice, new CreateReadWriteRunnable() {

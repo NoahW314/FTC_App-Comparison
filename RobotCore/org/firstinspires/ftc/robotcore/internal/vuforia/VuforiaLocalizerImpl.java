@@ -35,6 +35,7 @@ package org.firstinspires.ftc.robotcore.internal.vuforia;
 import android.app.Activity;
 import android.app.Application;
 import android.content.res.Configuration;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.Point;
 import android.graphics.PointF;
@@ -43,6 +44,7 @@ import android.opengl.GLSurfaceView;
 import android.opengl.Matrix;
 import android.os.Bundle;
 import android.support.annotation.IdRes;
+import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.view.Gravity;
 import android.view.View;
@@ -54,13 +56,21 @@ import android.widget.RelativeLayout;
 import com.qualcomm.robotcore.R;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.OpModeManagerNotifier;
-import com.qualcomm.robotcore.util.RobotLog;
+import com.vuforia.COORDINATE_SYSTEM_TYPE;
 import com.vuforia.CameraCalibration;
 import com.vuforia.CameraDevice;
+import com.vuforia.Device;
+import com.vuforia.Frame;
+import com.vuforia.GLTextureUnit;
+import com.vuforia.Image;
+import com.vuforia.Matrix34F;
 import com.vuforia.Matrix44F;
+import com.vuforia.Mesh;
 import com.vuforia.ObjectTargetResult;
 import com.vuforia.ObjectTracker;
+import com.vuforia.PIXEL_FORMAT;
 import com.vuforia.Renderer;
+import com.vuforia.RenderingPrimitives;
 import com.vuforia.RotationalDeviceTracker;
 import com.vuforia.STORAGE_TYPE;
 import com.vuforia.State;
@@ -69,18 +79,26 @@ import com.vuforia.Trackable;
 import com.vuforia.TrackableResult;
 import com.vuforia.TrackerManager;
 import com.vuforia.VIDEO_BACKGROUND_REFLECTION;
+import com.vuforia.VIEW;
+import com.vuforia.Vec2F;
 import com.vuforia.Vec2I;
 import com.vuforia.VideoBackgroundConfig;
 import com.vuforia.VideoMode;
 import com.vuforia.Vuforia;
 
-import org.firstinspires.ftc.robotcore.external.Consumer;
+import org.firstinspires.ftc.robotcore.external.ClassFactory;
+import org.firstinspires.ftc.robotcore.external.function.Consumer;
+import org.firstinspires.ftc.robotcore.external.function.Continuation;
+import org.firstinspires.ftc.robotcore.external.function.ContinuationResult;
+import org.firstinspires.ftc.robotcore.external.function.Supplier;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.BuiltinCameraName;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.Camera;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.CameraName;
 import org.firstinspires.ftc.robotcore.external.navigation.VuforiaLocalizer;
 import org.firstinspires.ftc.robotcore.external.navigation.VuforiaTrackable;
 import org.firstinspires.ftc.robotcore.external.navigation.VuforiaTrackableDefaultListener;
 import org.firstinspires.ftc.robotcore.external.navigation.VuforiaTrackables;
-import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
-import org.firstinspires.ftc.robotcore.internal.system.Assert;
+import org.firstinspires.ftc.robotcore.internal.camera.delegating.SwitchableCameraName;
 import org.firstinspires.ftc.robotcore.internal.collections.EvictingBlockingQueue;
 import org.firstinspires.ftc.robotcore.internal.opengl.AutoConfigGLSurfaceView;
 import org.firstinspires.ftc.robotcore.internal.opengl.Texture;
@@ -90,6 +108,12 @@ import org.firstinspires.ftc.robotcore.internal.opengl.models.Teapot;
 import org.firstinspires.ftc.robotcore.internal.opengl.shaders.CubeMeshProgram;
 import org.firstinspires.ftc.robotcore.internal.opengl.shaders.SimpleColorProgram;
 import org.firstinspires.ftc.robotcore.internal.opmode.OpModeManagerImpl;
+import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
+import org.firstinspires.ftc.robotcore.internal.system.Assert;
+import org.firstinspires.ftc.robotcore.internal.system.Misc;
+import org.firstinspires.ftc.robotcore.internal.system.Tracer;
+import org.firstinspires.ftc.robotcore.internal.vuforia.externalprovider.VuforiaWebcam;
+import org.firstinspires.ftc.robotcore.internal.vuforia.externalprovider.VuforiaWebcamInternal;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -104,9 +128,7 @@ import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
 
 /**
- * Note: this is a placeholder class until we figure things out better.
- * https://developer.vuforia.com/library/articles/Solution/How-To-Use-the-Trackable-Base-Class
- * https://developer.vuforia.com/forum/faq/android-how-can-i-build-basic-vuforia-app
+ * VuforiaLocalizerImpl connects the FTC SDK to the Vuforia engine
  */
 @SuppressWarnings("WeakerAccess")
 public class VuforiaLocalizerImpl implements VuforiaLocalizer
@@ -116,6 +138,8 @@ public class VuforiaLocalizerImpl implements VuforiaLocalizer
     //----------------------------------------------------------------------------------------------
 
     public static final String TAG = "Vuforia";
+    public static boolean TRACE = true;
+    protected   Tracer                  tracer              = Tracer.create(TAG, TRACE);
 
     protected   LifeCycleCallbacks      lifeCycleCallbacks  = new LifeCycleCallbacks();
     protected   OpModeManagerImpl       opModeManager       = null;
@@ -131,8 +155,10 @@ public class VuforiaLocalizerImpl implements VuforiaLocalizer
     protected   boolean                 isCameraInited      = false;
     protected   boolean                 isCameraStarted     = false;
     protected   boolean                 isCameraRunning     = false;
-    protected   int                     cameraIndex         = -1;
     protected   CameraCalibration       camCal              = null;
+
+    protected   final VuforiaWebcamInternal vuforiaWebcam;
+    protected   VuforiaInitPhase        vuforiaInitPhase    = VuforiaInitPhase.Nascent;
 
     protected   ViewGroup               glSurfaceParent     = null;
     protected   AutoConfigGLSurfaceView glSurface           = null;
@@ -144,6 +170,8 @@ public class VuforiaLocalizerImpl implements VuforiaLocalizer
     protected   View                    loadingIndicator        = null;
     protected   Renderer                renderer                = null;
     protected   boolean                 rendererIsActive        = false;
+    protected   final Object            renderingPrimitivesMutex = new Object();
+    protected   CloseableRenderingPrimitives renderingPrimitives = null;
 
     // An object used for synchronizing Vuforia initialization, dataset loading
     // and the Android onDestroy() life cycle event. If the application is
@@ -154,10 +182,11 @@ public class VuforiaLocalizerImpl implements VuforiaLocalizer
         {
         public Point   lowerLeft = new Point();
         public Point   extent    = new Point();
-        public @Override String toString() { return String.format("[(%d,%d)-(%d,%d)]", lowerLeft.x, lowerLeft.y, extent.x, extent.y); }
+        public @Override String toString() { return Misc.formatForUser("[(%d,%d)-(%d,%d)]", lowerLeft.x, lowerLeft.y, extent.x, extent.y); }
         }
-    protected   ViewPort                viewport                    = null;
+    protected   volatile ViewPort       viewport                    = null;
     protected   Matrix44F               projectionMatrix            = null;
+
     protected   CubeMeshProgram         cubeMeshProgram             = null;
     protected   SimpleColorProgram      simpleColorProgram          = null;
     protected   List<Texture>           textures                    = null;
@@ -174,10 +203,38 @@ public class VuforiaLocalizerImpl implements VuforiaLocalizer
     protected   final Object            frameQueueLock              = new Object();
     protected   BlockingQueue<CloseableFrame> frameQueue;
     protected   int                     frameQueueCapacity;
+    protected   Continuation<? extends Consumer<Frame>> getFrameOnce = null;
 
     // Some simple statistics, perhaps useful during debugging
     protected   int                     renderCount = 0;
     protected   int                     callbackCount = 0;
+
+    protected enum VuforiaInitPhase
+        {
+        Nascent(0),
+        PreInit(1),
+        Init(2),
+        PostInit(3);
+        public int value = 0;
+        VuforiaInitPhase(int value) { this.value = value; }
+
+        public VuforiaInitPhase from(int value)
+            {
+            for (VuforiaInitPhase phase : values())
+                {
+                if (phase.value == value) return phase;
+                }
+            return null;
+            }
+        public VuforiaInitPhase prev()
+            {
+            return from(this.value-1);
+            }
+        public VuforiaInitPhase next()
+            {
+            return from(this.value+1);
+            }
+        }
 
     //----------------------------------------------------------------------------------------------
     // Construction
@@ -186,24 +243,101 @@ public class VuforiaLocalizerImpl implements VuforiaLocalizer
     public VuforiaLocalizerImpl(VuforiaLocalizer.Parameters parameters)
         {
         this.parameters = parameters;
-        this.activity = parameters.activity == null ? appUtil.getActivity() : parameters.activity;
-        this.isExtendedTrackingActive = parameters.useExtendedTracking;
-        this.cameraCameraMonitorFeedback = parameters.cameraMonitorFeedback;
-        if (this.cameraCameraMonitorFeedback == null)
+        activity = parameters.activity == null ? appUtil.getActivity() : parameters.activity;
+        isExtendedTrackingActive = parameters.useExtendedTracking;
+        cameraCameraMonitorFeedback = parameters.cameraMonitorFeedback;
+        if (cameraCameraMonitorFeedback == null)
             {
-            this.cameraCameraMonitorFeedback = this.isExtendedTrackingActive ? Parameters.CameraMonitorFeedback.BUILDINGS : Parameters.CameraMonitorFeedback.AXES;
+            cameraCameraMonitorFeedback = isExtendedTrackingActive ? Parameters.CameraMonitorFeedback.BUILDINGS : Parameters.CameraMonitorFeedback.AXES;
             }
+        vuforiaWebcam = createVuforiaWebcam();
 
-        this.fillSurfaceParent = parameters.fillCameraMonitorViewParent;
+        fillSurfaceParent = parameters.fillCameraMonitorViewParent;
         setFrameQueueCapacity(0);
         registerLifeCycleCallbacks();
         if (parameters.cameraMonitorViewParent != null)
+            {
             setMonitorViewParent(parameters.cameraMonitorViewParent);
+            }
         else
+            {
             setMonitorViewParent(parameters.cameraMonitorViewIdParent);
+            }
         makeLoadingIndicator();
         loadTextures();
         startAR();
+        }
+
+    /**
+     * Once this method is complete, either a non-null {@link VuforiaWebcamInternal} object is
+     * returned, indicating we are in the 'new' world, or a null such object is returned, indicating
+     * that we are to use built-in phone cameras just as we always used to.
+     */
+    protected VuforiaWebcamInternal createVuforiaWebcam()
+        {
+        VuforiaWebcam result = null;
+        if (parameters.camera != null)
+            {
+            // user specified the use of an explicit camera; use it!
+            tracer.trace("using camera by instance: %s", parameters.camera.getCameraName());
+            result = new VuforiaWebcam(parameters.webcamCalibrationResources, parameters.webcamCalibrationFiles, parameters.minWebcamAspectRatio, parameters.maxWebcamAspectRatio, parameters.secondsUsbPermissionTimeout, parameters.camera);
+            }
+        else
+            {
+            if (parameters.cameraName != null)
+                {
+                if (parameters.cameraName.isWebcam() || (parameters.cameraName.isSwitchable() && ((SwitchableCameraName)parameters.cameraName).allMembersAreWebcams()))
+                    {
+                    // user specified the use of a webcam or webcams; use it!
+                    tracer.trace("using camera by name: %s", parameters.cameraName);
+                    result = new VuforiaWebcam(parameters.webcamCalibrationResources, parameters.webcamCalibrationFiles, parameters.minWebcamAspectRatio, parameters.maxWebcamAspectRatio, parameters.secondsUsbPermissionTimeout, parameters.cameraName);
+                    }
+                else if (parameters.cameraName.isUnknown())
+                    {
+                    tracer.trace("using camera by direction (classic): %s", parameters.cameraDirection);
+                    // user hasn't changed cameraName from the initialized value; use cameraDirection as given
+                    }
+                else if (parameters.cameraName.isCameraDirection())
+                    {
+                    // user gave us a camera direction in a new way; use it
+                    parameters.cameraDirection = ((BuiltinCameraName)(parameters.cameraName)).getCameraDirection();
+                    tracer.trace("using camera by direction (wrapped): %s", parameters.cameraDirection);
+                    }
+                else
+                    {
+                    throw Misc.illegalArgumentException("parameters.cameraName=%s is not supported", parameters.cameraName);
+                    }
+                }
+            else
+                {
+                throw Misc.illegalArgumentException("parameters.cameraName is null; is your camera attached to the robot controller?");
+                }
+            }
+        return result;
+        }
+
+    @Override public @NonNull CameraName getCameraName()
+        {
+        if (vuforiaWebcam != null)
+            {
+            return vuforiaWebcam.getCameraName();
+            }
+        else
+            {
+            return ClassFactory.getInstance().getCameraManager().nameFromCameraDirection(parameters.cameraDirection);
+            }
+        }
+
+    @Override public @Nullable Camera getCamera()
+        {
+        if (vuforiaWebcam != null)
+            {
+            return vuforiaWebcam.getCamera();
+            }
+        else
+            {
+            return null;
+            }
         }
 
     protected void close()
@@ -255,13 +389,13 @@ public class VuforiaLocalizerImpl implements VuforiaLocalizer
         try {
             ObjectTracker tracker = getObjectTracker();
             com.vuforia.DataSet dataSet = tracker.createDataSet();
-            RobotLog.vv(TAG, "loading data set '%s'...", name);
+            tracer.trace("loading data set '%s'...", name);
             try {
                 throwIfFail(dataSet.load(name + ".xml", type));
                 }
             finally
                 {
-                RobotLog.vv(TAG, "... done loading data set '%s'", name);
+                tracer.trace("... done loading data set '%s'", name);
                 }
             VuforiaTrackablesImpl result = new VuforiaTrackablesImpl(this, dataSet, listenerClass);
             result.setName(name);
@@ -463,41 +597,129 @@ public class VuforiaLocalizerImpl implements VuforiaLocalizer
     // AR life cycle
     //----------------------------------------------------------------------------------------------
 
-    protected void startAR()
+    protected boolean advanceInitPhase(Supplier<Boolean> supplier)
         {
+        boolean success = false;
+        try {
+            success = supplier.get();
+            }
+        catch (Exception e)
+            {
+            tracer.traceError(e, "exception in vuforia initialization: phase:%s", vuforiaInitPhase);
+            }
+        finally
+            {
+            if (success) vuforiaInitPhase = vuforiaInitPhase.next();
+            }
+        return success;
+        }
+    protected void retreatInitPhase(Runnable runnable)
+        {
+        try {
+            runnable.run();
+            }
+        catch (Exception e)
+            {
+            tracer.traceError(e, "exception in vuforia deinitialization: phase:%s", vuforiaInitPhase);
+            }
+        finally
+            {
+            vuforiaInitPhase = vuforiaInitPhase.prev();
+            }
+        }
+    protected void expectPhase(VuforiaInitPhase phase)
+        {
+        Assert.assertTrue(vuforiaInitPhase == phase);
+        }
+
+    protected boolean startAR()
+        {
+        boolean success = true;
         synchronized (startStopLock)
             {
+            vuforiaInitPhase = VuforiaInitPhase.Nascent;
             showLoadingIndicator(View.VISIBLE);
+            try {
+                updateActivityOrientation();
+                this.vuforiaFlags = Vuforia.GL_20;
+                Vuforia.setInitParameters(activity, vuforiaFlags, parameters.vuforiaLicenseKey);
 
-            updateActivityOrientation();
+                if (success)
+                    {
+                    success = advanceInitPhase(new Supplier<Boolean>()
+                        {
+                        @Override public Boolean get()
+                            {
+                            return vuforiaWebcam == null || vuforiaWebcam.preVuforiaInit();
+                            }
+                        });
+                    }
 
-            this.vuforiaFlags = Vuforia.GL_20;
+                if (success)
+                    {
+                    expectPhase(VuforiaInitPhase.PreInit);
+                    success = advanceInitPhase(new Supplier<Boolean>()
+                        {
+                        @Override public Boolean get()
+                            {
+                            int initProgress;
+                            do  {
+                            initProgress = tracer.trace("Vuforia.init()", new Supplier<Integer>()
+                                {
+                                @Override public Integer get()
+                                    {
+                                    return Vuforia.init();
+                                    }
+                                });
+                            }
+                            while (initProgress >= 0 && initProgress < 100);
+                            return initProgress >= 0;
+                            }
+                        });
+                    }
 
-            Vuforia.setInitParameters(activity, vuforiaFlags, parameters.vuforiaLicenseKey);
-            int initProgress = -1;
-            do  {
-                initProgress = Vuforia.init();
+                if (success)
+                    {
+                    expectPhase(VuforiaInitPhase.Init);
+                    success = advanceInitPhase(new Supplier<Boolean>()
+                        {
+                        @Override public Boolean get()
+                            {
+                            if (vuforiaWebcam != null)
+                                {
+                                vuforiaWebcam.postVuforiaInit();
+                                }
+                            return true;
+                            }
+                        });
+                    }
+
+                if (success)
+                    {
+                    expectPhase(VuforiaInitPhase.PostInit);
+                    initTracker();
+                    Vuforia.registerCallback(VuforiaLocalizerImpl.this.vuforiaCallback);
+                    makeGlSurface();
+                    wantCamera = true;
+                    if (startCamera())
+                        {
+                        updateRenderingPrimitives(); // TODO: can we move this BEFORE startCamera()?
+                        // Try to turn on auto-focus; ignore if not supported
+                        CameraDevice.getInstance().setFocusMode(CameraDevice.FOCUS_MODE.FOCUS_MODE_CONTINUOUSAUTO);
+                        rendererIsActive = true;
+                        }
+                    }
                 }
-            while (initProgress >= 0 && initProgress < 100);
-
-            if (initProgress < 0)
-                throwFailure("Vuforia initialization failed: %s", getInitializationErrorString(initProgress));
-
-            initTracker();
-            Vuforia.registerCallback(VuforiaLocalizerImpl.this.vuforiaCallback);
-
-            makeGlSurface();
-
-            this.wantCamera = true;
-            startCamera(parameters.cameraDirection.direction);
-
-            // Try to turn on auto-focus; ignore if not supported
-            CameraDevice.getInstance().setFocusMode(CameraDevice.FOCUS_MODE.FOCUS_MODE_CONTINUOUSAUTO);
-
-            this.rendererIsActive = true;
-
-            showLoadingIndicator(View.INVISIBLE);
+            finally
+                {
+                showLoadingIndicator(View.INVISIBLE);
+                }
             }
+        if (!success)
+            {
+            throwFailure("Vuforia failed to start: phase=%s", vuforiaInitPhase);
+            }
+        return success;
         }
 
     protected void makeGlSurface()
@@ -573,12 +795,56 @@ public class VuforiaLocalizerImpl implements VuforiaLocalizer
         {
         synchronized (startStopLock)
             {
-            this.wantCamera = false;
+            wantCamera = false;
+            rendererIsActive = false;
             stopCamera();
             destroyTrackables();
             deinitTracker();
             removeGlSurface();
-            Vuforia.deinit();
+
+            if (vuforiaInitPhase.value >= VuforiaInitPhase.PostInit.value)
+                {
+                retreatInitPhase(new Runnable()
+                    {
+                    @Override public void run()
+                        {
+                        if (vuforiaWebcam != null)
+                            {
+                            vuforiaWebcam.preVuforiaDeinit();
+                            }
+                        }
+                    });
+                }
+            if (vuforiaInitPhase.value >= VuforiaInitPhase.Init.value)
+                {
+                retreatInitPhase(new Runnable()
+                    {
+                    @Override public void run()
+                        {
+                        tracer.trace("Vuforia.deinit()", new Runnable()
+                            {
+                            @Override public void run()
+                                {
+                                Vuforia.deinit();
+                                }
+                            });
+                        }
+                    });
+                }
+            if (vuforiaInitPhase.value >= VuforiaInitPhase.PreInit.value)
+                {
+                retreatInitPhase(new Runnable()
+                    {
+                    @Override public void run()
+                        {
+                        if (vuforiaWebcam != null)
+                            {
+                            vuforiaWebcam.postVuforiaDeinit();
+                            }
+                        }
+                    });
+                }
+            expectPhase(VuforiaInitPhase.Nascent);
             }
         }
 
@@ -587,7 +853,7 @@ public class VuforiaLocalizerImpl implements VuforiaLocalizer
         Vuforia.onResume();
         if (wantCamera)
             {
-            startCamera(this.cameraIndex);
+            startCamera();
             }
         }
 
@@ -612,9 +878,9 @@ public class VuforiaLocalizerImpl implements VuforiaLocalizer
         TrackerManager.getInstance().initTracker(ObjectTracker.getClassType());
         }
 
-    protected void startTracker()
+    protected boolean startTracker()
         {
-        getObjectTracker().start();
+        return getObjectTracker().start();
         }
 
     protected boolean isObjectTargetTrackableResult(TrackableResult trackableResult)
@@ -649,136 +915,167 @@ public class VuforiaLocalizerImpl implements VuforiaLocalizer
         return this.camCal;
         }
 
-    protected synchronized void startCamera(int cameraIndex)
+    protected synchronized boolean startCamera()
         {
+        boolean success = false;
         throwIfFail(!isCameraRunning, "camera already running");
 
-        this.cameraIndex = cameraIndex;
+        int cameraIndex = vuforiaWebcam == null
+                ? parameters.cameraDirection.getDirection()
+                : CameraDirection.BACK.getDirection(); // will be ignored by Vuforia if we're using an external camera
 
-        throwIfFail(CameraDevice.getInstance().init(cameraIndex), "unable to initialize camera #%d", cameraIndex);
-        this.isCameraInited = true;
-
-        throwIfFail(CameraDevice.getInstance().selectVideoMode(CameraDevice.MODE.MODE_DEFAULT), "unable to select video mode on camera #%d", cameraIndex);
-
-        configureVideoBackground();
-
-        throwIfFail(CameraDevice.getInstance().start(), "unable to select start camera #%d", cameraIndex);
-        this.isCameraStarted = true;
-
-        this.camCal = CameraDevice.getInstance().getCameraCalibration();
-        this.projectionMatrix = Tool.getProjectionGL(this.camCal, 10.0f, 5000.0f);
-
-        startTracker();
-
-        if (!CameraDevice.getInstance().setFocusMode(CameraDevice.FOCUS_MODE.FOCUS_MODE_CONTINUOUSAUTO))
+        if (CameraDevice.getInstance().init(cameraIndex)) // calls VuforiaWebcamImpl.open (for webcams)
             {
-            if (!CameraDevice.getInstance().setFocusMode(CameraDevice.FOCUS_MODE.FOCUS_MODE_TRIGGERAUTO))
-                CameraDevice.getInstance().setFocusMode(CameraDevice.FOCUS_MODE.FOCUS_MODE_NORMAL);
-            }
+            isCameraInited = true;
 
-        this.isCameraRunning = true;
+            if(CameraDevice.getInstance().selectVideoMode(CameraDevice.MODE.MODE_DEFAULT))
+                {
+                configureVideoBackground();
+
+                if (CameraDevice.getInstance().start())
+                    {
+                    isCameraStarted = true;
+
+                    camCal = CameraDevice.getInstance().getCameraCalibration();
+                    projectionMatrix = Tool.getProjectionGL(camCal, 10.0f, 5000.0f);
+
+                    if (startTracker())
+                        {
+                        if (!CameraDevice.getInstance().setFocusMode(CameraDevice.FOCUS_MODE.FOCUS_MODE_CONTINUOUSAUTO))
+                            {
+                            if (!CameraDevice.getInstance().setFocusMode(CameraDevice.FOCUS_MODE.FOCUS_MODE_TRIGGERAUTO))
+                                {
+                                CameraDevice.getInstance().setFocusMode(CameraDevice.FOCUS_MODE.FOCUS_MODE_NORMAL);
+                                }
+                            }
+
+                        isCameraRunning = true;
+                        success = true;
+                        }
+                    else
+                        tracer.traceError("camera tracker failed to start on camera %s", getCameraName());
+                    }
+                else
+                    tracer.traceError("unable to select video mode on camera %s", getCameraName());
+                }
+            else
+                tracer.traceError("camera %s failed to start ", getCameraName());
+            }
+        else
+            tracer.traceError("CameraDevice.getInstance.init() failed");
+
+        return success;
         }
 
     protected synchronized void stopCamera()
         {
-        if (this.isCameraRunning)
+        if (isCameraRunning)
             {
             stopTracker();
-            if (this.isCameraStarted) CameraDevice.getInstance().stop();
-            if (this.isCameraInited) CameraDevice.getInstance().deinit();
-            this.isCameraInited  = false;
-            this.isCameraStarted = false;
-            this.isCameraRunning = false;
+            if (isCameraStarted) CameraDevice.getInstance().stop();
+            if (isCameraInited) CameraDevice.getInstance().deinit();
+            isCameraInited  = false;
+            isCameraStarted = false;
+            isCameraRunning = false;
             }
         }
+
+    //----------------------------------------------------------------------------------------------
+    // Miscellaneous
+    //----------------------------------------------------------------------------------------------
 
     protected void configureVideoBackground()
         {
         if (glSurface == null)
             return;
 
-        // What screen real estate do we have to draw on?
-        PointF view = new PointF(glSurface.getWidth(), glSurface.getHeight());
-
-        // What's the incoming camera video stream dimensions?
-        CameraDevice cameraDevice = CameraDevice.getInstance();
-        VideoMode videoMode = cameraDevice.getVideoMode(CameraDevice.MODE.MODE_DEFAULT);
-        PointF video = new PointF(videoMode.getWidth(), videoMode.getHeight());
-
-        viewport = new ViewPort();
-        if (isPortrait)
+        // The setLayoutParams() and the setVisibility() calls below MUST be done on the UI thread.
+        // Doing *all* the work there makes the sequencing of those and of getWidth()/getHeight()
+        // always work in the right relative order. The downside is that 'viewport' won't be set
+        // robustly on completion of configureVideoBackground().
+        appUtil.runOnUiThread(new Runnable()
             {
-            viewport.extent.x = (int) (video.y * view.y / video.x);
-            viewport.extent.y = (int) view.y;
-
-            if (viewport.extent.x < view.x)
+            @Override public void run()
                 {
-                if (fillSurfaceParent)
+                // What screen real estate do we have to draw on?
+                PointF view = new PointF(glSurface.getWidth(), glSurface.getHeight());
+
+                // What's the incoming camera video stream dimensions?
+                CameraDevice cameraDevice = CameraDevice.getInstance();
+                VideoMode videoMode = cameraDevice.getVideoMode(CameraDevice.MODE.MODE_DEFAULT);
+                PointF video = new PointF(videoMode.getWidth(), videoMode.getHeight());
+
+                // Do our math here with a local variable until it's finished and internally consistent
+                ViewPort viewport = new ViewPort();
+                if (isPortrait)
+                    {
+                    viewport.extent.x = (int) (video.y * view.y / video.x);
+                    viewport.extent.y = (int) view.y;
+
+                    if (viewport.extent.x < view.x)
+                        {
+                        if (fillSurfaceParent)
+                            {
+                            viewport.extent.x = (int) view.x;
+                            viewport.extent.y = (int) (view.x * video.x / video.y);
+                            }
+                        else
+                            {
+                            // See the full camera view, but (a tradeoff) don't fill up the whole surface parent view
+                            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(viewport.extent.x, glSurface.getLayoutParams().height);
+                            params.gravity = Gravity.CENTER_HORIZONTAL;
+                            glSurface.setLayoutParams(params);
+                            }
+                        }
+                    }
+                else
                     {
                     viewport.extent.x = (int) view.x;
-                    viewport.extent.y = (int) (view.x * video.x / video.y);
-                    }
-                else
-                    {
-                    // See the full camera view, but (a tradeoff) don't fill up the whole surface parent view
-                    appUtil.synchronousRunOnUiThread(new Runnable() { @Override public void run()
+                    viewport.extent.y = (int) (video.y * view.x / video.x);
+
+                    if (viewport.extent.y < view.y)
                         {
-                        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(viewport.extent.x, glSurface.getLayoutParams().height);
-                        params.gravity = Gravity.CENTER_HORIZONTAL;
-                        glSurface.setLayoutParams(params);
-                        }});
+                        if (fillSurfaceParent)
+                            {
+                            viewport.extent.x = (int) (view.y * video.x / video.y);
+                            viewport.extent.y = (int) view.y;
+                            }
+                        else
+                            {
+                            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(glSurface.getLayoutParams().width, viewport.extent.y);
+                            params.gravity = Gravity.CENTER_VERTICAL;
+                            glSurface.setLayoutParams(params);
+                            }
+                        }
                     }
+
+                // Update in case we changed things. And we know the size, so we can show the surface w/o flashing naked background
+                view = new PointF(glSurface.getWidth(), glSurface.getHeight());
+                glSurface.setVisibility(View.VISIBLE);
+
+                VideoBackgroundConfig videoBackgroundConfig = new VideoBackgroundConfig();
+                videoBackgroundConfig.setEnabled(true);
+
+                // The center of the background should be in the center of the viewport
+                videoBackgroundConfig.setPosition(new Vec2I(0, 0));
+                videoBackgroundConfig.setSize(new Vec2I(viewport.extent.x, viewport.extent.y));
+
+                // The Vuforia VideoBackgroundConfig takes the position relative to the
+                // centre of the screen, where as the OpenGL glViewport call takes the
+                // position relative to the lower left corner
+                viewport.lowerLeft.x = (int) ((view.x - viewport.extent.x) / 2) + videoBackgroundConfig.getPosition().getData()[0];
+                viewport.lowerLeft.y = (int) ((view.y - viewport.extent.y) / 2) + videoBackgroundConfig.getPosition().getData()[1];
+
+                // Adjust (only needed in non-fillSurfaceParent case) to keep viewport inside glSurface
+                viewport.lowerLeft.x = Math.min(0, viewport.lowerLeft.x);
+                viewport.lowerLeft.y = Math.min(0, viewport.lowerLeft.y);
+
+                Renderer.getInstance().setVideoBackgroundConfig(videoBackgroundConfig);
+
+                // Set the viewport that others will see
+                VuforiaLocalizerImpl.this.viewport = viewport;
                 }
-            }
-        else
-            {
-            viewport.extent.x = (int) view.x;
-            viewport.extent.y = (int) (video.y * view.x / video.x);
-
-            if (viewport.extent.y < view.y)
-                {
-                if (fillSurfaceParent)
-                    {
-                    viewport.extent.x = (int) (view.y * video.x / video.y);
-                    viewport.extent.y = (int) view.y;
-                    }
-                else
-                    {
-                    appUtil.synchronousRunOnUiThread(new Runnable() { @Override public void run()
-                        {
-                        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(glSurface.getLayoutParams().width, viewport.extent.y);
-                        params.gravity = Gravity.CENTER_VERTICAL;
-                        glSurface.setLayoutParams(params);
-                        }});
-                    }
-                }
-            }
-
-        // Update in case we changed things. And we know the size, so we can show the surface w/o flashing naked background
-        view = new PointF(glSurface.getWidth(), glSurface.getHeight());
-        appUtil.runOnUiThread(new Runnable() { @Override public void run()
-            {
-            glSurface.setVisibility(View.VISIBLE);
-            }});
-
-        VideoBackgroundConfig videoBackgroundConfig = new VideoBackgroundConfig();
-        videoBackgroundConfig.setEnabled(true);
-
-        // The center of the background should be in the center of the viewport
-        videoBackgroundConfig.setPosition(new Vec2I(0, 0));
-        videoBackgroundConfig.setSize(new Vec2I(viewport.extent.x, viewport.extent.y));
-
-        // The Vuforia VideoBackgroundConfig takes the position relative to the
-        // centre of the screen, where as the OpenGL glViewport call takes the
-        // position relative to the lower left corner
-        viewport.lowerLeft.x = (int) ((view.x - viewport.extent.x) / 2) + videoBackgroundConfig.getPosition().getData()[0];
-        viewport.lowerLeft.y = (int) ((view.y - viewport.extent.y) / 2) + videoBackgroundConfig.getPosition().getData()[1];
-
-        // Adjust (only needed in non-fillSurfaceParent case) to keep viewport inside glSurface
-        viewport.lowerLeft.x = Math.min(0, viewport.lowerLeft.x);
-        viewport.lowerLeft.y = Math.min(0, viewport.lowerLeft.y);
-
-        Renderer.getInstance().setVideoBackgroundConfig(videoBackgroundConfig);
+            });
         }
 
     // Stores the orientation depending on the current resources configuration
@@ -835,6 +1132,159 @@ public class VuforiaLocalizerImpl implements VuforiaLocalizer
             }
         }
 
+    protected void updateRendering(int width, int height)
+        {
+        configureVideoBackground();
+        }
+
+    /**
+     * Previously, we simply called Renderer.drawVideoBackground(). But that method has been deprecated and
+     * removed in Vuforia 7. So, we do it ourselves, adapting code from the SampleAppRenderer provided in
+     * the Vuforia 7 SDK.
+     */
+    protected void renderVideoBackground()
+        {
+        // Use texture unit 0 for the video background - this will hold the camera frame and we want to reuse for all views
+        // So need to use a different texture unit for the augmentation
+        final int vbVideoTextureUnit = 0;
+
+        // Bind the video bg texture and get the Texture ID from Vuforia
+        // Please note that if you want to use a specific GL texture handle for the video background, you should configure it
+        // from the initRendering() method and use the Renderer::setVideoBackgroundTexture( GLTextureData ) method.
+        // Please refer to API Guide for more information.
+        GLTextureUnit vbTexture = new GLTextureUnit(vbVideoTextureUnit);
+        if (renderer.updateVideoBackgroundTexture(vbTexture))
+            {
+            Matrix34F matrix34F = renderingPrimitives.getVideoBackgroundProjectionMatrix(VIEW.VIEW_SINGULAR, COORDINATE_SYSTEM_TYPE.COORDINATE_SYSTEM_CAMERA);
+            Matrix44F vbProjectionMatrix = Tool.convert2GLMatrix(matrix34F);
+
+            // Apply the scene scale on video see-through eyewear, to scale the video background and augmentation
+            // so that the display lines up with the real world
+            // This should not be applied on optical see-through devices, as there is no video background,
+            // and the calibration ensures that the augmentation matches the real world
+            if (Device.getInstance().isViewerActive())
+                {
+                float sceneScaleFactor = getSceneScaleFactor();
+                scalePoseMatrix(sceneScaleFactor, sceneScaleFactor, 1.0f, vbProjectionMatrix);
+                }
+
+            // Disable certain GL booleans
+            boolean[] params = new boolean[3];
+            GLES20.glGetBooleanv(GLES20.GL_DEPTH_TEST, params, 0);
+            GLES20.glGetBooleanv(GLES20.GL_CULL_FACE, params, 1);
+            GLES20.glGetBooleanv(GLES20.GL_SCISSOR_TEST, params, 2);
+            GLES20.glDisable(GLES20.GL_DEPTH_TEST);
+            GLES20.glDisable(GLES20.GL_CULL_FACE);
+            GLES20.glDisable(GLES20.GL_SCISSOR_TEST);
+
+            Mesh vbMesh = renderingPrimitives.getVideoBackgroundMesh(VIEW.VIEW_SINGULAR);
+
+            // Load the shader and upload the vertex/texcoord/index data
+            cubeMeshProgram.useProgram();
+            cubeMeshProgram.vertex.setCoordinates(vbMesh);
+            cubeMeshProgram.fragment.setTextureUnit(vbTexture);
+
+            // Pass the projection matrix to OpenGL
+            cubeMeshProgram.vertex.setModelViewProjectionMatrix(vbProjectionMatrix.getData());
+
+            // Then, we issue the render call
+            GLES20.glDrawElements(GLES20.GL_TRIANGLES, vbMesh.getNumTriangles() * 3, GLES20.GL_UNSIGNED_SHORT, vbMesh.getTriangles());
+
+            // Finally, we disable the vertex arrays
+            cubeMeshProgram.vertex.disableAttributes();
+
+            // Restore disabled GL booleans
+            if (params[0]) GLES20.glEnable(GLES20.GL_DEPTH_TEST);
+            if (params[1]) GLES20.glEnable(GLES20.GL_CULL_FACE);
+            if (params[2]) GLES20.glEnable(GLES20.GL_SCISSOR_TEST);
+            }
+        else
+            {
+            // Early in the launch process, we seem to get a couple of renderFrame() calls that
+            // lead to failure in updateVideoBackgroundTexture(). As that clears up very quickly
+            // (a frame or two), probably simply because of sequencing of initialization, there
+            // seems little point in bothering people in the log about it.
+            // tracer.traceError("updateVideoBackgroundTexture() failed");
+            }
+        }
+
+    protected float getSceneScaleFactor()
+        {
+        final double VIRTUAL_FOV_Y_DEGS = 85;
+
+        // Get the y-dimension of the physical camera field of view
+        Vec2F fovVector = CameraDevice.getInstance().getCameraCalibration().getFieldOfViewRads();
+        float cameraFovYRads = fovVector.getData()[1];
+
+        // Get the y-dimension of the virtual camera field of view
+        double virtualFovYRads = VIRTUAL_FOV_Y_DEGS * Math.PI / 180;
+
+        // The scene-scale factor represents the proportion of the viewport that is filled by
+        // the video background when projected onto the same plane.
+        // In order to calculate this, let 'd' be the distance between the cameras and the plane.
+        // The height of the projected image 'h' on this plane can then be calculated:
+        //   tan(fov/2) = h/2d
+        // which rearranges to:
+        //   2d = h/tan(fov/2)
+        // Since 'd' is the same for both cameras, we can combine the equations for the two cameras:
+        //   hPhysical/tan(fovPhysical/2) = hVirtual/tan(fovVirtual/2)
+        // Which rearranges to:
+        //   hPhysical/hVirtual = tan(fovPhysical/2)/tan(fovVirtual/2)
+        // ... which is the scene-scale factor
+        double result = Math.tan(cameraFovYRads / 2) / Math.tan(virtualFovYRads / 2);
+        return (float)result;
+        }
+
+    protected void scalePoseMatrix(float x, float y, float z, Matrix44F matrix)
+        {
+        float[] matrixData = matrix.getData();
+
+        matrixData[0]  *= x;
+        matrixData[1]  *= x;
+        matrixData[2]  *= x;
+        matrixData[3]  *= x;
+
+        matrixData[4]  *= y;
+        matrixData[5]  *= y;
+        matrixData[6]  *= y;
+        matrixData[7]  *= y;
+
+        matrixData[8]  *= z;
+        matrixData[9]  *= z;
+        matrixData[10] *= z;
+        matrixData[11] *= z;
+
+        matrix.setData(matrixData);
+        }
+
+    /**
+     * A variant of RenderingPrimitives that provides for deterministic cleanup
+     */
+    protected static class CloseableRenderingPrimitives extends RenderingPrimitives
+        {
+        public CloseableRenderingPrimitives(RenderingPrimitives primitives)
+            {
+            super(primitives);
+            }
+        public void close()
+            {
+            super.delete();
+            }
+        }
+
+    protected void updateRenderingPrimitives()
+        {
+        synchronized (renderingPrimitivesMutex)
+            {
+            if (renderingPrimitives != null)
+                {
+                renderingPrimitives.close();
+                renderingPrimitives = null;
+                }
+            renderingPrimitives = new CloseableRenderingPrimitives(Device.getInstance().getRenderingPrimitives());
+            }
+        }
+
     protected boolean buildingsRequired()
         {
         return this.parameters.cameraMonitorFeedback == Parameters.CameraMonitorFeedback.BUILDINGS;
@@ -871,7 +1321,9 @@ public class VuforiaLocalizerImpl implements VuforiaLocalizer
 
         @Override public void onSurfaceChanged(GL10 gl, int width, int height)
             {
+            updateRendering(width, height);
             Vuforia.onSurfaceChanged(width, height);
+            updateRenderingPrimitives();
             }
 
         @Override public void onDrawFrame(GL10 gl)
@@ -895,54 +1347,67 @@ public class VuforiaLocalizerImpl implements VuforiaLocalizer
     protected void renderFrame()
         {
         if (glSurface == null)
-            return;
-
-        renderCount++;
-
-        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);
-
-        State state = renderer.begin();
-        renderer.drawVideoBackground();
-
-        GLES20.glEnable(GLES20.GL_DEPTH_TEST);
-
-        // Set the viewport
-        GLES20.glViewport(viewport.lowerLeft.x, viewport.lowerLeft.y, viewport.extent.x, viewport.extent.y);
-
-        // Handle face culling, we need to detect if we are using reflection to determine the direction of the culling
-        GLES20.glEnable(GLES20.GL_CULL_FACE);
-        GLES20.glCullFace(GLES20.GL_BACK);
-        if (Renderer.getInstance().getVideoBackgroundConfig().getReflection() == VIDEO_BACKGROUND_REFLECTION.VIDEO_BACKGROUND_REFLECTION_ON)
-            GLES20.glFrontFace(GLES20.GL_CW); // Front camera
-        else
-            GLES20.glFrontFace(GLES20.GL_CCW); // Back camera
-
-        // did we find any trackables this frame?
-        for (int tIdx = 0; tIdx < state.getNumTrackableResults(); tIdx++)
             {
-            TrackableResult trackableResult = state.getTrackableResult(tIdx);
-            if (isObjectTargetTrackableResult(trackableResult))
-                {
-                Matrix44F poseMatrixOpenGl = Tool.convertPose2GLMatrix(trackableResult.getPose());
-                float[] poseMatrix = poseMatrixOpenGl.getData();
-
-                switch (this.cameraCameraMonitorFeedback)
-                    {
-                    case NONE:                                 break;
-                    case BUILDINGS: drawBuildings(poseMatrix); break;
-                    case TEAPOT:    drawTeapot(poseMatrix);    break;
-                    case AXES:      drawAxes(poseMatrix);      break;
-                    }
-                }
+            return;
             }
 
-        // Let the user do something interesting with this frame.
-        onRenderFrame();
+        synchronized (renderingPrimitivesMutex)
+            {
+            renderCount++;
 
-        GLES20.glDisable(GLES20.GL_DEPTH_TEST);
-        renderer.end();
+            // Clear color and depth buffers
+            GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);
+
+
+            if (viewport != null) // can't do the rest if configureVideoBackground hasn't finished
+                {
+                State state = renderer.begin();
+                renderVideoBackground();
+
+                GLES20.glEnable(GLES20.GL_DEPTH_TEST);
+
+                // Set the viewport
+                GLES20.glViewport(viewport.lowerLeft.x, viewport.lowerLeft.y, viewport.extent.x, viewport.extent.y);
+
+                // Handle face culling, we need to detect if we are using reflection to determine the direction of the culling
+                GLES20.glEnable(GLES20.GL_CULL_FACE);
+                GLES20.glCullFace(GLES20.GL_BACK);
+                if (Renderer.getInstance().getVideoBackgroundConfig().getReflection() == VIDEO_BACKGROUND_REFLECTION.VIDEO_BACKGROUND_REFLECTION_ON)
+                    {
+                    GLES20.glFrontFace(GLES20.GL_CW); // Front camera
+                    }
+                else
+                    {
+                    GLES20.glFrontFace(GLES20.GL_CCW); // Back camera
+                    }
+
+                // did we find any trackables this frame?
+                for (int tIdx = 0; tIdx < state.getNumTrackableResults(); tIdx++)
+                    {
+                    TrackableResult trackableResult = state.getTrackableResult(tIdx);
+                    if (isObjectTargetTrackableResult(trackableResult))
+                        {
+                        Matrix44F poseMatrixOpenGl = Tool.convertPose2GLMatrix(trackableResult.getPose());
+                        float[] poseMatrix = poseMatrixOpenGl.getData();
+
+                        switch (this.cameraCameraMonitorFeedback)
+                            {
+                            case NONE:                                 break;
+                            case BUILDINGS: drawBuildings(poseMatrix); break;
+                            case TEAPOT:    drawTeapot(poseMatrix);    break;
+                            case AXES:      drawAxes(poseMatrix);      break;
+                            }
+                        }
+                    }
+
+                // Let the user do something interesting with this frame.
+                onRenderFrame();
+
+                GLES20.glDisable(GLES20.GL_DEPTH_TEST);
+                renderer.end();
+                }
+            }
         }
-
 
     protected void drawAxes(float[] poseMatrix)
         {
@@ -1086,6 +1551,57 @@ public class VuforiaLocalizerImpl implements VuforiaLocalizer
             }
         }
 
+    @Override public void getFrameOnce(Continuation<? extends Consumer<Frame>> getFrameOnce)
+        {
+        synchronized (frameQueueLock)
+            {
+            this.getFrameOnce = getFrameOnce;
+            }
+        }
+
+    @Override public void enableConvertFrameToBitmap()
+        {
+        int[] pixelFormats = new int[] { PIXEL_FORMAT.RGB565 }; // RGBA8888 seems to always fail
+        for (int pixelFormat : pixelFormats)
+            {
+            if (Vuforia.setFrameFormat(PIXEL_FORMAT.RGB565, true))
+                {
+                }
+            else
+                tracer.traceError("enableConvertFrameToBitmap(): internal error: setFrameFormat(%d) failed", pixelFormat);
+            }
+        }
+
+    @Override public Bitmap convertFrameToBitmap(Frame frame)
+        {
+        int[] pixelFormats = new int[] { PIXEL_FORMAT.RGB565, PIXEL_FORMAT.RGBA8888 };
+
+        for (int pixelFormat : pixelFormats)
+            {
+            for (int i = 0; i < frame.getNumImages(); i++)
+                {
+                Image image = frame.getImage(i);
+                if (image.getFormat() == pixelFormat)
+                    {
+                    Bitmap.Config config;
+                    switch (pixelFormat)
+                        {
+                        case PIXEL_FORMAT.RGB565: config = Bitmap.Config.RGB_565; break;
+                        case PIXEL_FORMAT.RGBA8888: config = Bitmap.Config.ARGB_8888; break;
+                        default:
+                            continue;
+                        }
+
+                    Bitmap bitmap = Bitmap.createBitmap(image.getWidth(), image.getHeight(), config);
+                    bitmap.copyPixelsFromBuffer(image.getPixels());
+                    return bitmap;
+                    }
+                }
+            }
+
+        return null;
+        }
+
     //----------------------------------------------------------------------------------------------
     // Operations
     //----------------------------------------------------------------------------------------------
@@ -1101,13 +1617,28 @@ public class VuforiaLocalizerImpl implements VuforiaLocalizer
                 // If the user wants to see frames, then give him the new one. Convert it to
                 // a CloseableFrame so as to (a) make it liveable beyond the callback lifetime, and
                 // (b) expose a close() method that can be used to proactively reclaim memory.
+                Continuation<? extends Consumer<Frame>> capturedContinuation = null;
                 synchronized (frameQueueLock)
                     {
                     if (frameQueueCapacity > 0)
                         {
-                        CloseableFrame frame = new CloseableFrame(state.getFrame());
-                        frameQueue.add(frame);
+                        CloseableFrame closeableFrame = new CloseableFrame(state.getFrame());
+                        frameQueue.add(closeableFrame);
                         }
+                    capturedContinuation = getFrameOnce;
+                    getFrameOnce = null;
+                    }
+                if (capturedContinuation != null)
+                    {
+                    final CloseableFrame closeableFrame = new CloseableFrame(state.getFrame());
+                    capturedContinuation.dispatch(new ContinuationResult<Consumer<Frame>>()
+                        {
+                        @Override public void handle(Consumer<Frame> frameConsumer)
+                            {
+                            frameConsumer.accept(closeableFrame);
+                            closeableFrame.close();
+                            }
+                        });
                     }
 
                 // Figure out which of our trackables are visible and which are not. Let each
@@ -1158,17 +1689,17 @@ public class VuforiaLocalizerImpl implements VuforiaLocalizer
                                     }
                                 if (vuforiaTrackable instanceof VuforiaTrackableNotify)
                                     {
-                                    ((VuforiaTrackableNotify)vuforiaTrackable).noteTracked(trackableResult);
+                                    ((VuforiaTrackableNotify)vuforiaTrackable).noteTracked(trackableResult, getCameraName(), getCamera());
                                     }
                                 }
                             else
-                                RobotLog.vv(TAG, "vuforiaTrackable unexpectedly null: %s", trackableResult.getClass().getSimpleName());
+                                tracer.trace("vuforiaTrackable unexpectedly null: %s", trackableResult.getClass().getSimpleName());
                             }
                         else
-                            RobotLog.vv(TAG, "trackable unexpectedly null: %s", trackableResult.getClass().getSimpleName());
+                            tracer.trace("trackable unexpectedly null: %s", trackableResult.getClass().getSimpleName());
                         }
                     else
-                        RobotLog.vv(TAG, "unexpected TrackableResult: %s", trackableResult.getClass().getSimpleName());
+                        tracer.trace("unexpected TrackableResult: %s", trackableResult.getClass().getSimpleName());
                     }
 
                 for (VuforiaTrackable vuforiaTrackable : notVisible)
@@ -1185,22 +1716,6 @@ public class VuforiaLocalizerImpl implements VuforiaLocalizer
     //----------------------------------------------------------------------------------------------
     // Utility
     //----------------------------------------------------------------------------------------------
-
-    public static class FailureException extends RuntimeException
-        {
-        protected Exception nestedException;
-
-        public FailureException(String format, Object... args)
-            {
-            super(String.format(format, args));
-            }
-
-        public FailureException(Exception nestedException, String format, Object... args)
-            {
-            super(String.format(format, args));
-            this.nestedException = nestedException;
-            }
-        }
 
     protected static void throwIfFail(boolean success)
         {
@@ -1225,11 +1740,11 @@ public class VuforiaLocalizerImpl implements VuforiaLocalizer
 
     protected static void throwFailure(String format, Object... args)
         {
-        throw new FailureException(format, args);
+        throw new VuforiaException(format, args);
         }
 
     protected static void throwFailure(Exception nested)
         {
-        throw new FailureException(nested, "Vuforia operation failed");
+        throw new VuforiaException(nested, "Vuforia operation failed");
         }
     }

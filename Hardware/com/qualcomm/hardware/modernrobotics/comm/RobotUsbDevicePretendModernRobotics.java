@@ -43,6 +43,7 @@ import com.qualcomm.robotcore.util.SerialNumber;
 import org.firstinspires.ftc.robotcore.internal.collections.CircularByteBuffer;
 import org.firstinspires.ftc.robotcore.internal.collections.MarkedItemQueue;
 import org.firstinspires.ftc.robotcore.internal.hardware.TimeWindow;
+import org.firstinspires.ftc.robotcore.internal.system.Misc;
 
 /**
  * This class implements a dummy RobotUsbDevice that will apparently successfully do reads and
@@ -56,7 +57,7 @@ public class RobotUsbDevicePretendModernRobotics implements RobotUsbDevice
     protected MarkedItemQueue           markedItemQueue = new MarkedItemQueue();
     protected boolean                   interruptRequested = false;
     protected SerialNumber              serialNumber;
-    protected DeviceManager.DeviceType  deviceType = DeviceManager.DeviceType.FTDI_USB_UNKNOWN_DEVICE;
+    protected DeviceManager.UsbDeviceType deviceType = DeviceManager.UsbDeviceType.FTDI_USB_UNKNOWN_DEVICE;
     protected boolean                   debugRetainBuffers = false;
     protected ModernRoboticsDatagram.AllocationContext<ModernRoboticsRequest>  requestAllocationContext  = new ModernRoboticsDatagram.AllocationContext<ModernRoboticsRequest>();
     protected ModernRoboticsDatagram.AllocationContext<ModernRoboticsResponse> responseAllocationContext = new ModernRoboticsDatagram.AllocationContext<ModernRoboticsResponse>();
@@ -69,11 +70,17 @@ public class RobotUsbDevicePretendModernRobotics implements RobotUsbDevice
         {
         return this.serialNumber;
         }
-    @Override public void setDeviceType(@NonNull DeviceManager.DeviceType deviceType)
+
+    @NonNull @Override public String getProductName()
+        {
+        return Misc.formatForUser("pretend %s", deviceType);
+        }
+
+    @Override public void setDeviceType(@NonNull DeviceManager.UsbDeviceType deviceType)
         {
         this.deviceType = deviceType;
         }
-    @Override @NonNull public DeviceManager.DeviceType getDeviceType()
+    @Override @NonNull public DeviceManager.UsbDeviceType getDeviceType()
         {
         return this.deviceType;
         }

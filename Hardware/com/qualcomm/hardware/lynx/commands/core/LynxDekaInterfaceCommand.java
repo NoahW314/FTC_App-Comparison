@@ -99,10 +99,11 @@ public abstract class LynxDekaInterfaceCommand<RESPONSE extends LynxMessage> ext
                 LynxInjectDataLogHintCommand.class,                     // 46 InjectDataLogHint
                 LynxI2cConfigureQueryCommand.class,                     // 47 I2cConfigureQuery
                 LynxReadVersionStringCommand.class,                     // 48 ReadVersionString
-                LynxGetBulkPIDDataCommand.class,                        // 49 GetBulkPIDData
-                LynxI2cBlockReadConfigCommand.class,                    // 50 I2cBlockReadConfig
-                LynxI2cBlockReadQueryCommand.class,                     // 51 I2cBlockReadQuery
-                LynxI2cWriteReadMultipleBytesCommand.class              // 52 I2cWriteReadMultipleBytes
+                LynxFtdiResetControlCommand.class,                      // 49 FtdiResetControl
+                LynxFtdiResetQueryCommand.class,                        // 50 FtdiResetQuery
+                LynxSetMotorPIDFControlLoopCoefficientsCommand.class,   // 51 SetMotorPIDFControlLoopCoefficients
+                LynxI2cWriteReadMultipleBytesCommand.class,             // 52 I2cWriteReadMultipleBytes
+                LynxGetMotorPIDFControlLoopCoefficientsCommand.class    // 53 GetMotorPIDFControlLoopCoefficients
             );
 
     //----------------------------------------------------------------------------------------------

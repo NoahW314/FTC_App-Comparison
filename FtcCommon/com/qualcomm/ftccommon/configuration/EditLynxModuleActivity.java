@@ -40,22 +40,18 @@ import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.ListView;
 
+import com.qualcomm.ftccommon.CommandList;
 import com.qualcomm.ftccommon.R;
-import com.qualcomm.robotcore.hardware.configuration.BuiltInConfigurationType;
-import com.qualcomm.robotcore.hardware.configuration.ConfigurationType;
+import com.qualcomm.robotcore.hardware.ControlSystem;
 import com.qualcomm.robotcore.hardware.configuration.DeviceConfiguration;
 import com.qualcomm.robotcore.hardware.configuration.LynxConstants;
 import com.qualcomm.robotcore.hardware.configuration.LynxI2cDeviceConfiguration;
 import com.qualcomm.robotcore.hardware.configuration.LynxModuleConfiguration;
-import com.qualcomm.robotcore.hardware.configuration.MotorConfiguration;
-import com.qualcomm.robotcore.hardware.configuration.ServoConfiguration;
-import com.qualcomm.robotcore.hardware.configuration.UserConfigurationType;
-import com.qualcomm.robotcore.hardware.configuration.UserConfigurationTypeManager;
-import com.qualcomm.robotcore.hardware.configuration.UserI2cSensorType;
+import com.qualcomm.robotcore.robocol.Command;
+import com.qualcomm.robotcore.util.RobotLog;
 
 import org.firstinspires.ftc.robotcore.internal.system.Assert;
 
-import java.util.LinkedList;
 import java.util.List;
 
 /**
@@ -91,12 +87,29 @@ public class EditLynxModuleActivity extends EditActivity
         lynxModuleConfiguration = (LynxModuleConfiguration) controllerConfiguration;
         lynx_module_name.addTextChangedListener(new SetNameTextWatcher(lynxModuleConfiguration));
         lynx_module_name.setText(lynxModuleConfiguration.getName());
+
+        RobotLog.vv(TAG, "lynxModuleConfiguration.getSerialNumber()=%s", lynxModuleConfiguration.getSerialNumber());
+        visuallyIdentify();
         }
 
-    @Override
-    protected void onStart()
+    @Override protected void onDestroy()
         {
-        super.onStart();
+        super.onDestroy();
+        visuallyUnidentify();
+        }
+
+    protected void visuallyIdentify()
+        {
+        sendIdentify(true);
+        }
+    protected void visuallyUnidentify()
+        {
+        sendIdentify(false);
+        }
+    protected void sendIdentify(boolean shouldIdentify)
+        {
+        CommandList.CmdVisuallyIdentify cmdVisuallyIdentify = new CommandList.CmdVisuallyIdentify(lynxModuleConfiguration.getModuleSerialNumber(), shouldIdentify);
+        sendOrInject(new Command(cmdVisuallyIdentify.Command, cmdVisuallyIdentify.serialize()));
         }
 
     private AdapterView.OnItemClickListener editLaunchListener = new AdapterView.OnItemClickListener()
@@ -112,9 +125,6 @@ public class EditLynxModuleActivity extends EditActivity
                     break;
                 case EDIT_SERVO_LIST:
                     editServos(key, LynxConstants.INITIAL_SERVO_PORT, EditServoListActivity.class, lynxModuleConfiguration.getServos());
-                    break;
-                case EDIT_PWM_PORT:
-                    editSimple(key, 0, EditPWMDevicesActivity.class, lynxModuleConfiguration.getPwmOutputs());
                     break;
                 case EDIT_I2C_BUS0:
                     editI2cBus(key, 0);
@@ -142,6 +152,7 @@ public class EditLynxModuleActivity extends EditActivity
         {
         EditParameters result = new EditParameters<ITEM_T>(this, clazz, currentItems);
         result.setInitialPortNumber(initialPortNumber);
+        result.setControlSystem(ControlSystem.REV_HUB);
         return result;
         }
 
@@ -151,9 +162,9 @@ public class EditLynxModuleActivity extends EditActivity
         handleLaunchEdit(key.requestCode, launchClass, parameters);
         }
 
-    private void editServos(DisplayNameAndRequestCode key, int initialPort, Class launchClass, List<ServoConfiguration> devices)
+    private void editServos(DisplayNameAndRequestCode key, int initialPort, Class launchClass, List<DeviceConfiguration> devices)
         {
-        EditParameters parameters = initParameters(initialPort, ServoConfiguration.class, devices);
+        EditParameters parameters = initParameters(initialPort, DeviceConfiguration.class, devices);
         handleLaunchEdit(key.requestCode, launchClass, parameters);
         }
 
@@ -162,8 +173,7 @@ public class EditLynxModuleActivity extends EditActivity
         Assert.assertTrue(lynxModuleConfiguration.getMotors().size() == LynxConstants.NUMBER_OF_MOTORS);
         Assert.assertTrue(lynxModuleConfiguration.getMotors().get(0).getPort() == LynxConstants.INITIAL_MOTOR_PORT);
         //
-        EditParameters parameters = initParameters(LynxConstants.INITIAL_MOTOR_PORT, MotorConfiguration.class, lynxModuleConfiguration.getMotors());
-        parameters.setConfigurationTypes(MotorConfiguration.getAllMotorConfigurationTypes());
+        EditParameters parameters = initParameters(LynxConstants.INITIAL_MOTOR_PORT, DeviceConfiguration.class, lynxModuleConfiguration.getMotors());
         handleLaunchEdit(key.requestCode, EditMotorListActivity.class, parameters);
         }
 
@@ -171,32 +181,7 @@ public class EditLynxModuleActivity extends EditActivity
     private void editI2cBus(DisplayNameAndRequestCode key, int busZ)
         {
         EditParameters parameters = initParameters(0, LynxI2cDeviceConfiguration.class, lynxModuleConfiguration.getI2cDevices(busZ));
-        //
-        List<ConfigurationType> list = new LinkedList<ConfigurationType>();
-        list.add(BuiltInConfigurationType.I2C_DEVICE_SYNCH);
-        list.add(BuiltInConfigurationType.IR_SEEKER_V3);
-        list.add(BuiltInConfigurationType.ADAFRUIT_COLOR_SENSOR);
-        list.add(BuiltInConfigurationType.LYNX_COLOR_SENSOR);
-        list.add(BuiltInConfigurationType.COLOR_SENSOR);
-        list.add(BuiltInConfigurationType.GYRO);
-        list.add(BuiltInConfigurationType.NOTHING);
-        //
-        UserConfigurationType embeddedIMUConfigurationType = UserI2cSensorType.getLynxEmbeddedIMUType();
-        for (UserConfigurationType userConfigurationType : UserConfigurationTypeManager.getInstance().allUserTypes(UserConfigurationType.Flavor.I2C))
-            {
-            // We don't allow the embedded IMU on anything but its correct bus
-            if (busZ != LynxConstants.EMBEDDED_IMU_BUS)
-                {
-                if (userConfigurationType == embeddedIMUConfigurationType)
-                    {
-                    continue;
-                    }
-                }
-            list.add(userConfigurationType);
-            }
-        //
-        parameters.setConfigurationTypes(list.toArray(new ConfigurationType[list.size()]));
-        //
+        parameters.setI2cBus(busZ);
         parameters.setGrowable(true);
         handleLaunchEdit(key.requestCode, EditI2cDevicesActivityLynx.class, parameters);
         }
@@ -210,20 +195,15 @@ public class EditLynxModuleActivity extends EditActivity
             {
             if (requestCode == RequestCode.EDIT_MOTOR_LIST)
                 {
-                EditParameters<MotorConfiguration> parameters = EditParameters.fromIntent(this, data);
+                EditParameters<DeviceConfiguration> parameters = EditParameters.fromIntent(this, data);
                 lynxModuleConfiguration.setMotors(parameters.getCurrentItems());
                 Assert.assertTrue(lynxModuleConfiguration.getMotors().size() == LynxConstants.NUMBER_OF_MOTORS);
                 Assert.assertTrue(lynxModuleConfiguration.getMotors().get(0).getPort()== LynxConstants.INITIAL_MOTOR_PORT);
                 }
             else if (requestCode == RequestCode.EDIT_SERVO_LIST)
                 {
-                EditParameters<ServoConfiguration> parameters = EditParameters.fromIntent(this, data);
-                lynxModuleConfiguration.setServos(parameters.getCurrentItems());
-                }
-            else if (requestCode == RequestCode.EDIT_PWM_PORT)
-                {
                 EditParameters<DeviceConfiguration> parameters = EditParameters.fromIntent(this, data);
-                lynxModuleConfiguration.setPwmOutputs(parameters.getCurrentItems());
+                lynxModuleConfiguration.setServos(parameters.getCurrentItems());
                 }
             else if (requestCode == RequestCode.EDIT_ANALOG_INPUT)
                 {

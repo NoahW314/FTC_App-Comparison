@@ -37,8 +37,13 @@ import android.support.annotation.Nullable;
 
 import com.google.gson.annotations.Expose;
 import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.MotorControlAlgorithm;
+import com.qualcomm.robotcore.hardware.PIDFCoefficients;
+import com.qualcomm.robotcore.hardware.configuration.annotations.ExpansionHubPIDFPositionParams;
+import com.qualcomm.robotcore.hardware.configuration.annotations.ExpansionHubPIDFVelocityParams;
 
 import org.firstinspires.ftc.robotcore.internal.system.Assert;
+import org.firstinspires.ftc.robotcore.internal.system.Misc;
 
 import java.io.Serializable;
 
@@ -58,19 +63,22 @@ public class ExpansionHubMotorControllerParamsState implements Serializable, Clo
     public @Expose double p = 0;
     public @Expose double i = 0;
     public @Expose double d = 0;
+    public @Expose double f = 0;
+    public @Expose MotorControlAlgorithm algorithm;
 
     public ExpansionHubMotorControllerParamsState()
         {
         Assert.assertTrue(this.isDefault());
         }
 
-    public ExpansionHubMotorControllerParamsState(@NonNull DcMotor.RunMode mode, double p, double i, double d)
+    public ExpansionHubMotorControllerParamsState(@NonNull DcMotor.RunMode mode, @NonNull PIDFCoefficients pidfCoefficients)
         {
-        Assert.assertTrue(mode.isPIDMode() && mode.migrate()==mode);
         this.mode = mode;
-        this.p = p;
-        this.i = i;
-        this.d = d;
+        this.p = pidfCoefficients.p;
+        this.i = pidfCoefficients.i;
+        this.d = pidfCoefficients.d;
+        this.f = pidfCoefficients.f;
+        this.algorithm = pidfCoefficients.algorithm;
         }
 
     public ExpansionHubMotorControllerParamsState(@NonNull ExpansionHubMotorControllerPositionParams params)
@@ -79,14 +87,43 @@ public class ExpansionHubMotorControllerParamsState implements Serializable, Clo
         this.p = params.P();
         this.i = params.I();
         this.d = params.D();
+        this.f = 0;
+        this.algorithm = MotorControlAlgorithm.LegacyPID;
         }
 
-    public ExpansionHubMotorControllerParamsState(@Nullable ExpansionHubMotorControllerVelocityParams params)
+    public ExpansionHubMotorControllerParamsState(@NonNull ExpansionHubPIDFPositionParams params)
+        {
+        this.mode = DcMotor.RunMode.RUN_TO_POSITION;
+        this.p = params.P();
+        this.i = 0;
+        this.d = 0;
+        this.f = 0;
+        this.algorithm = params.algorithm();
+        }
+
+    public ExpansionHubMotorControllerParamsState(@NonNull ExpansionHubMotorControllerVelocityParams params)
         {
         this.mode = DcMotor.RunMode.RUN_USING_ENCODER;
         this.p = params.P();
         this.i = params.I();
         this.d = params.D();
+        this.f = 0;
+        this.algorithm = MotorControlAlgorithm.LegacyPID;
+        }
+
+    public ExpansionHubMotorControllerParamsState(@NonNull ExpansionHubPIDFVelocityParams params)
+        {
+        this.mode = DcMotor.RunMode.RUN_USING_ENCODER;
+        this.p = params.P();
+        this.i = params.I();
+        this.d = params.D();
+        this.f = params.F();
+        this.algorithm = params.algorithm();
+        }
+
+    public PIDFCoefficients getPidfCoefficients()
+        {
+        return new PIDFCoefficients(p, i, d, f, algorithm);
         }
 
     public ExpansionHubMotorControllerParamsState clone()
@@ -110,7 +147,7 @@ public class ExpansionHubMotorControllerParamsState implements Serializable, Clo
         if (o instanceof ExpansionHubMotorControllerParamsState)
             {
             ExpansionHubMotorControllerParamsState them = (ExpansionHubMotorControllerParamsState) o;
-            return this.mode == them.mode && this.p == them.p && this.i == them.i && this.d == them.d;
+            return this.mode == them.mode && this.p == them.p && this.i == them.i && this.d == them.d && this.f == them.f && this.algorithm == them.algorithm;
             }
         else
             return false;
@@ -118,16 +155,16 @@ public class ExpansionHubMotorControllerParamsState implements Serializable, Clo
 
     @Override public int hashCode()
         {
-        return mode.hashCode() ^ (hash(p) << 3) ^ (hash(i) << 6) ^ (hash(d) << 9) ^ 0xCCAE348C;
+        return mode.hashCode() ^ (hash(p) << 3) ^ (hash(i) << 6) ^ (hash(d) << 9) ^ (hash(f) << 12) ^ 0xCCAE348C;
         }
 
     protected int hash(double d)
         {
-        return (new Double(d)).hashCode();
+        return Double.valueOf(d).hashCode();
         }
 
     @Override public String toString()
         {
-        return String.format("mode=%s,p=%d,i=%d,d=%d", mode, p, i, d);
+        return Misc.formatForUser("mode=%s,p=%f,i=%f,d=%f,f=%f", mode, p, i, d, f);
         }
     }

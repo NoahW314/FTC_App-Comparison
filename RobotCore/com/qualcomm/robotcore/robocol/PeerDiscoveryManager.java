@@ -70,7 +70,7 @@ public class PeerDiscoveryManager {
    private ScheduledExecutorService discoveryLoopService;
    private ScheduledFuture<?> discoveryLoopFuture;
    private final PeerDiscovery message;
-   private CountDownLatch interlock = new CountDownLatch(0);
+   private CountDownLatch interlock = new CountDownLatch(1);
 
    /**
     * Constructor
@@ -95,7 +95,7 @@ public class PeerDiscoveryManager {
     * Start peer discovery
     */
    private void start() {
-      RobotLog.vv(TAG, "Starting peer discovery");
+      RobotLog.vv(TAG, "Starting peer discovery remote: " + peerDiscoveryDevice.toString() + " local: " + socket.getLocalAddress().toString());
 
       if (peerDiscoveryDevice.equals(socket.getLocalAddress())) {
          // we already know about our self

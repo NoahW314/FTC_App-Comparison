@@ -32,8 +32,16 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package com.qualcomm.robotcore.hardware.configuration;
 
+import android.support.annotation.NonNull;
+
+import com.qualcomm.robotcore.exception.RobotCoreException;
 import com.qualcomm.robotcore.util.SerialNumber;
 
+import org.firstinspires.ftc.robotcore.internal.usb.LynxModuleSerialNumber;
+import org.xmlpull.v1.XmlPullParser;
+import org.xmlpull.v1.XmlPullParserException;
+
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
@@ -44,13 +52,18 @@ import java.util.List;
 @SuppressWarnings("WeakerAccess")
 public class LynxModuleConfiguration extends ControllerConfiguration<DeviceConfiguration>
     {
+    public static final String TAG = "LynxModuleConfiguration";
+
     private boolean                   isParent       = false;
-    private List<MotorConfiguration>  motors         = new LinkedList<>();
-    private List<ServoConfiguration>  servos         = new LinkedList<>();
+    private List<DeviceConfiguration>  motors         = new LinkedList<>();
+    private List<DeviceConfiguration>  servos         = new LinkedList<>();
     private List<DeviceConfiguration> pwmOutputs     = new LinkedList<>();
     private List<DeviceConfiguration> digitalDevices = new LinkedList<>();
     private List<DeviceConfiguration> analogInputs   = new LinkedList<>();
     private List<LynxI2cDeviceConfiguration> i2cDevices  = new LinkedList<>();
+
+    /** not persisted in XML */
+    private @NonNull SerialNumber     usbDeviceSerialNumber = SerialNumber.createFake();
 
     // A note: unlike everything else, we don't have a fixed number of attachable i2c devices.
     // Rather, we have four i2c busses, to each of which may be attached any number of i2c devices
@@ -67,7 +80,22 @@ public class LynxModuleConfiguration extends ControllerConfiguration<DeviceConfi
 
     public LynxModuleConfiguration(String name)
         {
-        super(name, new ArrayList<DeviceConfiguration>(), new SerialNumber(), BuiltInConfigurationType.LYNX_MODULE);
+        super(name, new ArrayList<DeviceConfiguration>(), SerialNumber.createFake(), BuiltInConfigurationType.LYNX_MODULE);
+
+        servos          = ConfigurationUtility.buildEmptyServos(LynxConstants.INITIAL_SERVO_PORT, LynxConstants.NUMBER_OF_SERVO_CHANNELS);
+        motors          = ConfigurationUtility.buildEmptyMotors(LynxConstants.INITIAL_MOTOR_PORT, LynxConstants.NUMBER_OF_MOTORS);
+        pwmOutputs      = ConfigurationUtility.buildEmptyDevices(0,                               LynxConstants.NUMBER_OF_PWM_CHANNELS,   BuiltInConfigurationType.NOTHING);
+        analogInputs    = ConfigurationUtility.buildEmptyDevices(0,                               LynxConstants.NUMBER_OF_ANALOG_INPUTS,  BuiltInConfigurationType.NOTHING);
+        digitalDevices  = ConfigurationUtility.buildEmptyDevices(0,                               LynxConstants.NUMBER_OF_DIGITAL_IOS,    BuiltInConfigurationType.NOTHING);
+        i2cDevices      = new LinkedList<LynxI2cDeviceConfiguration>();
+
+        }
+
+    @Override
+    public void setPort(int port)
+        {
+        super.setPort(port);
+        setSerialNumber(new LynxModuleSerialNumber(usbDeviceSerialNumber, port));
         }
 
     public void setModuleAddress(int moduleAddress)
@@ -79,7 +107,10 @@ public class LynxModuleConfiguration extends ControllerConfiguration<DeviceConfi
         return this.getPort();
         }
 
-    public void setParent(boolean isParent)
+    /**
+     * A USB-connected Controller Module is considered a "Parent" and an EIA485-connected Controller Module is a "Child".
+     */
+    public void setIsParent(boolean isParent)
         {
         this.isParent = isParent;
         }
@@ -88,20 +119,43 @@ public class LynxModuleConfiguration extends ControllerConfiguration<DeviceConfi
         return this.isParent;
         }
 
-    public List<ServoConfiguration> getServos()
+    public void setUsbDeviceSerialNumber(@NonNull SerialNumber usbDeviceSerialNumber)
+        {
+        this.usbDeviceSerialNumber = usbDeviceSerialNumber;
+        setSerialNumber(new LynxModuleSerialNumber(usbDeviceSerialNumber, getModuleAddress()));
+        }
+
+    @Override public void setSerialNumber(@NonNull SerialNumber serialNumber)
+        {
+        super.setSerialNumber(serialNumber);
+        // RobotLog.vv(TAG, "setSerialNumber(%s)", serialNumber);
+        }
+
+    public @NonNull SerialNumber getUsbDeviceSerialNumber()
+        {
+        return usbDeviceSerialNumber;
+        }
+
+    /** separate method just to reinforce whose serial number we're retreiving */
+    public @NonNull SerialNumber getModuleSerialNumber()
+        {
+        return getSerialNumber();
+        }
+
+    public List<DeviceConfiguration> getServos()
         {
         return servos;
         }
-    public void setServos(List<ServoConfiguration> servos)
+    public void setServos(List<DeviceConfiguration> servos)
         {
         this.servos = servos;
         }
 
-    public List<MotorConfiguration> getMotors()
+    public List<DeviceConfiguration> getMotors()
         {
         return motors;
         }
-    public void setMotors(List<MotorConfiguration> motors)
+    public void setMotors(List<DeviceConfiguration> motors)
         {
         this.motors = motors;
         }
@@ -133,7 +187,7 @@ public class LynxModuleConfiguration extends ControllerConfiguration<DeviceConfi
         this.i2cDevices = new LinkedList<LynxI2cDeviceConfiguration>();
         for (LynxI2cDeviceConfiguration i2cDevice : i2cDevices)
             {
-            if (i2cDevice.isEnabled() && i2cDevice.getPort() >= 0 && i2cDevice.getPort() <  0 + LynxConstants.NUMBER_OF_I2C_BUSSES)
+            if (i2cDevice.isEnabled() && i2cDevice.getPort() >= 0 && i2cDevice.getPort() < LynxConstants.NUMBER_OF_I2C_BUSSES)
                 {
                 this.i2cDevices.add(i2cDevice);
                 }
@@ -181,5 +235,55 @@ public class LynxModuleConfiguration extends ControllerConfiguration<DeviceConfi
     public void setDigitalDevices(List<DeviceConfiguration> digitalDevices)
         {
         this.digitalDevices = digitalDevices;
+        }
+
+    @Override
+    protected void deserializeChildElement(ConfigurationType configurationType, XmlPullParser parser, ReadXMLFileHandler xmlReader) throws IOException, XmlPullParserException, RobotCoreException
+        {
+        super.deserializeChildElement(configurationType, parser, xmlReader);
+
+        if (configurationType.isDeviceFlavor(ConfigurationType.DeviceFlavor.SERVO))
+            {
+            DeviceConfiguration servo = new DeviceConfiguration();
+            servo.deserialize(parser, xmlReader);
+            getServos().set(servo.getPort()-LynxConstants.INITIAL_SERVO_PORT, servo);
+            }
+        else if (configurationType.isDeviceFlavor(ConfigurationType.DeviceFlavor.MOTOR))
+            {
+            DeviceConfiguration motor = new DeviceConfiguration();
+            motor.deserialize(parser, xmlReader);
+            getMotors().set(motor.getPort()-LynxConstants.INITIAL_MOTOR_PORT, motor);
+            }
+        else if (configurationType == BuiltInConfigurationType.PULSE_WIDTH_DEVICE)
+            {
+            DeviceConfiguration pwmOutput = new DeviceConfiguration();
+            pwmOutput.deserialize(parser, xmlReader);
+            getPwmOutputs().set(pwmOutput.getPort(), pwmOutput);
+            }
+        else if (configurationType.isDeviceFlavor(ConfigurationType.DeviceFlavor.ANALOG_SENSOR))
+            {
+            DeviceConfiguration analogSensor = new DeviceConfiguration();
+            analogSensor.deserialize(parser, xmlReader);
+            getAnalogInputs().set(analogSensor.getPort(), analogSensor);
+            }
+        else if (configurationType.isDeviceFlavor(ConfigurationType.DeviceFlavor.DIGITAL_IO))
+            {
+            DeviceConfiguration digitalIoDevice = new DeviceConfiguration();
+            digitalIoDevice.deserialize(parser, xmlReader);
+            getDigitalDevices().set(digitalIoDevice.getPort(), digitalIoDevice);
+            }
+        else if (configurationType.isDeviceFlavor(ConfigurationType.DeviceFlavor.I2C))
+            {
+            LynxI2cDeviceConfiguration i2cDevice = new LynxI2cDeviceConfiguration();
+            i2cDevice.deserialize(parser, xmlReader);
+            getI2cDevices().add(i2cDevice);
+            }
+        }
+
+    @Override
+    protected void deserializeAttributes(XmlPullParser parser)
+        {
+        super.deserializeAttributes(parser);
+        setModuleAddress(getPort());
         }
     }

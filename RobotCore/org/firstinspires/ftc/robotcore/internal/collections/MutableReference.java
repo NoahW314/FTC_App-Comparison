@@ -39,7 +39,7 @@ package org.firstinspires.ftc.robotcore.internal.collections;
 @SuppressWarnings("WeakerAccess")
 public class MutableReference<T>
     {
-    public T value;
+    protected T value;
 
     public MutableReference(T value)
         {
@@ -49,5 +49,20 @@ public class MutableReference<T>
     public MutableReference()
         {
         this(null);
+        }
+
+    public void setValue(T value)
+        {
+        this.value = value;
+        }
+
+    public T getValue()
+        {
+        return this.value;
+        }
+
+    @Override public String toString()
+        {
+        return "[{" + getValue() + "}]";
         }
     }

@@ -39,7 +39,8 @@ import com.qualcomm.robotcore.hardware.I2cDeviceSynch;
 import com.qualcomm.robotcore.hardware.I2cDeviceSynchDevice;
 import com.qualcomm.robotcore.hardware.I2cWaitControl;
 import com.qualcomm.robotcore.hardware.OpticalDistanceSensor;
-import com.qualcomm.robotcore.hardware.configuration.I2cSensor;
+import com.qualcomm.robotcore.hardware.configuration.annotations.DeviceProperties;
+import com.qualcomm.robotcore.hardware.configuration.annotations.I2cDeviceType;
 import com.qualcomm.robotcore.hardware.usb.RobotUsbDevice;
 import com.qualcomm.robotcore.util.Range;
 import com.qualcomm.robotcore.util.TypeConversion;
@@ -55,7 +56,8 @@ import java.util.Locale;
  * @see <a href="http://www.modernroboticsinc.com/range-sensor">MR Range Sensor</a>
  */
 @SuppressWarnings("WeakerAccess")
-@I2cSensor(name = "MR Range Sensor", description = "a MR range sensor", xmlTag = "ModernRoboticsI2cRangeSensor")
+@I2cDeviceType
+@DeviceProperties(name = "@string/mr_range_name", description = "@string/mr_range_description", xmlTag = "ModernRoboticsI2cRangeSensor", builtIn = true)
 public class ModernRoboticsI2cRangeSensor extends I2cDeviceSynchDevice<I2cDeviceSynch> implements DistanceSensor, OpticalDistanceSensor, I2cAddrConfig
     {
     //----------------------------------------------------------------------------------------------

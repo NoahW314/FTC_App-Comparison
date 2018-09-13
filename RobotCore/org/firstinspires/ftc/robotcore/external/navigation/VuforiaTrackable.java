@@ -32,10 +32,13 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package org.firstinspires.ftc.robotcore.external.navigation;
 
+import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 
 import com.vuforia.TrackableResult;
 
+import org.firstinspires.ftc.robotcore.external.hardware.camera.Camera;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.CameraName;
 import org.firstinspires.ftc.robotcore.external.matrices.OpenGLMatrix;
 
 /**
@@ -64,21 +67,41 @@ public interface VuforiaTrackable
     Listener getListener();
 
     /**
-     * Sets the location of the trackable in the FTC field (ie: world) coordinate system.
-     * By default, the location is null.
-     * @param location the location of the trackable on the FTC field
+     * Sets the location of the trackable in the the FTC Field Coordinate System.
+     * By default, the location is null, indicating that it is unknown.
+     *
+     * @param ftcFieldFromTarget the location of the trackable in the FTC Field Coordinate System. This
+     *                           transformation maps coordinates in the Target Coordinate System
+     *                           to coordinates in the FTC Field Coordinate System.
      * @see #getLocation()
-     * @see OpenGLMatrix#identityMatrix()
      * @see VuforiaTrackableDefaultListener#getRobotLocation()
-     */
-    void setLocation(OpenGLMatrix location);
-
-    /**
-     * Returns the location of the trackable in the FTC field.
-     * @return the location of the trackable in the FTC field.
      * @see #setLocation(OpenGLMatrix)
      */
-    OpenGLMatrix getLocation();
+    void setLocationFtcFieldFromTarget(@NonNull OpenGLMatrix ftcFieldFromTarget);
+
+    /**
+     * A synonym for {@link #setLocationFtcFieldFromTarget(OpenGLMatrix)}
+     */
+    void setLocation(@NonNull OpenGLMatrix location);
+
+    /**
+     * Returns the location of the trackable in the FTC Field Coordinate System. The returned
+     * transformation will map coordinates in the Target Coordinate System to coordinates in the
+     * FTC Field Coordinate System.
+     *
+     * @return the location of the trackable in the FTC Field Coordinate System.
+     * @see #setLocationFtcFieldFromTarget(OpenGLMatrix)
+     * @see #getLocation()
+     */
+    @NonNull OpenGLMatrix getFtcFieldFromTarget();
+
+    /**
+     * Returns the location of the trackable in the FTC Field Coordinate System.
+     * A synonym for {@link #getFtcFieldFromTarget()}.
+     *
+     * @return the location of the trackable in the FTC Field Coordinate System.
+     */
+    @NonNull OpenGLMatrix getLocation();
 
     /**
      * Sets user data to be associated with this trackable object. The SDK does not internally
@@ -134,8 +157,27 @@ public interface VuforiaTrackable
 
     interface Listener
         {
-        void onTracked(TrackableResult trackableResult, @Nullable VuforiaTrackable child);
+        /**
+         * {@link #onTracked} is called by the system to notify the listener that its associated trackable is currently visible.
+         *
+         * @param trackableResult the Vuforia trackable result object in which we were located
+         * @param cameraName      the name of the camera used by Vuforia to track this object
+         * @param camera          the {@link Camera} instance used in the tracking. Will be null if
+         *                        a built-in camera is used
+         */
+        void onTracked(TrackableResult trackableResult, CameraName cameraName, @Nullable Camera camera, @Nullable VuforiaTrackable child);
+
+        /**
+         * Called by the system to inform the trackable that it is no longer visible.
+         */
         void onNotTracked();
+
+        /**
+         * Adds a trackable on which this {@link Listener} is listening. May not be
+         * called once tracking has begun. If the {@link Listener} is already listening
+         * to this trackable, then the call has no effect.
+         */
+        void addTrackable(VuforiaTrackable trackable);
         }
 
     }

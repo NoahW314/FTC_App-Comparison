@@ -63,16 +63,9 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 package com.qualcomm.ftccommon.configuration;
 
-import android.view.View;
-import android.widget.Spinner;
-
 import com.qualcomm.ftccommon.R;
-import com.qualcomm.robotcore.hardware.configuration.BuiltInConfigurationType;
 import com.qualcomm.robotcore.hardware.configuration.ConfigurationType;
 import com.qualcomm.robotcore.hardware.configuration.DeviceConfiguration;
-
-import java.util.Arrays;
-import java.util.Comparator;
 
 /**
  * {@link EditI2cDevicesActivityAbstract} manages a possibly-growable list of I2c devices. The set of
@@ -80,8 +73,6 @@ import java.util.Comparator;
  */
 public abstract class EditI2cDevicesActivityAbstract<ITEM_T extends DeviceConfiguration> extends EditPortListSpinnerActivity<ITEM_T>
     {
-    ConfigurationType[] configurationTypes = new ConfigurationType[0];
-
     public EditI2cDevicesActivityAbstract()
         {
         this.layoutMain             = R.layout.i2cs;
@@ -93,32 +84,9 @@ public abstract class EditI2cDevicesActivityAbstract<ITEM_T extends DeviceConfig
         this.idItemPortNumber       = R.id.port_number;
         }
 
-    @Override protected void deserialize(EditParameters parameters)
-        {
-        super.deserialize(parameters);
-        if (parameters.getConfigurationTypes() != null)
-            {
-            this.configurationTypes = parameters.getConfigurationTypes();
-            }
-        }
-
     @Override
-    protected void localizeSpinner(View itemView)
+    protected ConfigurationType.DeviceFlavor getDeviceFlavorBeingConfigured()
         {
-        Spinner spinner = (Spinner) itemView.findViewById(this.idItemSpinner);
-
-        Comparator<ConfigurationType> comparator = new Comparator<ConfigurationType>()
-            {
-            @Override public int compare(ConfigurationType lhs, ConfigurationType rhs)
-                {
-                // Make sure 'nothing' is first
-                if (lhs==rhs) return 0;
-                if (lhs== BuiltInConfigurationType.NOTHING) return -1;
-                if (rhs==BuiltInConfigurationType.NOTHING) return 1;
-                return 0;   // they'll be distinguished using an outer level comparator
-                }
-            };
-
-        localizeConfigTypeSpinnerTypes(ConfigurationType.DisplayNameFlavor.Normal, spinner, Arrays.asList(this.configurationTypes), comparator);
+        return ConfigurationType.DeviceFlavor.I2C;
         }
     }

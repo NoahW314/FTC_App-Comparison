@@ -32,7 +32,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. */
 package com.qualcomm.ftccommon;
 
 import android.content.Context;
+import android.support.annotation.Nullable;
 
+import com.qualcomm.ftccommon.configuration.USBScanManager;
 import com.qualcomm.hardware.HardwareFactory;
 import com.qualcomm.hardware.lynx.LynxUsbDevice;
 import com.qualcomm.hardware.lynx.LynxUsbDeviceImpl;
@@ -43,8 +45,12 @@ import com.qualcomm.robotcore.hardware.DcMotorController;
 import com.qualcomm.robotcore.hardware.Gamepad;
 import com.qualcomm.robotcore.hardware.HardwareDeviceCloseOnTearDown;
 import com.qualcomm.robotcore.hardware.HardwareMap;
+import com.qualcomm.robotcore.hardware.ScannedDevices;
 import com.qualcomm.robotcore.hardware.ServoController;
 import com.qualcomm.robotcore.hardware.VoltageSensor;
+import com.qualcomm.robotcore.hardware.configuration.ConfigurationUtility;
+import com.qualcomm.robotcore.hardware.configuration.ControllerConfiguration;
+import com.qualcomm.robotcore.hardware.configuration.LynxConstants;
 import com.qualcomm.robotcore.hardware.usb.RobotArmingStateNotifier;
 import com.qualcomm.robotcore.robocol.TelemetryMessage;
 import com.qualcomm.robotcore.robot.RobotState;
@@ -52,6 +58,9 @@ import com.qualcomm.robotcore.util.BatteryChecker;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.MovingStatistics;
 import com.qualcomm.robotcore.util.RobotLog;
+import com.qualcomm.robotcore.util.SerialNumber;
+
+import org.firstinspires.ftc.robotcore.external.function.Supplier;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -65,9 +74,11 @@ public class FtcEventLoopHandler implements BatteryChecker.BatteryWatcher {
 
   public static final String TAG = "FtcEventLoopHandler";
 
-  /** This string is sent in the robot battery telemetry payload to indicate
+  /** This string is sent in the robot battery telemetry payload to identify
    *  that no voltage sensor is available on the robot. */
   public static final String NO_VOLTAGE_SENSOR = "$no$voltage$sensor$";
+
+  protected static final boolean DEBUG = false;
 
   //------------------------------------------------------------------------------------------------
   // State
@@ -85,7 +96,7 @@ public class FtcEventLoopHandler implements BatteryChecker.BatteryWatcher {
   protected ElapsedTime       robotBatteryTimer         = new ElapsedTime();
   protected double            robotBatteryInterval      = 3.00; // in seconds
   protected MovingStatistics  robotBatteryStatistics    = new MovingStatistics(10);
-  protected ElapsedTime       robotBatteryLoggingTimer  = new ElapsedTime(0); // 0 so we get an initial report
+  protected ElapsedTime       robotBatteryLoggingTimer  = null;
   protected double            robotBatteryLoggingInterval = robotControllerBatteryCheckerInterval;
 
   protected ElapsedTime       userTelemetryTimer        = new ElapsedTime(0); // 0 so we get an initial report
@@ -95,7 +106,10 @@ public class FtcEventLoopHandler implements BatteryChecker.BatteryWatcher {
   protected ElapsedTime       updateUITimer             = new ElapsedTime();
   protected double            updateUIInterval          = 0.250; // in seconds
 
-  protected HardwareMap       hardwareMap     = null;
+  /** the actual hardware map seen by the user */
+  protected HardwareMap       hardwareMap               = null;
+  /** the hardware map in which we keep any extra devices (ones not used by the user) we need to instantiate */
+  protected HardwareMap       hardwareMapExtra          = null;
 
   //------------------------------------------------------------------------------------------------
   // Construction
@@ -107,7 +121,8 @@ public class FtcEventLoopHandler implements BatteryChecker.BatteryWatcher {
     this.robotControllerContext = robotControllerContext;
 
     long milliseconds = (long)(robotControllerBatteryCheckerInterval * 1000); //milliseconds
-    robotControllerBatteryChecker = new BatteryChecker(robotControllerContext, this, milliseconds);
+    robotControllerBatteryChecker = new BatteryChecker(this, milliseconds);
+    if (DEBUG) robotBatteryLoggingTimer = new ElapsedTime(0);
   }
 
   //------------------------------------------------------------------------------------------------
@@ -120,14 +135,10 @@ public class FtcEventLoopHandler implements BatteryChecker.BatteryWatcher {
   }
 
   public void close() {
-    // Close motor and servo controllers first, since some of them may reside on top
-    // of legacy modules: closing first just keeps things more graceful
-    closeMotorControllers();
-    closeServoControllers();
 
-    // Now close everything that's USB-connected (yes that might re-close a motor or servo
-    // controller, but that's ok
-    closeAutoCloseOnTeardown();
+    // shutdown everything we have open
+    closeHardwareMap(hardwareMap);
+    closeHardwareMap(hardwareMapExtra);
 
     // Stop the battery monitoring so we don't send stale telemetry
     closeBatteryMonitoring();
@@ -135,6 +146,19 @@ public class FtcEventLoopHandler implements BatteryChecker.BatteryWatcher {
     // Paranoia: shut down interactions for absolute certain
     eventLoopManager = null;
   }
+
+  protected static void closeHardwareMap(HardwareMap hardwareMap) {
+
+    // Close motor and servo controllers first, since some of them may reside on top
+    // of legacy modules: closing first just keeps things more graceful
+    closeMotorControllers(hardwareMap);
+    closeServoControllers(hardwareMap);
+
+    // Now close everything that's USB-connected (yes that might re-close a motor or servo
+    // controller, but that's ok
+    closeAutoCloseOnTeardown(hardwareMap);
+  }
+
 
   //------------------------------------------------------------------------------------------------
   // Accessing
@@ -150,6 +174,7 @@ public class FtcEventLoopHandler implements BatteryChecker.BatteryWatcher {
 
         // Create a newly-active hardware map
         hardwareMap = hardwareFactory.createHardwareMap(eventLoopManager);
+        hardwareMapExtra = new HardwareMap(robotControllerContext);
       }
       return hardwareMap;
     }
@@ -158,14 +183,104 @@ public class FtcEventLoopHandler implements BatteryChecker.BatteryWatcher {
   public List<LynxUsbDeviceImpl> getExtantLynxDeviceImpls() {
     synchronized (hardwareFactory) {
       List<LynxUsbDeviceImpl> result = new ArrayList<LynxUsbDeviceImpl>();
-      HardwareMap map = hardwareMap;
-      if (map != null) {
-        for (LynxUsbDevice lynxUsbDevice : map.getAll(LynxUsbDevice.class)) {
+      if (hardwareMap != null) {
+        for (LynxUsbDevice lynxUsbDevice : hardwareMap.getAll(LynxUsbDevice.class)) {
           if (lynxUsbDevice.getArmingState()==RobotArmingStateNotifier.ARMINGSTATE.ARMED) {
             result.add(lynxUsbDevice.getDelegationTarget());
           }
         }
       }
+      if (hardwareMapExtra != null) {
+        for (LynxUsbDevice lynxUsbDevice : hardwareMapExtra.getAll(LynxUsbDevice.class)) {
+          if (lynxUsbDevice.getArmingState()==RobotArmingStateNotifier.ARMINGSTATE.ARMED) {
+            result.add(lynxUsbDevice.getDelegationTarget());
+          }
+        }
+      }
+      return result;
+    }
+  }
+
+  /**
+   * Returns the device whose serial number is the one indicated, from the hardware map if possible
+   * but instantiating / opening it if necessary. null is returned if the object cannot be
+   * accessed.
+   *
+   * @param classOrInterface        the interface to retrieve on the returned object
+   * @param serialNumber            the serial number of the object to retrieve
+   * @param usbScanManagerSupplier  how to get a {@link USBScanManager} if it ends up we need one
+   */
+  public @Nullable <T> T getHardwareDevice(Class<? extends T> classOrInterface, final SerialNumber serialNumber, Supplier<USBScanManager> usbScanManagerSupplier) {
+    synchronized (hardwareFactory) {
+      RobotLog.vv(TAG, "getHardwareDevice(%s)...", serialNumber);
+      try {
+        getHardwareMap();
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        return null;
+      } catch (RobotCoreException e) {
+        return null;
+      }
+
+      Object oResult = hardwareMap.get(Object.class, serialNumber);
+
+      if (oResult == null) {
+        oResult = hardwareMapExtra.get(Object.class, serialNumber);
+      }
+
+      if (oResult == null) {
+        /** the device isn't in the hwmap. but is it actually attached? */
+        /** first, check for it's scannable */
+        final SerialNumber scannableSerialNumber = serialNumber.getScannableDeviceSerialNumber();
+
+        boolean tryScannable = true;
+        if (!scannableSerialNumber.equals(serialNumber)) { // already did that check
+          if (hardwareMap.get(Object.class, scannableSerialNumber) != null || hardwareMapExtra.get(Object.class, scannableSerialNumber) != null) {
+            RobotLog.ee(TAG, "internal error: %s absent but scannable %s present", serialNumber, scannableSerialNumber);
+            tryScannable = false;
+          }
+        }
+
+        if (tryScannable) {
+          final USBScanManager usbScanManager = usbScanManagerSupplier.get();
+          if (usbScanManager != null) {
+            try {
+              ScannedDevices scannedDevices = usbScanManager.awaitScannedDevices();
+              if (scannedDevices.containsKey(scannableSerialNumber)) {
+                /** yes, it's there. build a new configuration for it */
+                ConfigurationUtility configurationUtility = new ConfigurationUtility();
+                ControllerConfiguration controllerConfiguration = configurationUtility.buildNewControllerConfiguration(scannableSerialNumber, scannedDevices.get(scannableSerialNumber), usbScanManager.getLynxModuleMetaListSupplier(scannableSerialNumber));
+                if (controllerConfiguration != null) {
+                  controllerConfiguration.setEnabled(true);
+                  controllerConfiguration.setKnownToBeAttached(true);
+                  /** get access to the actual device */
+                  hardwareFactory.instantiateConfiguration(hardwareMapExtra, controllerConfiguration, eventLoopManager);
+                  oResult = hardwareMapExtra.get(Object.class, serialNumber);
+                  RobotLog.ii(TAG, "found %s: hardwareMapExtra:", serialNumber);
+                  hardwareMapExtra.logDevices();
+                } else {
+                  RobotLog.ee(TAG, "buildNewControllerConfiguration(%s) failed", scannableSerialNumber);
+                }
+              } else {
+                RobotLog.ee(TAG, "");
+              }
+            } catch (InterruptedException e) {
+              Thread.currentThread().interrupt();
+            } catch (RobotCoreException e) {
+              RobotLog.ee(TAG, e, "exception in getHardwareDevice(%s)", serialNumber);
+            }
+          } else {
+            RobotLog.ee(TAG, "usbScanManager supplied as null");
+          }
+        }
+      }
+
+      T result = null;
+      if (oResult != null && classOrInterface.isInstance(oResult)) {
+        result = classOrInterface.cast(oResult);
+      }
+
+      RobotLog.vv(TAG, "...getHardwareDevice(%s)=%s,%s", serialNumber, oResult, result);
       return result;
     }
   }
@@ -242,7 +357,7 @@ public class FtcEventLoopHandler implements BatteryChecker.BatteryWatcher {
         if (transmitBecauseOfBattery) {
           telemetry.addData(EventLoopManager.ROBOT_BATTERY_LEVEL_KEY, buildRobotBatteryMsg());
           robotBatteryTimer.reset();
-          if (robotBatteryLoggingTimer.seconds() > robotBatteryLoggingInterval) {
+          if ((DEBUG) && (robotBatteryLoggingTimer.seconds() > robotBatteryLoggingInterval)) {
             RobotLog.i("robot battery read duration: n=%d, mean=%.3fms sd=%.3fms", robotBatteryStatistics.getCount(), robotBatteryStatistics.getMean(), robotBatteryStatistics.getStandardDeviation());
             robotBatteryLoggingTimer.reset();
           }
@@ -334,21 +449,27 @@ public class FtcEventLoopHandler implements BatteryChecker.BatteryWatcher {
     telemetry.clearData();
   }
 
-  protected void closeMotorControllers() {
-    for (DcMotorController controller : hardwareMap.getAll(DcMotorController.class)) {
-      controller.close();
+  protected static void closeMotorControllers(HardwareMap hardwareMap) {
+    if (hardwareMap != null) {
+      for (DcMotorController controller : hardwareMap.getAll(DcMotorController.class)) {
+        controller.close();
+      }
     }
   }
 
-  protected void closeServoControllers()  {
-    for (ServoController controller : hardwareMap.getAll(ServoController.class)) {
-      controller.close();
+  protected static void closeServoControllers(HardwareMap hardwareMap)  {
+    if (hardwareMap != null) {
+      for (ServoController controller : hardwareMap.getAll(ServoController.class)) {
+        controller.close();
+      }
     }
   }
 
-  protected void closeAutoCloseOnTeardown() {
-    for (HardwareDeviceCloseOnTearDown device : hardwareMap.getAll(HardwareDeviceCloseOnTearDown.class)) {
-      device.close();
+  protected static void closeAutoCloseOnTeardown(HardwareMap hardwareMap) {
+    if (hardwareMap != null) {
+      for (HardwareDeviceCloseOnTearDown device : hardwareMap.getAll(HardwareDeviceCloseOnTearDown.class)) {
+        device.close();
+      }
     }
   }
 

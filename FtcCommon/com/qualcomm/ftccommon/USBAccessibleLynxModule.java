@@ -32,7 +32,12 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package com.qualcomm.ftccommon;
 
+import android.support.annotation.NonNull;
+import android.text.TextUtils;
+
 import com.qualcomm.robotcore.util.SerialNumber;
+
+import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 
 /**
  * A simple utility class holding the serial number of a USB accessible lynx module and (optionally) its module address
@@ -43,6 +48,7 @@ public final class USBAccessibleLynxModule
     protected SerialNumber serialNumber = null;
     protected int          moduleAddress = 0;
     protected boolean      moduleAddressChangeable = true;
+    protected String       firmwareVersionString = "";
 
     public USBAccessibleLynxModule(SerialNumber serialNumber)
         {
@@ -84,4 +90,25 @@ public final class USBAccessibleLynxModule
         {
         this.moduleAddressChangeable = moduleAddressChangeable;
         }
+
+    public String getFirmwareVersionString()
+        {
+        return firmwareVersionString;
+        }
+
+    public String getFinishedFirmwareVersionString()
+        {
+        String result = getFirmwareVersionString();
+        if (TextUtils.isEmpty(result))
+            {
+            result = "(" + AppUtil.getDefContext().getString(R.string.lynxUnavailableFWVersionString) + ")";
+            }
+        return result;
+        }
+
+    public void setFirmwareVersionString(@NonNull String firmwareVersionString)
+        {
+        this.firmwareVersionString = firmwareVersionString;
+        }
+
     }

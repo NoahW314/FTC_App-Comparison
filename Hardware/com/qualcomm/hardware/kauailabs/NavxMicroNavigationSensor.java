@@ -67,7 +67,8 @@ import com.qualcomm.robotcore.hardware.I2cDeviceSynch;
 import com.qualcomm.robotcore.hardware.I2cDeviceSynchDeviceWithParameters;
 import com.qualcomm.robotcore.hardware.IntegratingGyroscope;
 import com.qualcomm.robotcore.hardware.TimestampedData;
-import com.qualcomm.robotcore.hardware.configuration.I2cSensor;
+import com.qualcomm.robotcore.hardware.configuration.annotations.DeviceProperties;
+import com.qualcomm.robotcore.hardware.configuration.annotations.I2cDeviceType;
 import com.qualcomm.robotcore.hardware.usb.RobotUsbDevice;
 import com.qualcomm.robotcore.util.TypeConversion;
 
@@ -89,7 +90,8 @@ import java.util.Set;
  * @see <a href="http://pdocs.kauailabs.com/navx-micro/">navX-Micro</a>
  * @see <a href="https://www.invensense.com/products/motion-tracking/9-axis/mpu-9250/">Invensense MPU-9250</a>
  */
-@I2cSensor(name = "navX Micro", description = "a navX Micro gyro", xmlTag = "KauaiLabsNavxMicro")
+@I2cDeviceType
+@DeviceProperties(name = "@string/navx_micro_name", description = "@string/navx_micro_description", xmlTag = "KauaiLabsNavxMicro", builtIn = true)
 public class NavxMicroNavigationSensor extends I2cDeviceSynchDeviceWithParameters<I2cDeviceSynch, NavxMicroNavigationSensor.Parameters>
         implements Gyroscope, IntegratingGyroscope, I2cAddrConfig
     {

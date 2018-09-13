@@ -36,6 +36,8 @@ public enum NetworkType
     WIFIDIRECT,
     LOOPBACK,
     SOFTAP,
+    WIRELESSAP,
+    RCWIRELESSAP,
     UNKNOWN_NETWORK_TYPE;
 
     public static @NonNull NetworkType fromString(String type) {
@@ -44,5 +46,13 @@ public enum NetworkType
       } catch (Exception e) {
         return UNKNOWN_NETWORK_TYPE;
       }
+    }
+
+    public static NetworkType globalDefault() {
+      return WIFIDIRECT;
+    }
+
+    public static String globalDefaultAsString() {
+      return globalDefault().toString();
     }
   }

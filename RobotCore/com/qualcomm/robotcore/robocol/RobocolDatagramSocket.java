@@ -38,7 +38,12 @@ public class RobocolDatagramSocket {
   private final Object          sendLock = new Object(); // only one send() at a time
   private final Object          bindCloseLock = new Object(); // serializes bind() vs close()
   private       boolean         sendErrorReported = false;
-  private       boolean recvErrorReported = false;
+  private       boolean         recvErrorReported = false;
+  private       long            rxDataTotal = 0;
+  private       long            txDataTotal = 0;
+  private       long            rxDataSample = 0;
+  private       long            txDataSample = 0;
+  private       boolean         trafficDataCollection = false;
 
   public RobocolDatagramSocket() {
     state = State.CLOSED;
@@ -99,6 +104,7 @@ public class RobocolDatagramSocket {
         if (VERBOSE_DEBUG) RobotLog.vv(TAG, "calling socket.send()");
         socket.send(message.getPacket());
         if (DEBUG) RobotLog.vv(TAG, String.format("sent packet to=%s len=%d", message.getPacket().getAddress().toString(), message.getPayloadLength()));
+        if (trafficDataCollection) txDataSample += message.getPayloadLength();
 
       } catch (RuntimeException e) {
         RobotLog.logExceptionHeader(TAG, e, "exception sending datagram");
@@ -131,6 +137,7 @@ public class RobocolDatagramSocket {
         if (VERBOSE_DEBUG) RobotLog.vv(TAG, "calling socket.receive()");
         socket.receive(packetRecv);
         if (DEBUG) RobotLog.vv(TAG, String.format("received packet from=%s len=%d", packetRecv.getAddress().toString(), result.getPayloadLength()));
+        if (trafficDataCollection) rxDataSample += result.getPayloadLength();
 
       } catch (SocketException|SocketTimeoutException e) {
         if (!recvErrorReported) {
@@ -146,6 +153,33 @@ public class RobocolDatagramSocket {
 
       return result;
     }
+  }
+
+  public void gatherTrafficData(boolean enable) {
+    trafficDataCollection = enable;
+  }
+
+  public long getRxDataSample() {
+    return rxDataSample;
+  }
+
+  public long getTxDataSample() {
+    return txDataSample;
+  }
+
+  public long getRxDataCount() {
+    return rxDataTotal;
+  }
+
+  public long getTxDataCount() {
+    return txDataTotal;
+  }
+
+  public void resetDataSample() {
+    rxDataTotal += rxDataSample;
+    txDataTotal += txDataSample;
+    rxDataSample = 0;
+    txDataSample = 0;
   }
 
   public State getState() {

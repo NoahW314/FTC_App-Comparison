@@ -67,10 +67,9 @@ public interface GlobalWarningSource
      * first has already been set.
      *
      * @param warning the warning to be associated with this sources
-     * @return whether the warning was accepted by the source or not
      * @see #clearGlobalWarning()
      */
-    boolean setGlobalWarning(String warning);
+    void setGlobalWarning(String warning);
 
     /**
      * Clears any currently set warning (if permitted) for this source, and zeros

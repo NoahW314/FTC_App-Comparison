@@ -31,12 +31,16 @@
 package com.qualcomm.robotcore.hardware;
 
 import com.qualcomm.robotcore.R;
+import com.qualcomm.robotcore.hardware.configuration.annotations.DeviceProperties;
+import com.qualcomm.robotcore.hardware.configuration.annotations.DigitalIoDeviceType;
 
 import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 
 /**
  * Control a single digital channel
  */
+@DigitalIoDeviceType
+@DeviceProperties(name = "@string/configTypeDigitalDevice", xmlTag = "DigitalDevice", builtIn = true)
 public class DigitalChannelImpl implements DigitalChannel {
 
   private DigitalChannelController controller = null;

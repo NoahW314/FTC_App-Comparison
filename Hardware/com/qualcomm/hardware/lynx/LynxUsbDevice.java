@@ -33,6 +33,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 package com.qualcomm.hardware.lynx;
 
 import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 
 import com.qualcomm.hardware.lynx.commands.LynxMessage;
 import com.qualcomm.robotcore.eventloop.SyncdDevice;
@@ -44,6 +45,8 @@ import com.qualcomm.robotcore.hardware.RobotCoreLynxUsbDevice;
 import com.qualcomm.robotcore.hardware.usb.RobotUsbDevice;
 import com.qualcomm.robotcore.hardware.usb.RobotUsbModule;
 import com.qualcomm.robotcore.util.GlobalWarningSource;
+
+import java.util.List;
 
 /**
  * The working interface to Lynx USB Devices. Separating out the interface like this allows
@@ -62,6 +65,8 @@ public interface LynxUsbDevice extends RobotUsbModule, GlobalWarningSource, Robo
     void changeModuleAddress(LynxModule module, int oldAddress, Runnable runnable);
 
     void addConfiguredModule(LynxModule module) throws RobotCoreException, InterruptedException, LynxNackException;
+
+    @Nullable LynxModule getConfiguredModule(int moduleAddress);
 
     void removeConfiguredModule(LynxModule module);
 

@@ -72,7 +72,7 @@ import com.qualcomm.robotcore.hardware.I2cWaitControl;
 import com.qualcomm.robotcore.hardware.LegacyModule;
 import com.qualcomm.robotcore.hardware.VoltageSensor;
 import com.qualcomm.robotcore.hardware.configuration.ModernRoboticsConstants;
-import com.qualcomm.robotcore.hardware.configuration.MotorConfigurationType;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.MotorConfigurationType;
 import com.qualcomm.robotcore.util.LastKnown;
 import com.qualcomm.robotcore.util.Range;
 import com.qualcomm.robotcore.util.TypeConversion;
@@ -280,6 +280,12 @@ public final class HiTechnicNxtDcMotorController extends HiTechnicNxtController 
     //----------------------------------------------------------------------------------------------
     // DCMotorController
     //----------------------------------------------------------------------------------------------
+
+    @Override public void resetDeviceConfigurationForOpMode(int motor)
+        {
+        validateMotor(motor);
+        // Nothing to do
+        }
 
     @Override public synchronized void setMotorType(int motor, MotorConfigurationType motorType)
         {

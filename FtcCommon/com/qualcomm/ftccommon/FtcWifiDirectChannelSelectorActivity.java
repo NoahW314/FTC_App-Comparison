@@ -62,9 +62,11 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 package com.qualcomm.ftccommon;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.Intent;
 import android.net.wifi.WifiManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.support.annotation.AnyRes;
 import android.support.annotation.LayoutRes;
@@ -80,9 +82,9 @@ import android.widget.ListView;
 
 import com.qualcomm.robotcore.util.RobotLog;
 
-import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 import org.firstinspires.ftc.robotcore.internal.network.WifiDirectChannelAndDescription;
 import org.firstinspires.ftc.robotcore.internal.network.WifiDirectChannelChanger;
+import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 import org.firstinspires.ftc.robotcore.internal.system.PreferencesHelper;
 import org.firstinspires.ftc.robotcore.internal.ui.ThemedActivity;
 import org.firstinspires.ftc.robotcore.internal.ui.UILocation;
@@ -149,6 +151,18 @@ public class FtcWifiDirectChannelSelectorActivity extends ThemedActivity impleme
         {
         WifiDirectChannelAndDescription[] items = WifiDirectChannelAndDescription.load().toArray(new WifiDirectChannelAndDescription[0]);
         Arrays.sort(items);
+
+        // if 5GHz is not available, then truncate list of available channels.
+        if (is5GHzAvailable() == false)
+            {
+            items = Arrays.copyOf(items, INDEX_AUTO_AND_2_4_ITEMS);
+            RobotLog.vv(TAG, "5GHz radio not available.");
+            }
+        else
+            {
+            RobotLog.vv(TAG, "5GHz radio is available.");
+            }
+
         ArrayAdapter<WifiDirectChannelAndDescription> adapter = new WifiChannelItemAdapter(this, android.R.layout.simple_spinner_dropdown_item, items);  // simple_spinner_item, simple_spinner_dropdown_item
         itemsListView.setAdapter(adapter);
         }
@@ -217,4 +231,26 @@ public class FtcWifiDirectChannelSelectorActivity extends ThemedActivity impleme
         RobotLog.vv(TAG, "launch wifi settings");
         startActivity(new Intent(WifiManager.ACTION_PICK_WIFI_NETWORK));
         }
+
+
+    //----------------------------------------------------------------------------------------------
+    // Additional variables and methods
+    //----------------------------------------------------------------------------------------------
+    private final int INDEX_AUTO_AND_2_4_ITEMS = 12;
+
+    private boolean is5GHzAvailable()
+        {
+        if (android.os.Build.VERSION.SDK_INT <= Build.VERSION_CODES.KITKAT)
+            {
+            // it's a kit kat device or lower.
+            // assume 5GHz is not available;
+            return false;
+            }
+        else
+            {
+            WifiManager wifiManager = (WifiManager) this.getApplicationContext().getSystemService(WIFI_SERVICE);
+            return wifiManager.is5GHzBandSupported();
+            }
+        }
+
     }

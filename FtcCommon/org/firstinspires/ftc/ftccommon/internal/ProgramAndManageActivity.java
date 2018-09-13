@@ -63,7 +63,7 @@ import com.qualcomm.ftccommon.LaunchActivityConstantsList;
 import com.qualcomm.ftccommon.R;
 import com.qualcomm.robotcore.util.RobotLog;
 
-import org.firstinspires.ftc.robotcore.external.Consumer;
+import org.firstinspires.ftc.robotcore.external.function.Consumer;
 import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 import org.firstinspires.ftc.robotcore.internal.system.AppUtil.DialogContext;
 import org.firstinspires.ftc.robotcore.internal.system.Assert;
@@ -80,6 +80,7 @@ import java.io.File;
 import java.net.URI;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -314,7 +315,7 @@ public class ProgramAndManageActivity extends ThemedActivity
             {
             URI uri = URI.create(consoleMessage.sourceId());
             RobotLog.dd(TAG, "%s(%s,%d): %s",
-                    consoleMessage.messageLevel().toString().toLowerCase(),
+                    consoleMessage.messageLevel().toString().toLowerCase(Locale.getDefault()),
                     uri.getPath(),
                     consoleMessage.lineNumber(),
                     consoleMessage.message());
@@ -399,15 +400,25 @@ public class ProgramAndManageActivity extends ThemedActivity
 
     protected DialogContext showAlert(String message, @Nullable Consumer<DialogContext> runOnDismiss)
         {
-        return AppUtil.getInstance().showDialog(UILocation.ONLY_LOCAL, AppUtil.DialogFlavor.ALERT, this, getString(R.string.alertTitleRobotControllerConsole), message, null, runOnDismiss);
+        AppUtil.DialogParams params = new AppUtil.DialogParams(UILocation.ONLY_LOCAL, getString(R.string.alertTitleRobotControllerConsole), message);
+        params.activity = this;
+        params.flavor = AppUtil.DialogFlavor.ALERT;
+        return AppUtil.getInstance().showDialog(params, runOnDismiss);
         }
     protected DialogContext showConfirm(String message, @Nullable Consumer<DialogContext> runOnDismiss)
         {
-        return AppUtil.getInstance().showDialog(UILocation.ONLY_LOCAL, AppUtil.DialogFlavor.CONFIRM, this, getString(R.string.alertTitleRobotControllerConsole), message, null, runOnDismiss);
+        AppUtil.DialogParams params = new AppUtil.DialogParams(UILocation.ONLY_LOCAL, getString(R.string.alertTitleRobotControllerConsole), message);
+        params.activity = this;
+        params.flavor = AppUtil.DialogFlavor.CONFIRM;
+        return AppUtil.getInstance().showDialog(params, runOnDismiss);
         }
     protected DialogContext showPrompt(String message, @Nullable String defaultValue, @Nullable Consumer<DialogContext> runOnDismiss)
         {
-        return AppUtil.getInstance().showDialog(UILocation.ONLY_LOCAL, AppUtil.DialogFlavor.PROMPT, this, getString(R.string.alertTitleRobotControllerConsole), message, defaultValue, runOnDismiss);
+        AppUtil.DialogParams params = new AppUtil.DialogParams(UILocation.ONLY_LOCAL, getString(R.string.alertTitleRobotControllerConsole), message);
+        params.activity = this;
+        params.flavor = AppUtil.DialogFlavor.PROMPT;
+        params.defaultValue = defaultValue;
+        return AppUtil.getInstance().showDialog(params, runOnDismiss);
         }
 
     // https://stackoverflow.com/questions/33434532/android-webview-download-files-like-browsers-do

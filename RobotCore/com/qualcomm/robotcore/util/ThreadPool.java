@@ -36,6 +36,7 @@ package com.qualcomm.robotcore.util;
 import android.annotation.SuppressLint;
 import android.os.Build;
 import android.os.Debug;
+import android.os.Handler;
 import android.os.Process;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
@@ -348,6 +349,18 @@ public class ThreadPool
             }
         }
 
+    public static ExecutorService getDefaultSerial()
+        {
+        synchronized (ThreadPool.class)
+            {
+            if (defaultSerialThreadPool == null)
+                {
+                defaultSerialThreadPool = newSingleThreadExecutor("default serial threadpool");
+                }
+            return defaultSerialThreadPool;
+            }
+        }
+
     public static ScheduledExecutorService getDefaultScheduler()
         {
         synchronized (ThreadPool.class)
@@ -427,6 +440,7 @@ public class ThreadPool
     private       static Map<ExecutorService,Integer> extantExecutors     = new WeakHashMap<ExecutorService,Integer>();
     private final static Object                       extantExecutorsLock = new Object();
     private       static ExecutorService              defaultThreadPool   = null;
+    private       static ExecutorService              defaultSerialThreadPool = null;
     private       static ScheduledExecutorService     defaultScheduler    = null;
 
     private static void noteNewExecutor(ExecutorService executor)
@@ -490,18 +504,32 @@ public class ThreadPool
         int msRetry        = 2500;
         boolean terminated = false;
         //
-        for (int iAttempt = 0; !(terminated = executorService.isTerminated()); iAttempt++)
+        for (int iAttempt = 0; ; iAttempt++)
             {
+            terminated = executorService.isTerminated();
+            if (terminated)
+                {
+                // RobotLog.vv(TAG, "service %s terminated", serviceName);
+                break;
+                }
+
             RobotLog.vv(TAG, "waiting for service %s", serviceName);
             if (executorService.awaitTermination(Math.min(msRetry, deadline.timeRemaining(TimeUnit.MILLISECONDS)), TimeUnit.MILLISECONDS))
                 {
-                terminated = executorService.isTerminated();
-                RobotLog.vv(TAG, "awaitTermination returned, isTerminated=%s", terminated);
+                /** awaitTermination() is documented thusly: "@return {@code true} if this executor terminated and
+                 *  {@code false} if the timeout elapsed before termination" */
+                Assert.assertTrue(executorService.isTerminated());
+                terminated = true;
+                RobotLog.vv(TAG, "service %s terminated in awaitTermination()", serviceName);
                 break;
                 }
 
             // If we're past our due date, then we're not going to wait any longer
-            if (deadline.hasExpired()) break;
+            if (deadline.hasExpired())
+                {
+                RobotLog.ee(TAG, "deadline expired waiting for service termination: %s", serviceName);
+                break;
+                }
 
             // It's taking a while. Log that fact
             RobotLog.vv(TAG, "awaiting shutdown: thread pool=\"%s\" attempt=%d", serviceName, iAttempt+1);
@@ -761,9 +789,14 @@ public class ThreadPool
                 @Override public void run()
                     {
                     noteTID(Thread.currentThread(), Process.myTid());
-                    runUserCode.run();
-                    ThreadFactoryImpl.this.container.noteFinishedThread(Thread.currentThread());
-                    removeTID(Thread.currentThread());
+                    try {
+                        runUserCode.run();
+                        }
+                    finally
+                        {
+                        ThreadFactoryImpl.this.container.noteFinishedThread(Thread.currentThread());
+                        removeTID(Thread.currentThread());
+                        }
                     }
                 });
             this.container.noteNewThread(thread);
@@ -848,6 +881,54 @@ public class ThreadPool
             }
         }
 
+    /** @see ThreadPoolExecutor#afterExecute(Runnable, Throwable), after which this logic is modelled */
+    protected static Throwable retrieveUserException(Runnable r, Throwable t)
+        {
+        if (t == null && r instanceof Future<?>)
+            {
+            try
+                {
+                /**
+                 * In at least one case we've seen a call to get() deadlock if the runnable
+                 * was not done.  Hence the protection here.
+                 */
+                if (((Future<?>) r).isDone())
+                    {
+                    Object result = ((Future<?>) r).get();
+                    }
+                }
+            catch (CancellationException ce)
+                {
+                t = null; // not a user error; don't report
+                }
+            catch (ExecutionException ee)
+                {
+                t = ee.getCause();
+                }
+            catch (InterruptedException ie)
+                {
+                Thread.currentThread().interrupt();
+                }
+            }
+        return t;
+        }
+
+    /**
+     * Indicates a thread pool that is at times capable of using guest worker threads
+     */
+    public interface ThreadBorrowable
+        {
+        /**
+         * Caller guarantees that thread is a typical utility 'worker' thread (in contrast to,
+         * for example, the dedicated UI thread, or other threads on which work is dispatched
+         * through a {@link Handler}). Answer whether we are ok to dispatch here instead of one of
+         * our own worker threads. Caller must additionally assure themselves from their contextual
+         * knowledge that taking advantage of this function will not lead to deadlocks that otherwise
+         * would not occur.
+         */
+        boolean canBorrowThread(Thread thread);
+        }
+
     public static class RecordingThreadPool extends ContainerOfThreadsRecorder implements ExecutorService
         {
         //------------------------------------------------------------------------------------------
@@ -865,7 +946,18 @@ public class ThreadPool
             this.executor = new ThreadPoolExecutor(nThreadsCore, nThreadsMax,
                                       keepAliveTime, unit,
                                       workQueue,
-                                      new ThreadFactoryImpl(this));
+                                      new ThreadFactoryImpl(this))
+                {
+                @Override protected void afterExecute(Runnable r, Throwable t)
+                    {
+                    super.afterExecute(r, t);
+                    t = retrieveUserException(r,t);
+                    if (t != null)
+                        {
+                        RobotLog.ee(TAG, t, "exception thrown in thread pool; ignored");
+                        }
+                    }
+                };
             }
 
         //------------------------------------------------------------------------------------------
@@ -956,7 +1048,18 @@ public class ThreadPool
 
         RecordingScheduledExecutor(int numberOfThreads)
             {
-            this.executor = new ScheduledThreadPoolExecutor(numberOfThreads, new ThreadFactoryImpl(this));
+            this.executor = new ScheduledThreadPoolExecutor(numberOfThreads, new ThreadFactoryImpl(this))
+                {
+                @Override protected void afterExecute(Runnable r, Throwable t)
+                    {
+                    super.afterExecute(r, t);
+                    t = retrieveUserException(r,t);
+                    if (t != null)
+                        {
+                        RobotLog.ee(TAG, t, "exception thrown in thread pool; ignored");
+                        }
+                    }
+                };
 
             /**
              * Amazingly, threads which are scheduled but then cancelled are NOT automatically

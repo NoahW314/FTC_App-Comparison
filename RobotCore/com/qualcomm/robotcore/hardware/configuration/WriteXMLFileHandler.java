@@ -38,6 +38,7 @@ import android.util.Xml;
 import com.qualcomm.robotcore.exception.DuplicateNameException;
 import com.qualcomm.robotcore.exception.RobotCoreException;
 
+import org.firstinspires.ftc.robotcore.external.function.ThrowingRunnable;
 import org.xmlpull.v1.XmlSerializer;
 
 import java.io.File;
@@ -81,14 +82,18 @@ public class WriteXMLFileHandler {
       for (ControllerConfiguration controllerConfiguration : deviceControllerConfigurations) {
 
         ConfigurationType type = controllerConfiguration.getConfigurationType();
-        if (type == BuiltInConfigurationType.MOTOR_CONTROLLER || type == BuiltInConfigurationType.SERVO_CONTROLLER) {
-          handleController(controllerConfiguration, true);
+        if (type == BuiltInConfigurationType.MOTOR_CONTROLLER) {
+          writeController((MotorControllerConfiguration)controllerConfiguration, true);
+        } else if (type == BuiltInConfigurationType.SERVO_CONTROLLER) {
+          writeController((ServoControllerConfiguration)controllerConfiguration, true);
         } else if (type == BuiltInConfigurationType.LEGACY_MODULE_CONTROLLER) {
-          handleLegacyModuleController((LegacyModuleControllerConfiguration)controllerConfiguration);
+          writeLegacyModuleController((LegacyModuleControllerConfiguration)controllerConfiguration);
         } else if (type == BuiltInConfigurationType.DEVICE_INTERFACE_MODULE) {
-          handleDeviceInterfaceModule((DeviceInterfaceModuleConfiguration)controllerConfiguration);
+          writeDeviceInterfaceModule((DeviceInterfaceModuleConfiguration)controllerConfiguration);
         } else if (type == BuiltInConfigurationType.LYNX_USB_DEVICE) {
-          handleLynxUSBDevice((LynxUsbDeviceConfiguration)controllerConfiguration);
+          writeLynxUSBDevice((LynxUsbDeviceConfiguration)controllerConfiguration);
+        } else if (type == BuiltInConfigurationType.WEBCAM) {
+          writeWebcam((WebcamConfiguration) controllerConfiguration);
         }
       }
       serializer.endTag("", "Robot");
@@ -111,168 +116,186 @@ public class WriteXMLFileHandler {
     }
   }
 
-  private void handleDeviceInterfaceModule(DeviceInterfaceModuleConfiguration controller) throws IOException {
-    serializer.ignorableWhitespace(indentation[indent]);
-    serializer.startTag("", conform(controller.getConfigurationType()));
-    checkForDuplicates(controller);
-    serializer.attribute("", DeviceConfiguration.XMLATTR_NAME, controller.getName());
-    serializer.attribute("", ControllerConfiguration.XMLATTR_SERIAL_NUMBER, controller.getSerialNumber().toString());
-    serializer.ignorableWhitespace("\n");
-    indent++;
+  private void writeDeviceInterfaceModule(final DeviceInterfaceModuleConfiguration controller) throws IOException {
+    writeUsbController(controller, null, new ThrowingRunnable<IOException>() {
+      @Override public void run() throws IOException {
+          DeviceInterfaceModuleConfiguration deviceInterfaceModuleConfiguration = (DeviceInterfaceModuleConfiguration) controller;
 
-    DeviceInterfaceModuleConfiguration deviceInterfaceModuleConfiguration = (DeviceInterfaceModuleConfiguration) controller;
+          for (DeviceConfiguration device : deviceInterfaceModuleConfiguration.getPwmOutputs()) {
+            writeDeviceNameAndPort(device);
+          }
 
-    for (DeviceConfiguration device : deviceInterfaceModuleConfiguration.getPwmOutputs()) {
-      buildDeviceNameAndPort(device);
-    }
+          for (DeviceConfiguration device : deviceInterfaceModuleConfiguration.getI2cDevices()) {
+            writeDeviceNameAndPort(device);
+          }
 
-    for (DeviceConfiguration device : deviceInterfaceModuleConfiguration.getI2cDevices()) {
-      buildDeviceNameAndPort(device);
-    }
+          for (DeviceConfiguration device : deviceInterfaceModuleConfiguration.getAnalogInputDevices()) {
+            writeDeviceNameAndPort(device);
+          }
 
-    for (DeviceConfiguration device : deviceInterfaceModuleConfiguration.getAnalogInputDevices()) {
-      buildDeviceNameAndPort(device);
-    }
+          for (DeviceConfiguration device : deviceInterfaceModuleConfiguration.getDigitalDevices()) {
+            writeDeviceNameAndPort(device);
+          }
 
-    for (DeviceConfiguration device : deviceInterfaceModuleConfiguration.getDigitalDevices()) {
-      buildDeviceNameAndPort(device);
-    }
-
-    for (DeviceConfiguration device : deviceInterfaceModuleConfiguration.getAnalogOutputDevices()) {
-      buildDeviceNameAndPort(device);
-    }
-
-    indent--;
-    serializer.ignorableWhitespace(indentation[indent]);
-    serializer.endTag("", conform(controller.getConfigurationType()));
-    serializer.ignorableWhitespace("\n");
+          for (DeviceConfiguration device : deviceInterfaceModuleConfiguration.getAnalogOutputDevices()) {
+            writeDeviceNameAndPort(device);
+          }
+        }
+      });
   }
 
-  private void handleLegacyModuleController(LegacyModuleControllerConfiguration controller) throws IOException {
-    serializer.ignorableWhitespace(indentation[indent]);
-    serializer.startTag("", conform(controller.getConfigurationType()));
-    checkForDuplicates(controller);
-    serializer.attribute("", DeviceConfiguration.XMLATTR_NAME, controller.getName());
-    serializer.attribute("", ControllerConfiguration.XMLATTR_SERIAL_NUMBER, controller.getSerialNumber().toString());
-    serializer.ignorableWhitespace("\n");
-    indent++;
-
-    // step through the list of attached devices,
-    for (DeviceConfiguration device : controller.getDevices()) {
-      ConfigurationType type = device.getConfigurationType();
-      if (type == BuiltInConfigurationType.MOTOR_CONTROLLER)        { handleController((MotorControllerConfiguration)device, false);
-      } else if (type == BuiltInConfigurationType.SERVO_CONTROLLER) { handleController((ServoControllerConfiguration)device, false);
-      } else if (type == BuiltInConfigurationType.MATRIX_CONTROLLER){ handleController((MatrixControllerConfiguration)device, false);
-      } else {
-        buildDeviceNameAndPort(device);
-      }
-    }
-
-    indent--;
-    serializer.ignorableWhitespace(indentation[indent]);
-    serializer.endTag("", conform(controller.getConfigurationType()));
-    serializer.ignorableWhitespace("\n");
+  private void writeLegacyModuleController(final LegacyModuleControllerConfiguration controller) throws IOException {
+    writeUsbController(controller, null, new ThrowingRunnable<IOException>() {
+      @Override public void run() throws IOException {
+          // step through the list of attached devices,
+          for (DeviceConfiguration device : controller.getDevices()) {
+            ConfigurationType type = device.getConfigurationType();
+            if (type == BuiltInConfigurationType.MOTOR_CONTROLLER)        { writeController((MotorControllerConfiguration)device, false);
+            } else if (type == BuiltInConfigurationType.SERVO_CONTROLLER) { writeController((ServoControllerConfiguration)device, false);
+            } else if (type == BuiltInConfigurationType.MATRIX_CONTROLLER){ writeController((MatrixControllerConfiguration)device, false);
+            } else {
+              writeDeviceNameAndPort(device);
+            }
+          }
+        }
+      });
   }
 
-  private void handleLynxUSBDevice(LynxUsbDeviceConfiguration controller) throws IOException {
-    serializer.ignorableWhitespace(indentation[indent]);
-    serializer.startTag("", conform(controller.getConfigurationType()));
-    checkForDuplicates(controller);
-    serializer.attribute("", DeviceConfiguration.XMLATTR_NAME,                          controller.getName());
-    serializer.attribute("", ControllerConfiguration.XMLATTR_SERIAL_NUMBER,             controller.getSerialNumber().toString());
-    serializer.attribute("", LynxUsbDeviceConfiguration.XMLATTR_PARENT_MODULE_ADDRESS, Integer.toString(controller.getParentModuleAddress()));
-    serializer.ignorableWhitespace("\n");
-    indent++;
-
-    for (DeviceConfiguration device : controller.getDevices()) {
-      ConfigurationType type = device.getConfigurationType();
-      if (type == BuiltInConfigurationType.LYNX_MODULE) {
-        handleController((LynxModuleConfiguration)device, false);
-      } else {
-        buildDeviceNameAndPort(device);
+  private void writeWebcam(final WebcamConfiguration controller) throws IOException {
+    writeUsbController(controller, new ThrowingRunnable<IOException>() {
+      @Override public void run() throws IOException {
+        if (controller.getAutoOpen()) {
+          // 'false' is the default; don't need to write
+          serializer.attribute("", WebcamConfiguration.XMLATTR_AUTO_OPEN_CAMERA, String.valueOf(controller.getAutoOpen()));
+        }
       }
-    }
-
-    indent--;
-    serializer.ignorableWhitespace(indentation[indent]);
-    serializer.endTag("", conform(controller.getConfigurationType()));
-    serializer.ignorableWhitespace("\n");
+    }, null);
   }
 
-  private <CONTROLLER_T extends ControllerConfiguration<? extends DeviceConfiguration>>  void handleController(CONTROLLER_T controller, boolean isUsbDevice) throws IOException {
-    serializer.ignorableWhitespace(indentation[indent]);
-    serializer.startTag("", conform(controller.getConfigurationType()));
-    checkForDuplicates(controller);
-    serializer.attribute("", DeviceConfiguration.XMLATTR_NAME, controller.getName());
+  private void writeLynxUSBDevice(final LynxUsbDeviceConfiguration controller) throws IOException {
+    writeUsbController(controller,
+      new ThrowingRunnable<IOException>() {
+        @Override public void run() throws IOException {
+          serializer.attribute("", LynxUsbDeviceConfiguration.XMLATTR_PARENT_MODULE_ADDRESS, Integer.toString(controller.getParentModuleAddress()));
+          }
+        },
+      new ThrowingRunnable<IOException>() {
+          @Override public void run() throws IOException {
+            for (DeviceConfiguration device : controller.getDevices()) {
+              ConfigurationType type = device.getConfigurationType();
+              if (type == BuiltInConfigurationType.LYNX_MODULE) {
+                writeController((LynxModuleConfiguration)device, false);
+              } else {
+                writeDeviceNameAndPort(device);
+              }
+            }
+          }
+        }
+    );
+  }
 
-    if (isUsbDevice) {
-      serializer.attribute("", ControllerConfiguration.XMLATTR_SERIAL_NUMBER, controller.getSerialNumber().toString());
-    } else {
-      serializer.attribute("", DeviceConfiguration.XMLATTR_PORT, String.valueOf(controller.getPort())); // for lynx modules, 'port' is 'moduleAddress'
-    }
+  private <CONTROLLER_T extends ControllerConfiguration<? extends DeviceConfiguration>>  void writeController(final CONTROLLER_T controller, final boolean isUsbDevice) throws IOException {
+    writeNamedController(controller,
+      new ThrowingRunnable<IOException>() {
+        @Override
+        public void run() throws IOException {
+          if (isUsbDevice) {
+            serializer.attribute("", ControllerConfiguration.XMLATTR_SERIAL_NUMBER, controller.getSerialNumber().getString());
+          } else {
+            serializer.attribute("", DeviceConfiguration.XMLATTR_PORT, String.valueOf(controller.getPort())); // for lynx modules, 'port' is 'moduleAddress'
+          }
+        }
+      },
+      new ThrowingRunnable<IOException>() {
+        @Override
+        public void run() throws IOException {
+          if (controller.getConfigurationType() == BuiltInConfigurationType.LYNX_MODULE) {
+            LynxModuleConfiguration moduleConfiguration = (LynxModuleConfiguration) controller;
 
-    serializer.ignorableWhitespace("\n");
-    indent++;
+            for (DeviceConfiguration device : moduleConfiguration.getMotors()) {
+              writeDeviceNameAndPort(device);
+            }
+            for (DeviceConfiguration device : moduleConfiguration.getServos()) {
+              writeDeviceNameAndPort(device);
+            }
+            for (DeviceConfiguration device : moduleConfiguration.getAnalogInputs()) {
+              writeDeviceNameAndPort(device);
+            }
+            for (DeviceConfiguration device : moduleConfiguration.getPwmOutputs()) {
+              writeDeviceNameAndPort(device);
+            }
+            for (DeviceConfiguration device : moduleConfiguration.getDigitalDevices()) {
+              writeDeviceNameAndPort(device);
+            }
+            for (DeviceConfiguration device : moduleConfiguration.getI2cDevices()) {
+              writeDeviceNameAndPort(device);
+            }
+          }
 
-    if (controller.getConfigurationType() == BuiltInConfigurationType.LYNX_MODULE) {
-      LynxModuleConfiguration moduleConfiguration = (LynxModuleConfiguration) controller;
+          else if(controller.getConfigurationType() == BuiltInConfigurationType.MATRIX_CONTROLLER) {
+            for (DeviceConfiguration device : ((MatrixControllerConfiguration) controller).getMotors()) {
+              writeDeviceNameAndPort(device);
+            }
+            for (DeviceConfiguration device : ((MatrixControllerConfiguration) controller).getServos()) {
+              writeDeviceNameAndPort(device);
+            }
+          }
 
-      for (DeviceConfiguration device : moduleConfiguration.getMotors()) {
-        buildDeviceNameAndPort(device);
+          else {
+            for (DeviceConfiguration device : controller.getDevices()) {
+              writeDeviceNameAndPort(device);
+            }
+          }
+        }
       }
-      for (DeviceConfiguration device : moduleConfiguration.getServos()) {
-        buildDeviceNameAndPort(device);
-      }
-      for (DeviceConfiguration device : moduleConfiguration.getAnalogInputs()) {
-        buildDeviceNameAndPort(device);
-      }
-      for (DeviceConfiguration device : moduleConfiguration.getPwmOutputs()) {
-        buildDeviceNameAndPort(device);
-      }
-      for (DeviceConfiguration device : moduleConfiguration.getDigitalDevices()) {
-        buildDeviceNameAndPort(device);
-      }
-      for (DeviceConfiguration device : moduleConfiguration.getI2cDevices()) {
-        buildDeviceNameAndPort(device);
-      }
-    }
-
-    else if(controller.getConfigurationType() == BuiltInConfigurationType.MATRIX_CONTROLLER) {
-      for (DeviceConfiguration device : ((MatrixControllerConfiguration) controller).getMotors()) {
-        buildDeviceNameAndPort(device);
-      }
-      for (DeviceConfiguration device : ((MatrixControllerConfiguration) controller).getServos()) {
-        buildDeviceNameAndPort(device);
-      }
-    }
-
-    else {
-      for (DeviceConfiguration device : controller.getDevices()) {
-        buildDeviceNameAndPort(device);
-      }
-    }
-
-    indent--;
-    serializer.ignorableWhitespace(indentation[indent]);
-    serializer.endTag("", conform(controller.getConfigurationType()));
-    serializer.ignorableWhitespace("\n");
+    );
   }
 
   // Emits an XML element for the device that has name and port attributes
-  private void buildDeviceNameAndPort(DeviceConfiguration device) {
+  private void writeDeviceNameAndPort(final DeviceConfiguration device) throws IOException {
     if (!device.isEnabled()) {
       return;
     }
-    try {
-      serializer.ignorableWhitespace(indentation[indent]);
-      serializer.startTag("", conform(device.getConfigurationType()));
-      checkForDuplicates(device);
-      device.serializeXmlAttributes(serializer);
-      serializer.endTag("", conform(device.getConfigurationType()));
+    writeDevice(device, new ThrowingRunnable<IOException>() {
+      @Override public void run() throws IOException {
+        device.serializeXmlAttributes(serializer);
+      }
+    }, null);
+  }
+
+  private void writeUsbController(final ControllerConfiguration controller, @Nullable final ThrowingRunnable<IOException> handleAttributes, @Nullable ThrowingRunnable<IOException> handleChildren) throws IOException {
+    writeNamedController(controller, new ThrowingRunnable<IOException>() {
+      @Override public void run() throws IOException {
+        serializer.attribute("", ControllerConfiguration.XMLATTR_SERIAL_NUMBER, controller.getSerialNumber().getString());
+        if (handleAttributes != null) { handleAttributes.run(); }
+      }
+    }, handleChildren);
+  }
+
+  private void writeNamedController(final ControllerConfiguration controller, final @Nullable ThrowingRunnable<IOException> handleAttributes, final @Nullable ThrowingRunnable<IOException> handleChildren) throws IOException {
+    writeDevice(controller, new ThrowingRunnable<IOException>() {
+      @Override public void run() throws IOException {
+        serializer.attribute("", DeviceConfiguration.XMLATTR_NAME, controller.getName());
+        if (handleAttributes != null) { handleAttributes.run(); }
+      }
+    }, handleChildren);
+  }
+
+  private void writeDevice(DeviceConfiguration deviceConfiguration, @Nullable ThrowingRunnable<IOException> handleAttributes, @Nullable ThrowingRunnable<IOException> handleChildren) throws IOException {
+    /** TODO: should we check for isEnabled() here instead of only in {@link #writeDeviceNameAndPort(DeviceConfiguration)} */
+    serializer.ignorableWhitespace(indentation[indent]);
+    serializer.startTag("", conform(deviceConfiguration.getConfigurationType()));
+    checkForDuplicates(deviceConfiguration);
+    if (handleAttributes != null) { handleAttributes.run(); }
+    if (handleChildren != null) {
       serializer.ignorableWhitespace("\n");
-    } catch (Exception e){
-      throw new RuntimeException(e);
+      indent++;
+      handleChildren.run();
+      indent--;
+      serializer.ignorableWhitespace(indentation[indent]);
     }
+    serializer.endTag("", conform(deviceConfiguration.getConfigurationType()));
+    serializer.ignorableWhitespace("\n");
   }
 
   public void writeToFile(String data, File folder, String filenameWithExt) throws RobotCoreException, IOException {

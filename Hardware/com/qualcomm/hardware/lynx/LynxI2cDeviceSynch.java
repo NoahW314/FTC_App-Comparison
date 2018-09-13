@@ -62,7 +62,7 @@ import java.util.concurrent.BlockingQueue;
 /**
  * Created by bob on 2016-03-12.
  */
-public class LynxI2cDeviceSynch extends LynxController implements I2cDeviceSynchSimple, I2cDeviceSynchReadHistory
+public abstract class LynxI2cDeviceSynch extends LynxController implements I2cDeviceSynchSimple, I2cDeviceSynchReadHistory
     {
     //----------------------------------------------------------------------------------------------
     // State
@@ -249,27 +249,7 @@ public class LynxI2cDeviceSynch extends LynxController implements I2cDeviceSynch
         }
 
     @Override
-    public synchronized TimestampedData readTimeStamped(final int ireg, final int creg)
-        {
-        try {
-            return acquireI2cLockWhile(new Supplier<TimestampedData>()
-                {
-                @Override public TimestampedData get() throws InterruptedException, RobotCoreException, LynxNackException
-                    {
-                    LynxCommand<?> tx = new LynxI2cWriteReadMultipleBytesCommand(getModule(), bus, i2cAddr, ireg, creg);
-                    tx.send();
-
-                    readTimeStampedPlaceholder.reset();
-                    return pollForReadResult(i2cAddr, ireg, creg);
-                    }
-                });
-            }
-        catch (InterruptedException|LynxNackException|RobotCoreException|RuntimeException e)
-            {
-            handleException(e);
-            }
-        return readTimeStampedPlaceholder.log(TimestampedI2cData.makeFakeData(this, getI2cAddress(), ireg, creg));
-        }
+    public abstract TimestampedData readTimeStamped(final int ireg, final int creg);
 
     //-------- writing
 

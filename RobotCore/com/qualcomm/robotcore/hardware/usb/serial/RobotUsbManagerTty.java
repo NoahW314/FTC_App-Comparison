@@ -47,11 +47,14 @@ import com.qualcomm.robotcore.util.SerialNumber;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * {@link RobotUsbManagerTty} is a RobotUsbManager that manages the (single) embedded 'USB' device
  * that lives on a serial port.
  */
+@SuppressWarnings("WeakerAccess")
 public class RobotUsbManagerTty implements RobotUsbManager
     {
     //----------------------------------------------------------------------------------------------
@@ -82,36 +85,14 @@ public class RobotUsbManagerTty implements RobotUsbManager
     // RobotUsbManager
     //----------------------------------------------------------------------------------------------
 
-    @Override public int scanForDevices() throws RobotCoreException
+    @Override public List<SerialNumber> scanForDevices() throws RobotCoreException
         {
-        return 1;
+        List<SerialNumber> result = new ArrayList<>();
+        result.add(serialNumberEmbedded);
+        return result;
         }
 
-    @Override public int getScanCount()
-        {
-        return 1;
-        }
-
-    @Override public SerialNumber getDeviceSerialNumberByIndex(int index) throws RobotCoreException
-        {
-        switch (index)
-            {
-            case 0: return serialNumberEmbedded;
-            default: throw  new IndexOutOfBoundsException("index too large: " + index);
-            }
-        }
-
-    @Override public String getDeviceDescriptionByIndex(int index) throws RobotCoreException
-        {
-        switch (index)
-            {
-            case 0: return context.getString(R.string.descriptionLynxEmbeddedModule);
-            default: throw  new IndexOutOfBoundsException("index too large: " + index);
-            }
-        }
-
-    @Override
-    public RobotUsbDevice openBySerialNumber(SerialNumber serialNumber) throws RobotCoreException
+    @Override public RobotUsbDevice openBySerialNumber(SerialNumber serialNumber) throws RobotCoreException
         {
         synchronized (getLock())
             {
@@ -131,13 +112,15 @@ public class RobotUsbManagerTty implements RobotUsbManager
 
                     RobotUsbDeviceTty deviceTTY = new RobotUsbDeviceTty(serialPort, serialNumberEmbedded, file);
                     deviceTTY.setFirmwareVersion(new RobotUsbDevice.FirmwareVersion(1,0));
-                    deviceTTY.setDeviceType(DeviceManager.DeviceType.LYNX_USB_DEVICE);
+                    deviceTTY.setDeviceType(DeviceManager.UsbDeviceType.LYNX_USB_DEVICE);
                     deviceTTY.setUsbIdentifiers(RobotUsbDevice.USBIdentifiers.createLynxIdentifiers());
+                    deviceTTY.setProductName(context.getString(R.string.descriptionLynxEmbeddedModule));
                     try { deviceTTY.setBaudRate(LynxConstants.SERIAL_MODULE_BAUD_RATE); } catch (RobotUsbException e) {/*ignored*/}
                     return deviceTTY;
                     }
+                throw new RobotCoreException(TAG, "%s is already open: unable to open second time", serialNumber);
                 }
-            return null;
+            throw new RobotCoreException(TAG, "%s not found", serialNumber);
             }
         }
 

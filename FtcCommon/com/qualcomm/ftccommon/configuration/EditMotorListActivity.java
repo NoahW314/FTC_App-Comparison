@@ -32,23 +32,21 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package com.qualcomm.ftccommon.configuration;
 
-import android.view.View;
-import android.widget.Spinner;
-
 import com.qualcomm.ftccommon.R;
-import com.qualcomm.robotcore.hardware.configuration.BuiltInConfigurationType;
 import com.qualcomm.robotcore.hardware.configuration.ConfigurationType;
-import com.qualcomm.robotcore.hardware.configuration.MotorConfiguration;
-import com.qualcomm.robotcore.hardware.configuration.MotorConfigurationType;
+import com.qualcomm.robotcore.hardware.configuration.DeviceConfiguration;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.MotorConfigurationType;
 
-import java.util.Arrays;
-import java.util.Comparator;
-
-public class EditMotorListActivity extends EditPortListSpinnerActivity<MotorConfiguration>
+public class EditMotorListActivity extends EditPortListSpinnerActivity<DeviceConfiguration>
     {
     @Override public String getTag() { return this.getClass().getSimpleName(); }
-    ConfigurationType[] configurationTypes = new ConfigurationType[0];
     ConfigurationType unspecifiedMotorType = MotorConfigurationType.getUnspecifiedMotorType();
+
+    @Override
+    protected ConfigurationType.DeviceFlavor getDeviceFlavorBeingConfigured()
+        {
+        return ConfigurationType.DeviceFlavor.MOTOR;
+        }
 
     public EditMotorListActivity()
         {
@@ -59,37 +57,6 @@ public class EditMotorListActivity extends EditPortListSpinnerActivity<MotorConf
         this.idItemSpinner          = R.id.choiceMotorSpinner;
         this.idItemEditTextResult   = R.id.editTextResult;
         this.idItemPortNumber       = R.id.port_number;
-        }
-
-    @Override protected void deserialize(EditParameters parameters)
-        {
-        super.deserialize(parameters);
-        if (parameters.getConfigurationTypes() != null)
-            {
-            this.configurationTypes = parameters.getConfigurationTypes();
-            }
-        }
-
-    @Override
-    protected void localizeSpinner(View itemView)
-        {
-        Spinner spinner = (Spinner) itemView.findViewById(this.idItemSpinner);
-
-        Comparator<ConfigurationType> comparator = new Comparator<ConfigurationType>()
-            {
-            @Override public int compare(ConfigurationType lhs, ConfigurationType rhs)
-                {
-                // Make sure 'nothing' is first, and 'unspecified' is second
-                if (lhs==rhs) return 0;
-                if (lhs==BuiltInConfigurationType.NOTHING) return -1;
-                if (rhs==BuiltInConfigurationType.NOTHING) return 1;
-                if (lhs==unspecifiedMotorType) return -1;
-                if (rhs==unspecifiedMotorType) return 1;
-                return 0;   // they'll be distinguished using an outer level comparator
-                }
-            };
-
-        localizeConfigTypeSpinnerTypes(ConfigurationType.DisplayNameFlavor.Normal, spinner, Arrays.asList(this.configurationTypes), comparator);
         }
 
     @Override

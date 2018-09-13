@@ -37,7 +37,7 @@ import com.qualcomm.hardware.R;
 import com.qualcomm.hardware.modernrobotics.comm.ReadWriteRunnable;
 import com.qualcomm.hardware.modernrobotics.comm.ReadWriteRunnableSegment;
 import com.qualcomm.hardware.modernrobotics.comm.ReadWriteRunnableStandard;
-import com.qualcomm.robotcore.eventloop.EventLoopManager;
+import com.qualcomm.robotcore.eventloop.SyncdDevice;
 import com.qualcomm.robotcore.exception.RobotCoreException;
 import com.qualcomm.robotcore.hardware.I2cAddr;
 import com.qualcomm.robotcore.hardware.LegacyModule;
@@ -209,7 +209,7 @@ public class ModernRoboticsUsbLegacyModule extends ModernRoboticsUsbI2cControlle
   /**
    * Use ModernRoboticsUsbDeviceManager to create an instance of this class
    */
-  public ModernRoboticsUsbLegacyModule(final Context context, final SerialNumber serialNumber, OpenRobotUsbDevice openRobotUsbDevice, EventLoopManager manager)
+  public ModernRoboticsUsbLegacyModule(final Context context, final SerialNumber serialNumber, OpenRobotUsbDevice openRobotUsbDevice, SyncdDevice.Manager manager)
       throws RobotCoreException, InterruptedException {
 
     super(NUMBER_OF_PORTS, context, serialNumber, manager, openRobotUsbDevice, new CreateReadWriteRunnable() {

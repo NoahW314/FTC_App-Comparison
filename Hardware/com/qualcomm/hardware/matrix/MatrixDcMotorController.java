@@ -34,7 +34,7 @@ import com.qualcomm.hardware.motors.MatrixLegacyMotor;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorController;
 import com.qualcomm.robotcore.hardware.configuration.MatrixConstants;
-import com.qualcomm.robotcore.hardware.configuration.MotorConfigurationType;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.MotorConfigurationType;
 import com.qualcomm.robotcore.util.Range;
 import com.qualcomm.robotcore.util.RobotLog;
 import com.qualcomm.robotcore.util.TypeConversion;
@@ -199,6 +199,12 @@ public class MatrixDcMotorController implements DcMotorController {
         } else {
             return false;
         }
+    }
+
+    @Override public void resetDeviceConfigurationForOpMode(int motor)
+    {
+        throwIfMotorIsInvalid(motor);
+        // nothing to do
     }
 
     @Override public synchronized void setMotorType(int motor, MotorConfigurationType motorType)

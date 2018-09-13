@@ -35,10 +35,13 @@ import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 
 import com.qualcomm.robotcore.hardware.DeviceManager;
+import com.qualcomm.robotcore.hardware.usb.serial.RobotUsbDeviceTty;
 import com.qualcomm.robotcore.util.SerialNumber;
 
 import org.firstinspires.ftc.robotcore.internal.system.Assert;
 import org.firstinspires.ftc.robotcore.internal.hardware.TimeWindow;
+import org.firstinspires.ftc.robotcore.internal.system.Misc;
+import org.firstinspires.ftc.robotcore.internal.usb.UsbConstants;
 import org.firstinspires.ftc.robotcore.internal.usb.exception.RobotUsbException;
 
 import java.util.Arrays;
@@ -46,7 +49,11 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * USB Device Interface
+ * {@link RobotUsbDevice} is an interface to USB devices that are commuicated with using
+ * a serial communication stream. This is in contrast to more other USB devices that use
+ * the full capabilities of USB. See http://www.usb.org/developers/defined_class.
+ *
+ * Note that this is not to be confused with {@link RobotUsbDeviceTty}.
  */
 @SuppressWarnings("WeakerAccess")
 public interface RobotUsbDevice {
@@ -69,7 +76,7 @@ public interface RobotUsbDevice {
     }
 
     @Override public String toString() {
-      return String.format("v%d.%d", this.majorVersion, this.minorVersion);
+      return Misc.formatInvariant("v%d.%d", this.majorVersion, this.minorVersion);
     }
   }
 
@@ -80,7 +87,7 @@ public interface RobotUsbDevice {
     public int    bcdDevice;
 
     // See also device_filter.xml
-    private static final int vendorIdFTDI = 0x0403;
+    private static final int vendorIdFTDI = UsbConstants.VENDOR_ID_FTDI;
     private static final Set<Integer> productIdsModernRobotics = new HashSet<Integer>(Arrays.asList(new Integer[] { 0x6001 }));
     private static final Set<Integer> bcdDevicesModernRobotics = new HashSet<Integer>(Arrays.asList(new Integer[] { 0x0600 }));
     private static final Set<Integer> productIdsLynx           = new HashSet<Integer>(Arrays.asList(new Integer[] { 0x6015 }));
@@ -109,8 +116,8 @@ public interface RobotUsbDevice {
     }
 
     protected static <T> T first(Set<T> set) {
-    //noinspection LoopStatementThatDoesntLoop
-    for (T t : set) { return t; }
+      //noinspection LoopStatementThatDoesntLoop
+      for (T t : set) { return t; }
       return null;
     }
   }
@@ -122,7 +129,7 @@ public interface RobotUsbDevice {
   void logRetainedBuffers(long nsOrigin, long nsTimerExpire, String tag, String format, Object...args);
 
   /**
-   * Set the baud rate
+   * Sets the rate of data transmission used to communicate with the device.
    * @param rate baud rate
    */
   void setBaudRate(int rate) throws RobotUsbException;
@@ -208,16 +215,19 @@ public interface RobotUsbDevice {
    * @see #setFirmwareVersion(FirmwareVersion) */
   FirmwareVersion getFirmwareVersion();
 
-  /** Sets the firmware version of this USB device.
-   * @see #getFirmwareVersion() */
+  /**
+   * Sets the firmware version of this USB device. Note that this does not actually change
+   * the persistent firmware version inside the device, only our local copy of it here.
+   * @see #getFirmwareVersion()
+   */
   void setFirmwareVersion(FirmwareVersion version);
 
   /**
    * Returns the USB-level vendor and product id of this device.
    *
-   * All the devices we are interested in use FTDI chips, which report as vendor 0x0403.
-   * Modern Robotics modules (currently?) use a product id of 0x6001 and bcdDevice of 0x0600.
-   * Lynx modules use a product id of 0x6015 and bcdDevice of 0x1000. Note that for FTDI,
+   * All the devices we are interested in use FTDI chips (2018.06.01: no longer true: webcams!), which 
+   * report as vendor 0x0403. Modern Robotics modules (currently?) use a product id of 0x6001 and 
+   * bcdDevice of 0x0600. Lynx modules use a product id of 0x6015 and bcdDevice of 0x1000. Note that for FTDI,
    * only the upper byte of the two-byte bcdDevice seems to be of significance.
    *
    * "Every Universal Serial Bus (USB) device must be able to provide a single device descriptor that
@@ -240,6 +250,8 @@ public interface RobotUsbDevice {
 
   @NonNull SerialNumber getSerialNumber();
 
-  void setDeviceType(@NonNull DeviceManager.DeviceType deviceType);
-  @NonNull DeviceManager.DeviceType getDeviceType();
+  @NonNull String getProductName();
+
+  void setDeviceType(@NonNull DeviceManager.UsbDeviceType deviceType);
+  @NonNull DeviceManager.UsbDeviceType getDeviceType();
 }

@@ -43,21 +43,25 @@ import com.qualcomm.robotcore.robot.RobotState;
 import com.qualcomm.robotcore.robot.RobotStatus;
 import com.qualcomm.robotcore.util.RobotLog;
 
-import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
+import org.firstinspires.ftc.robotcore.external.function.Consumer;
 import org.firstinspires.ftc.robotcore.internal.network.NetworkStatus;
 import org.firstinspires.ftc.robotcore.internal.network.PeerStatus;
+import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
+
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * {@link SoundPlayingRobotMonitor} is an implementation of {@link RobotStateMonitor} that
  * plays sounds at certain event transitions within the Robot Controller application.
  */
+@SuppressWarnings("WeakerAccess")
 public class SoundPlayingRobotMonitor implements RobotStateMonitor
     {
     //----------------------------------------------------------------------------------------------
     // State
     //----------------------------------------------------------------------------------------------
 
-    protected static final boolean DEBUG = false;
+    public static boolean DEBUG = false;
     protected Context       context;
     protected RobotState    robotState     = RobotState.UNKNOWN;
     protected RobotStatus   robotStatus    = RobotStatus.UNKNOWN;
@@ -65,6 +69,8 @@ public class SoundPlayingRobotMonitor implements RobotStateMonitor
     protected PeerStatus    peerStatus     = PeerStatus.UNKNOWN;
     protected String        errorMessage   = null;
     protected String        warningMessage = null;
+    protected Sound         lastSoundPlayed = Sound.None;
+    protected AtomicInteger runningsInFlight = new AtomicInteger(0);
 
     // Identity of the sounds played by this monitor. Users can change these
     // instance variables in order to cause different sounds to be played.
@@ -73,6 +79,8 @@ public class SoundPlayingRobotMonitor implements RobotStateMonitor
     public @RawRes int soundRunning    = R.raw.nxtstartupsound;
     public @RawRes int soundWarning    = R.raw.warningmessage;
     public @RawRes int soundError      = R.raw.errormessage;
+
+    protected enum Sound { None, Connect, Disconnect, Running, Warning, Error }
 
     //----------------------------------------------------------------------------------------------
     // Construction
@@ -87,9 +95,65 @@ public class SoundPlayingRobotMonitor implements RobotStateMonitor
         this.context = context;
         }
 
+    public static void prefillSoundCache()
+        {
+        SoundPlayer.getInstance().prefillSoundCache(R.raw.chimeconnect, R.raw.chimedisconnect, R.raw.nxtstartupsound, R.raw.warningmessage, R.raw.errormessage);
+        }
+
     //----------------------------------------------------------------------------------------------
     // Notifications
     //----------------------------------------------------------------------------------------------
+
+    protected void playConnect()
+        {
+        if (!SoundPlayer.getInstance().isLocalSoundOn())
+            {
+            // If the last sound played is 'running', but that sound was in fact transmitted
+            // to the remote before this 'connect' happened, then (probably) the remote didn't
+            // hear the 'running', so send it out again. This is a pretty reliable but not
+            // perfect heuristic. Fortunately, the failure mode is only that a sound is repeated, 
+            // and we can live with that.
+            if (lastSoundPlayed==Sound.Running)
+                {
+                if (runningsInFlight.get() == 0)
+                    {
+                    RobotLog.vv(SoundPlayer.TAG, "playing running again");
+                    playRunning();
+                    }
+                }
+            }
+
+        playSound(Sound.Connect, soundConnect);
+        }
+
+    protected void playDisconnect()
+        {
+        playSound(Sound.Disconnect,soundDisconnect);
+        }
+
+    protected void playRunning()
+        {
+        runningsInFlight.getAndIncrement();
+        // This might be better decrementing on 'finish' instead of 'start', but all the testing has
+        // been done on 'start' so we'll leave it that way for now.
+        playSound(Sound.Running, soundRunning, new Consumer<Integer>()
+            {
+            @Override public void accept(Integer nonZeroOnSuccess)
+                {
+                runningsInFlight.decrementAndGet();
+                }
+            }, null);
+        }
+
+    protected void playWarning()
+        {
+        playSound(Sound.Warning, soundWarning);
+        }
+
+    protected void playError()
+        {
+        playSound(Sound.Error, soundError);
+        }
 
     @Override public synchronized void updateRobotState(@NonNull RobotState robotState)
         {
@@ -104,10 +168,7 @@ public class SoundPlayingRobotMonitor implements RobotStateMonitor
                 case EMERGENCY_STOP:      break;
                 default:                  break;
                 case RUNNING:
-                    // Make messages always sound after we transition to running
-                    errorMessage = null;
-                    warningMessage = null;
-                    playSound(soundRunning);
+                    playRunning();
                     break;
                 }
             }
@@ -136,8 +197,8 @@ public class SoundPlayingRobotMonitor implements RobotStateMonitor
             switch (peerStatus)
                 {
                 case UNKNOWN:               break;
-                case CONNECTED:             if (this.peerStatus != PeerStatus.CONNECTED) playSound(soundConnect); break;
-                case DISCONNECTED:          if (this.peerStatus != PeerStatus.DISCONNECTED) playSound(soundDisconnect); break;
+                case CONNECTED:             if (this.peerStatus != PeerStatus.CONNECTED) playConnect(); break;
+                case DISCONNECTED:          if (this.peerStatus != PeerStatus.DISCONNECTED) playDisconnect(); break;
                 default:                    break;
                 }
             }
@@ -168,7 +229,7 @@ public class SoundPlayingRobotMonitor implements RobotStateMonitor
         if (errorMessage != null && !errorMessage.equals(this.errorMessage))
             {
             if (DEBUG) RobotLog.vv(SoundPlayer.TAG, "updateErrorMessage()");
-            playSound(soundError);
+            playError();
             }
         this.errorMessage = errorMessage;
         }
@@ -178,13 +239,19 @@ public class SoundPlayingRobotMonitor implements RobotStateMonitor
         if (warningMessage != null && !warningMessage.equals(this.warningMessage))
             {
             if (DEBUG) RobotLog.vv(SoundPlayer.TAG, "updateWarningMessage()");
-            playSound(soundWarning);
+            playWarning();
             }
         this.warningMessage = warningMessage;
         }
 
-    protected void playSound(@RawRes final int resourceId)
+    protected void playSound(Sound sound,@RawRes final int resourceId)
         {
-        SoundPlayer.getInstance().play(context, resourceId);
+        playSound(sound, resourceId, null, null);
+        }
+
+    protected void playSound(Sound sound, @RawRes final int resourceId, @Nullable Consumer<Integer> runWhenStarted, @Nullable Runnable runWhenFinished)
+        {
+        lastSoundPlayed = sound;
+        SoundPlayer.getInstance().startPlaying(context, resourceId, new SoundPlayer.PlaySoundParams(true), runWhenStarted, runWhenFinished);
         }
     }

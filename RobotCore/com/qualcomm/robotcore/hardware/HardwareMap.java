@@ -33,8 +33,12 @@ package com.qualcomm.robotcore.hardware;
 
 import android.content.Context;
 import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 
 import com.qualcomm.robotcore.util.RobotLog;
+import com.qualcomm.robotcore.util.SerialNumber;
+
+import org.firstinspires.ftc.robotcore.internal.system.Assert;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -55,6 +59,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * provides access to a {@link Context} for OpModes, as such an appropriate instance is needed
  * by various system APIs.</p>
  */
+@SuppressWarnings("WeakerAccess")
 public class HardwareMap implements Iterable<HardwareDevice> {
 
   //------------------------------------------------------------------------------------------------
@@ -91,13 +96,15 @@ public class HardwareMap implements Iterable<HardwareDevice> {
   public DeviceMapping<UltrasonicSensor>      ultrasonicSensor      = new DeviceMapping<UltrasonicSensor>(UltrasonicSensor.class);
   public DeviceMapping<VoltageSensor>         voltageSensor         = new DeviceMapping<VoltageSensor>(VoltageSensor.class);
 
-  protected Map<String, List<HardwareDevice>> allDevicesMap         = new ConcurrentHashMap<String, List<HardwareDevice>>();  // concurrency is paranoia
+  protected Map<String, List<HardwareDevice>> allDevicesMap         = new HashMap<String, List<HardwareDevice>>();
   protected List<HardwareDevice>              allDevicesList        = null;   // cache for iteration
-  protected Map<HardwareDevice, Set<String>>  deviceNames           = new ConcurrentHashMap<HardwareDevice, Set<String>>(); // concurrency is paranoia
+  protected Map<HardwareDevice, Set<String>>  deviceNames           = new HashMap<HardwareDevice, Set<String>>();
+  protected Map<SerialNumber, HardwareDevice> serialNumberMap       = new HashMap<SerialNumber, HardwareDevice>();
 
   public final List<DeviceMapping<? extends HardwareDevice>> allDeviceMappings;
 
   public final Context appContext;
+  protected final Object lock = new Object();
 
   //------------------------------------------------------------------------------------------------
   // Construction
@@ -158,17 +165,55 @@ public class HardwareMap implements Iterable<HardwareDevice> {
    * @see #get(String)
    * @see #getAll(Class)
    * @see com.qualcomm.robotcore.hardware.HardwareMap.DeviceMapping#get(String)
+   * @see #tryGet(Class, String)
    */
   public <T> T get(Class<? extends T> classOrInterface, String deviceName) {
-    List<HardwareDevice> list = allDevicesMap.get(deviceName);
-    if (list != null) {
-      for (HardwareDevice device : list) {
+    synchronized (lock) {
+      deviceName = deviceName.trim();
+      T result = tryGet(classOrInterface, deviceName);
+      if (result==null) throw new IllegalArgumentException(String.format("Unable to find a hardware device with name \"%s\" and type %s", deviceName, classOrInterface.getSimpleName()));
+      return result;
+      }
+  }
+
+  /**
+   * Retrieves the (first) device with the indicated name which is also an instance of the
+   * indicated class or interface. If no such device is found, null is returned. 
+   * 
+   * This is not commonly used; {@link #get} is the usual method for retreiving items from 
+   * the map.
+   * 
+   * @see #get(Class, String)
+   */
+  public @Nullable <T> T tryGet(Class<? extends T> classOrInterface, String deviceName) {
+    synchronized (lock) {
+      deviceName = deviceName.trim();
+      List<HardwareDevice> list = allDevicesMap.get(deviceName);
+      if (list != null) {
+        for (HardwareDevice device : list) {
+          if (classOrInterface.isInstance(device)) {
+            return classOrInterface.cast(device);
+          }
+        }
+      }
+      return null;
+    }
+  }
+
+  /**
+   * (Advanced) Returns the device with the indicated {@link SerialNumber}, if it exists,
+   * cast to the indicated class or interface; otherwise, null.
+   */
+  public @Nullable <T> T get(Class<? extends T> classOrInterface, SerialNumber serialNumber) {
+    synchronized (lock) {
+      Object device = serialNumberMap.get(serialNumber);
+      if (device != null) {
         if (classOrInterface.isInstance(device)) {
           return classOrInterface.cast(device);
         }
       }
+      return null;
     }
-    throw new IllegalArgumentException(String.format("Unable to find a hardware device with name \"%s\" and type %s", deviceName, classOrInterface.getSimpleName()));
   }
 
   /**
@@ -188,13 +233,16 @@ public class HardwareMap implements Iterable<HardwareDevice> {
    * @see com.qualcomm.robotcore.hardware.HardwareMap.DeviceMapping#get(String)
    */
   public HardwareDevice get(String deviceName) {
-    List<HardwareDevice> list = allDevicesMap.get(deviceName);
-    if (list != null) {
-      for (HardwareDevice device : list) {
-        return device;
+    synchronized (lock) {
+      deviceName = deviceName.trim();
+      List<HardwareDevice> list = allDevicesMap.get(deviceName);
+      if (list != null) {
+        for (HardwareDevice device : list) {
+          return device;
+          }
         }
-      }
-    throw new IllegalArgumentException(String.format("Unable to find a hardware device with name \"%s\"", deviceName));
+      throw new IllegalArgumentException(String.format("Unable to find a hardware device with name \"%s\"", deviceName));
+    }
   }
 
   /**
@@ -204,13 +252,15 @@ public class HardwareMap implements Iterable<HardwareDevice> {
    * @see #get(Class, String)
    */
   public <T> List<T> getAll(Class<? extends T> classOrInterface) {
-    List<T> result = new LinkedList<T>();
-    for (HardwareDevice device : this) {
-      if (classOrInterface.isInstance(device)) {
-        result.add(classOrInterface.cast(device));
+    synchronized (lock) {
+      List<T> result = new LinkedList<T>();
+      for (HardwareDevice device : this) {
+        if (classOrInterface.isInstance(device)) {
+          result.add(classOrInterface.cast(device));
+        }
       }
+      return result;
     }
-    return result;
   }
 
   /**
@@ -219,24 +269,43 @@ public class HardwareMap implements Iterable<HardwareDevice> {
    * @param device     the device to be stored by that name
    */
   public void put(String deviceName, HardwareDevice device) {
-    List<HardwareDevice> list = allDevicesMap.get(deviceName);
-    if (list == null) {
-      list = new ArrayList<HardwareDevice>(1);
-      allDevicesMap.put(deviceName, list);
-    }
-    if (!list.contains(device)) {
-      allDevicesList = null;
-      list.add(device);
-    }
-
-    rebuildDeviceNamesIfNecessary();
-    recordDeviceName(deviceName, device);
+    internalPut(null, deviceName, device);
   }
 
   /**
-   * Removes a device from the overall map, if present. If the device is also present in a
-   * DeviceMapping, then the device should be removed using
-   * {@link com.qualcomm.robotcore.hardware.HardwareMap.DeviceMapping#remove(String, HardwareDevice) DeviceMapping.remove()}
+   * (Advanced) Puts a device in the overall map without having it also reside in a type-specific DeviceMapping.
+   * @param serialNumber the {@link SerialNumber} of the device
+   * @param deviceName   the name by which the device is to be known (case sensitive)
+   * @param device       the device to be stored by that name
+   */
+  public void put(@NonNull SerialNumber serialNumber, @NonNull String deviceName, HardwareDevice device) {
+    Assert.assertNotNull(serialNumber);
+    internalPut(serialNumber, deviceName, device);
+  }
+
+  protected void internalPut(@Nullable SerialNumber serialNumber, @NonNull String deviceName, HardwareDevice device) {
+    synchronized (lock) {
+      deviceName = deviceName.trim();
+      List<HardwareDevice> list = allDevicesMap.get(deviceName);
+      if (list == null) {
+        list = new ArrayList<HardwareDevice>(1);
+        allDevicesMap.put(deviceName, list);
+      }
+      if (!list.contains(device)) {
+        allDevicesList = null;
+        list.add(device);
+      }
+      if (serialNumber != null) {
+        serialNumberMap.put(serialNumber, device);
+      }
+      rebuildDeviceNamesIfNecessary();
+      recordDeviceName(deviceName, device);
+    }
+  }
+
+  /**
+   * (Advanced) Removes a device from the overall map, if present. If the device is also present in a
+   * DeviceMapping, then the device should be removed using {@link DeviceMapping#remove}
    * instead of calling this method.
    *
    * <p>This is normally called only by code in the SDK itself, not by user code.</p>
@@ -246,17 +315,39 @@ public class HardwareMap implements Iterable<HardwareDevice> {
    * @return whether a device was removed or not
    */
   public boolean remove(String deviceName, HardwareDevice device) {
-    List<HardwareDevice> list = allDevicesMap.get(deviceName);
-    if (list != null) {
-      list.remove(device);
-      if (list.isEmpty()) {
-        allDevicesMap.remove(deviceName);
+    return remove(null, deviceName, device);
+  }
+
+  /**
+   * (Advanced) Removes a device from the overall map, if present. If the device is also present in a
+   * DeviceMapping, then the device should be removed using {@link DeviceMapping#remove}
+   * instead of calling this method.
+   *
+   * <p>This is normally called only by code in the SDK itself, not by user code.</p>
+   *
+   * @param serialNumber (optional) the serial number of the device
+   * @param deviceName  the name of the device to remove
+   * @param device      the device to remove under that name
+   * @return whether a device was removed or not
+   */
+  public boolean remove(@Nullable SerialNumber serialNumber, String deviceName, HardwareDevice device) {
+    synchronized (lock) {
+      deviceName = deviceName.trim();
+      List<HardwareDevice> list = allDevicesMap.get(deviceName);
+      if (list != null) {
+        list.remove(device);
+        if (list.isEmpty()) {
+          allDevicesMap.remove(deviceName);
+        }
+        allDevicesList = null;
+        deviceNames = null;
+        if (serialNumber != null) {
+          serialNumberMap.remove(serialNumber);
+        }
+        return true;
       }
-      allDevicesList = null;
-      deviceNames = null;
-      return true;
+      return false;
     }
-    return false;
   }
 
   /**
@@ -266,15 +357,18 @@ public class HardwareMap implements Iterable<HardwareDevice> {
    * @return the set of names by which that device is known
    */
   public @NonNull Set<String> getNamesOf(HardwareDevice device) {
-    rebuildDeviceNamesIfNecessary();
-    Set<String> result = this.deviceNames.get(device);
-    if (result==null) {
-      result = new HashSet<String>();
+    synchronized (lock) {
+      rebuildDeviceNamesIfNecessary();
+      Set<String> result = this.deviceNames.get(device);
+      if (result==null) {
+        result = new HashSet<String>();
+      }
+      return result;
     }
-    return result;
   }
 
   protected void recordDeviceName(String deviceName, HardwareDevice device) {
+    deviceName = deviceName.trim();
     Set<String> names = this.deviceNames.get(device);
     if (names==null) {
       names = new HashSet<String>();
@@ -310,8 +404,10 @@ public class HardwareMap implements Iterable<HardwareDevice> {
    * @see #iterator()
    */
   public int size() {
-    buildAllDevicesList();
-    return allDevicesList.size();
+    synchronized (lock) {
+      buildAllDevicesList();
+      return allDevicesList.size();
+    }
   }
 
   /**
@@ -320,9 +416,11 @@ public class HardwareMap implements Iterable<HardwareDevice> {
    * @see #size()
    */
   @Override
-  public Iterator<HardwareDevice> iterator() {
-    buildAllDevicesList();
-    return allDevicesList.iterator();
+  public @NonNull Iterator<HardwareDevice> iterator() {
+    synchronized (lock) {
+      buildAllDevicesList();
+      return new ArrayList<>(allDevicesList).iterator(); // make copy for locking reasons
+    }
   }
 
   //------------------------------------------------------------------------------------------------
@@ -356,12 +454,15 @@ public class HardwareMap implements Iterable<HardwareDevice> {
     }
 
     public DEVICE_TYPE get(String deviceName) {
-      DEVICE_TYPE device = map.get(deviceName);
-      if (device == null) {
-        String msg = String.format("Unable to find a hardware device with the name \"%s\"", deviceName);
-        throw new IllegalArgumentException(msg);
+      synchronized (lock) {
+        deviceName = deviceName.trim();
+        DEVICE_TYPE device = map.get(deviceName);
+        if (device == null) {
+          String msg = String.format("Unable to find a hardware device with the name \"%s\"", deviceName);
+          throw new IllegalArgumentException(msg);
+        }
+        return device;
       }
-      return device;
     }
 
     /**
@@ -375,19 +476,45 @@ public class HardwareMap implements Iterable<HardwareDevice> {
      * @see HardwareMap#put(String, HardwareDevice)
      */
     public void put(String deviceName, DEVICE_TYPE device) {
+      internalPut(null, deviceName, device);
+    }
 
-      // Remove any existing guy
-      remove(deviceName);
+    /**
+     * (Advanced) Registers a new device in this DeviceMapping under the indicated name. Any existing device
+     * with this name in this DeviceMapping is removed. The new device is also added to the
+     * overall collection in the overall map itself. Note that this method is normally called
+     * only by code in the SDK itself, not by user code.
+     *
+     * @param serialNumber the serial number of the device
+     * @param deviceName  the name by which the new device is to be known (case sensitive)
+     * @param device      the new device to be named
+     * @see HardwareMap#put(String, HardwareDevice)
+     */
+    public void put(@NonNull SerialNumber serialNumber, String deviceName, DEVICE_TYPE device) {
+      internalPut(serialNumber, deviceName, device);
+    }
 
-      // Remember the new guy in the overall list
-      HardwareMap.this.put(deviceName, device);
+    protected void internalPut(@Nullable SerialNumber serialNumber, String deviceName, DEVICE_TYPE device) {
+      synchronized (lock) {
+        // remove whitespace at start & end
+        deviceName = deviceName.trim();
 
-      // Remember the new guy here locally, too
-      putLocal(deviceName, device);
+        // Remove any existing device with that name
+        remove(serialNumber, deviceName);
+
+        // Remember the new device in the overall list
+        HardwareMap.this.internalPut(serialNumber, deviceName, device);
+
+        // Remember the new device here locally, too
+        putLocal(deviceName, device);
+      }
     }
 
     public void putLocal(String deviceName, DEVICE_TYPE device) {
-      map.put(deviceName, device);
+      synchronized (lock) {
+        deviceName = deviceName.trim();
+        map.put(deviceName, device);
+      }
     }
 
     /**
@@ -396,33 +523,54 @@ public class HardwareMap implements Iterable<HardwareDevice> {
      * @return whether a device of the indicated name is contained within this mapping
      */
     public boolean contains(String deviceName) {
-      return map.containsKey(deviceName);
+      synchronized (lock) {
+        deviceName = deviceName.trim();
+        return map.containsKey(deviceName);
+      }
     }
 
     /**
-     * Removes the device with the indicated name (if any) from this DeviceMapping. The device
+     * (Advanced) Removes the device with the indicated name (if any) from this DeviceMapping. The device
      * is also removed under that name in the overall map itself. Note that this method is normally
      * called only by code in the SDK itself, not by user code.
      *
      * @param deviceName  the name of the device to remove.
      * @return            whether any modifications were made to this DeviceMapping
-     * @see HardwareMap#remove(String, HardwareDevice)
+     * @see HardwareMap#remove
      */
-    public boolean remove(String deviceName) {
-      HardwareDevice device = map.remove(deviceName);
-      if (device != null) {
-        HardwareMap.this.remove(deviceName, device);
-        return true;
+     public boolean remove(String deviceName) {
+        return remove(null, deviceName);
+     }
+    /**
+     * (Advanced) Removes the device with the indicated name (if any) from this DeviceMapping. The device
+     * is also removed under that name in the overall map itself. Note that this method is normally
+     * called only by code in the SDK itself, not by user code.
+     *
+     * @param serialNumber (optional) the serial number of the device to remove
+     * @param deviceName  the name of the device to remove.
+     * @return            whether any modifications were made to this DeviceMapping
+     * @see HardwareMap#remove
+     */
+     public boolean remove(@Nullable SerialNumber serialNumber, String deviceName) {
+      synchronized (lock) {
+        deviceName = deviceName.trim();
+        HardwareDevice device = map.remove(deviceName);
+        if (device != null) {
+          HardwareMap.this.remove(serialNumber, deviceName, device);
+          return true;
+        }
+        return false;
       }
-      return false;
     }
 
     /**
      * Returns an iterator over all the devices in this DeviceMapping.
      * @return an iterator over all the devices in this DeviceMapping.
      */
-    public Iterator<DEVICE_TYPE> iterator() {
-      return map.values().iterator();
+    @Override public @NonNull Iterator<DEVICE_TYPE> iterator() {
+      synchronized (lock) {
+        return new ArrayList<>(map.values()).iterator();
+      }
     }
 
     /**
@@ -430,7 +578,9 @@ public class HardwareMap implements Iterable<HardwareDevice> {
      * @return a collection of all the (name, device) pairs in this DeviceMapping.
      */
     public Set<Map.Entry<String, DEVICE_TYPE>> entrySet() {
-      return map.entrySet();
+      synchronized (lock) {
+        return new HashSet<>(map.entrySet());
+      }
     }
 
     /**
@@ -438,7 +588,9 @@ public class HardwareMap implements Iterable<HardwareDevice> {
      * @return the number of devices currently in this DeviceMapping
      */
     public int size() {
-      return map.size();
+      synchronized (lock) {
+        return map.size();
+      }
     }
   }
 

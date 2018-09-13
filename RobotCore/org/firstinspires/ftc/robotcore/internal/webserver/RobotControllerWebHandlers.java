@@ -39,7 +39,14 @@ import com.qualcomm.robotcore.util.RobotLog;
 import com.qualcomm.robotcore.util.ThreadPool;
 
 import org.firstinspires.ftc.robotcore.internal.collections.SimpleGson;
+import org.firstinspires.ftc.robotcore.internal.network.ApChannelManager;
+import org.firstinspires.ftc.robotcore.internal.network.ApChannelManagerFactory;
+import org.firstinspires.ftc.robotcore.internal.network.DeviceNameListener;
 import org.firstinspires.ftc.robotcore.internal.network.DeviceNameManager;
+import org.firstinspires.ftc.robotcore.internal.network.DeviceNameManagerFactory;
+import org.firstinspires.ftc.robotcore.internal.network.PasswordManager;
+import org.firstinspires.ftc.robotcore.internal.network.PasswordManagerFactory;
+import org.firstinspires.ftc.robotcore.internal.network.WifiDirectDeviceNameManager;
 import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 import org.firstinspires.ftc.robotcore.internal.ui.UILocation;
 
@@ -83,8 +90,11 @@ public class RobotControllerWebHandlers
     public static final String URI_LIST_LOG_FILES = "/listLogs";
     public static final String URI_DOWNLOAD_FILE = "/downloadFile";
     public static final String URI_RENAME_RC = "/renameRC";
+    public static final String URI_CHANGE_AP_PASSWORD = "/changeApPassword";
+    public static final String URI_CHANGE_AP_CHANNEL = "/changeApChannel";
     public static final String URI_UPLOAD_EXPANSION_HUB_FIRMWARE = "/uploadExpansionHubFirmware";
     public static final String URI_UPDATE_CONTROL_HUB_APK = "/updateControlHubAPK";
+    public static final String URI_UPLOAD_WEBCAM_CALIBRATION_FILE = "/uploadWebcamCalibrationFile";
     public static final String URI_REBOOT = "/reboot";
     public static final String URI_RC_INFO = "/js/rcInfo.json";
     public static final String URI_COLORS = "/css/colors.less";
@@ -97,6 +107,7 @@ public class RobotControllerWebHandlers
     public static final String URI_TOAST = "/toast";
 
     public static final String PARAM_NAME = "name";
+    public static final String PARAM_AP_PASSWORD = "password";
     public static final String PARAM_NEW_NAME = "new_name";
     public static final String PARAM_MESSAGE = "message";
 
@@ -108,8 +119,11 @@ public class RobotControllerWebHandlers
         manager.register(URI_LIST_LOG_FILES,        new ListLogFiles());
         manager.register(URI_DOWNLOAD_FILE,         new FileDownload());
         manager.register(URI_RENAME_RC,             decorateWithParms(new RenameRobotController()));
+        manager.register(URI_CHANGE_AP_PASSWORD,    decorateWithParms(new ChangeApPassword()));
+        manager.register(URI_CHANGE_AP_CHANNEL,     decorateWithParms(new ChangeApChannel()));
         manager.register(URI_UPDATE_CONTROL_HUB_APK, new FileUpload(AppUtil.RC_APP_UPDATE_DIR.getAbsolutePath()));
         manager.register(URI_UPLOAD_EXPANSION_HUB_FIRMWARE, new FileUpload(AppUtil.LYNX_FIRMWARE_UPDATE_DIR.getAbsolutePath()));
+        manager.register(URI_UPLOAD_WEBCAM_CALIBRATION_FILE, new FileUpload(AppUtil.WEBCAM_CALIBRATIONS_DIR.getAbsolutePath()));
         manager.register(URI_RC_CONFIG,             new RobotControllerConfiguration());
         manager.register(URI_RC_INFO,               new RobotControllerInfoHandler(manager.getWebServer()));
         manager.register(URI_REBOOT,                new Reboot());
@@ -467,13 +481,13 @@ public class RobotControllerWebHandlers
                     RobotLog.dd(TAG, "name=%s", desiredDeviceName);
                 }
 
-                final DeviceNameManager nameManager = DeviceNameManager.getInstance();
+                final DeviceNameManager nameManager = DeviceNameManagerFactory.getInstance();
                 if (!desiredDeviceName.equals(nameManager.getDeviceName())) {
                     // Change the name and wait synchronously (for a bit) for the change to take effect
                     // This helps the web ui reflect the change.
                     final Semaphore semaphore = new Semaphore(0);
 
-                    final DeviceNameManager.Callback callback = new DeviceNameManager.Callback() {
+                    final DeviceNameListener callback = new DeviceNameListener() {
                         @Override public void onDeviceNameChanged(String newDeviceName) {
                             if (newDeviceName.equals(desiredDeviceName)) {
                                 RobotLog.vv(TAG, "name change to %s observed", desiredDeviceName);
@@ -494,6 +508,40 @@ public class RobotControllerWebHandlers
                     RobotLog.vv(TAG, "name change to existing name %s; ignored", desiredDeviceName);
                 }
                 return WebHandlerManager.OK_RESPONSE;
+            }
+        }
+    }
+
+    public static class ChangeApPassword extends RequireNameHandler
+    {
+        @Override
+        protected Response getResponse(IHTTPSession session, @NonNull String name) throws IOException, NanoHTTPD.ResponseException
+        {
+            synchronized (this) {
+                RobotLog.i("ChangeApPassword " + name);
+                final PasswordManager passwordManager = PasswordManagerFactory.getInstance();
+                if (passwordManager.setPassword(name) == true) {
+                    return WebHandlerManager.OK_RESPONSE;
+                } else {
+                    return WebHandlerManager.internalErrorResponse(TAG, "Invalid password");
+                }
+            }
+        }
+    }
+
+    public static class ChangeApChannel extends RequireNameHandler
+    {
+        @Override
+        protected Response getResponse(IHTTPSession session, @NonNull String channel) throws IOException, NanoHTTPD.ResponseException
+        {
+            synchronized (this) {
+                RobotLog.i("ChangeApChannel " + channel);
+                final ApChannelManager apChannelManager = ApChannelManagerFactory.getInstance();
+                if (apChannelManager.setChannel(channel)) {
+                    return WebHandlerManager.OK_RESPONSE;
+                } else {
+                    return WebHandlerManager.internalErrorResponse(TAG, "Invalid channel");
+                }
             }
         }
     }
@@ -601,8 +649,11 @@ public class RobotControllerWebHandlers
             appendVariable(js, "URI_LIST_LOG_FILES", URI_LIST_LOG_FILES);
             appendVariable(js, "URI_DOWNLOAD_FILE", URI_DOWNLOAD_FILE);
             appendVariable(js, "URI_RENAME_RC", URI_RENAME_RC);
+            appendVariable(js, "URI_CHANGE_AP_PASSWORD", URI_CHANGE_AP_PASSWORD);
+            appendVariable(js, "URI_CHANGE_AP_CHANNEL", URI_CHANGE_AP_CHANNEL);
             appendVariable(js, "URI_UPLOAD_EXPANSION_HUB_FIRMWARE", URI_UPLOAD_EXPANSION_HUB_FIRMWARE);
             appendVariable(js, "URI_UPDATE_CONTROL_HUB_APK", URI_UPDATE_CONTROL_HUB_APK);
+            appendVariable(js, "URI_UPLOAD_WEBCAM_CALIBRATION_FILE", URI_UPLOAD_WEBCAM_CALIBRATION_FILE);
             appendVariable(js, "URI_NAV_HOME", URI_NAV_HOME);
             appendVariable(js, "URI_NAV_MANAGE", URI_NAV_MANAGE);
             appendVariable(js, "URI_NAV_HELP", URI_NAV_HELP);

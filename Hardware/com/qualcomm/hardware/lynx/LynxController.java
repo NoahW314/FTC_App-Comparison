@@ -35,6 +35,7 @@ package com.qualcomm.hardware.lynx;
 import android.content.Context;
 import android.support.annotation.NonNull;
 
+import com.qualcomm.hardware.lynx.commands.LynxCommand;
 import com.qualcomm.hardware.lynx.commands.LynxMessage;
 import com.qualcomm.robotcore.exception.RobotCoreException;
 import com.qualcomm.robotcore.hardware.Engagable;
@@ -276,25 +277,40 @@ public abstract class LynxController extends LynxCommExceptionHandler implements
     //----------------------------------------------------------------------------------------------
 
     @Override
-    public synchronized void engage()
+    public void engage()
         {
-        RobotLog.vv(getTag(), "engaging mod#=%d", getModule().getModuleAddress());
-        this.isEngaged = true;
-        adjustHookingToMatchEngagement();
+        synchronized (this)
+            {
+            if (!isEngaged)
+                {
+                RobotLog.vv(getTag(), "engaging mod#=%d", getModule().getModuleAddress());
+                isEngaged = true;
+                adjustHookingToMatchEngagement();
+                }
+            }
         }
 
     @Override
-    public synchronized void disengage()
+    public void disengage()
         {
-        RobotLog.vv(getTag(), "disengage mod#=%d", getModule().getModuleAddress());
-        this.isEngaged = false;
-        adjustHookingToMatchEngagement();
+        synchronized (this)
+            {
+            if (!isEngaged)
+                {
+                RobotLog.vv(getTag(), "disengage mod#=%d", getModule().getModuleAddress());
+                isEngaged = false;
+                adjustHookingToMatchEngagement();
+                }
+            }
         }
 
     @Override
-    public synchronized boolean isEngaged()
+    public boolean isEngaged()
         {
-        return this.isEngaged;
+        synchronized (this)
+            {
+            return this.isEngaged;
+            }
         }
 
     //----------------------------------------------------------------------------------------------
@@ -380,6 +396,12 @@ public abstract class LynxController extends LynxCommExceptionHandler implements
             }
 
         @Override
+        public String getFirmwareVersionString()
+            {
+            return getDeviceName();
+            }
+
+        @Override
         public String getDeviceName()
             {
             return LynxController.this.module.getDeviceName() + " (pretend)";
@@ -431,7 +453,7 @@ public abstract class LynxController extends LynxCommExceptionHandler implements
             }
 
         @Override
-        public void sendCommand(LynxMessage command) throws InterruptedException, LynxUnsupportedCommandNumberException
+        public void sendCommand(LynxMessage command) throws InterruptedException, LynxUnsupportedCommandException
             {
             // do nothing
             }
@@ -478,8 +500,13 @@ public abstract class LynxController extends LynxCommExceptionHandler implements
             }
 
         @Override
-        public void validateCommandNumber(int commandNumber) throws LynxUnsupportedCommandNumberException
+        public void validateCommand(LynxMessage lynxMessage) throws LynxUnsupportedCommandException
             {
+            }
+
+        @Override public boolean isCommandSupported(Class<? extends LynxCommand> command)
+            {
+            return false;
             }
 
         @Override public boolean isEngaged()

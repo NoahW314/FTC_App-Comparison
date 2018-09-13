@@ -35,15 +35,20 @@ package com.qualcomm.hardware.lynx;
 import com.qualcomm.hardware.bosch.BNO055IMUImpl;
 import com.qualcomm.robotcore.hardware.I2cController;
 import com.qualcomm.robotcore.hardware.I2cDeviceSynch;
-import com.qualcomm.robotcore.hardware.configuration.I2cSensor;
-import com.qualcomm.robotcore.hardware.configuration.UserConfigurationType;
+import com.qualcomm.robotcore.hardware.configuration.LynxConstants;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.UserConfigurationType;
+import com.qualcomm.robotcore.hardware.configuration.annotations.DeviceProperties;
+import com.qualcomm.robotcore.hardware.configuration.annotations.I2cDeviceType;
 
 import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
+
+import static com.qualcomm.robotcore.hardware.ControlSystem.REV_HUB;
 
 /**
  * {@link LynxEmbeddedIMU} represents a BNO055 IMU embedded on the lynx board.
  */
-@I2cSensor(name = "@string/lynx_embedded_imu_name", xmlTag = "@string/lynx_embedded_imu_xmltag", description = "@string/lynx_embedded_imu_description")
+@I2cDeviceType
+@DeviceProperties(name = "@string/lynx_embedded_imu_name", xmlTag = LynxConstants.EMBEDDED_IMU_XML_TAG, description = "@string/lynx_embedded_imu_description", builtIn = true, compatibleControlSystems = REV_HUB)
 public class LynxEmbeddedIMU extends BNO055IMUImpl
     {
     //----------------------------------------------------------------------------------------------
@@ -53,7 +58,7 @@ public class LynxEmbeddedIMU extends BNO055IMUImpl
     /**
      * This constructor is used by {@link UserConfigurationType#createInstance(I2cController, int)}
      * @see UserConfigurationType#createInstance(I2cController, int)
-     * @see I2cSensor
+     * @see I2cDeviceType
      */
     public LynxEmbeddedIMU(I2cDeviceSynch deviceClient)
         {

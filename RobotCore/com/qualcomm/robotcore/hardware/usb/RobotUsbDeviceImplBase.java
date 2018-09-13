@@ -44,7 +44,7 @@ import java.util.Collection;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Code that is usefully common to various RobotUsbDevice implementations
+ * Code that is usefully common to various {@link RobotUsbDevice} implementations
  */
 @SuppressWarnings("WeakerAccess")
 public abstract class RobotUsbDeviceImplBase implements RobotUsbDevice
@@ -55,12 +55,12 @@ public abstract class RobotUsbDeviceImplBase implements RobotUsbDevice
 
     public abstract String getTag();
 
-    // contains all the devices currently opened for ALL different kinds of RobotUsbDevice's
+    /** contains all the devices currently opened for ALL different kinds of {@link RobotUsbDevice}s */
     protected static final ConcurrentHashMap<SerialNumber, RobotUsbDevice> extantDevices = new ConcurrentHashMap<SerialNumber, RobotUsbDevice>();
-    protected static final ConcurrentHashMap<SerialNumber, DeviceManager.DeviceType> deviceTypes = new ConcurrentHashMap<SerialNumber, DeviceManager.DeviceType>();
+    protected static final ConcurrentHashMap<SerialNumber, DeviceManager.UsbDeviceType> deviceTypes = new ConcurrentHashMap<SerialNumber, DeviceManager.UsbDeviceType>();
 
     protected final SerialNumber        serialNumber;
-    protected DeviceManager.DeviceType  deviceType;
+    protected DeviceManager.UsbDeviceType deviceType;
     protected FirmwareVersion           firmwareVersion = new FirmwareVersion();
 
     //----------------------------------------------------------------------------------------------
@@ -72,7 +72,7 @@ public abstract class RobotUsbDeviceImplBase implements RobotUsbDevice
         this.serialNumber = serialNumber;
 
         this.deviceType = deviceTypes.get(this.serialNumber);
-        if (this.deviceType == null) this.deviceType = DeviceManager.DeviceType.UNKNOWN_DEVICE;
+        if (this.deviceType == null) this.deviceType = DeviceManager.UsbDeviceType.UNKNOWN_DEVICE;
 
         Assert.assertFalse(extantDevices.contains(serialNumber));
         extantDevices.put(serialNumber, this);
@@ -97,24 +97,24 @@ public abstract class RobotUsbDeviceImplBase implements RobotUsbDevice
         return extantDevices.containsKey(serialNumber);
         }
 
-    public static @NonNull DeviceManager.DeviceType getDeviceType(SerialNumber serialNumber)
+    public static @NonNull DeviceManager.UsbDeviceType getDeviceType(SerialNumber serialNumber)
         {
-        DeviceManager.DeviceType result = deviceTypes.get(serialNumber);
-        return result == null ? DeviceManager.DeviceType.UNKNOWN_DEVICE : result;
+        DeviceManager.UsbDeviceType result = deviceTypes.get(serialNumber);
+        return result == null ? DeviceManager.UsbDeviceType.UNKNOWN_DEVICE : result;
         }
 
     //----------------------------------------------------------------------------------------------
     // RobotUsbDevice
     //----------------------------------------------------------------------------------------------
 
-    @Override public synchronized void setDeviceType(@NonNull DeviceManager.DeviceType deviceType)
+    @Override public synchronized void setDeviceType(@NonNull DeviceManager.UsbDeviceType deviceType)
         {
         // RobotLog.vv(getTag(), "setDeviceType(%s,%s)", serialNumber, deviceType);
         this.deviceType = deviceType;
         deviceTypes.put(this.serialNumber, deviceType);
         }
 
-    @NonNull @Override public synchronized DeviceManager.DeviceType getDeviceType()
+    @NonNull @Override public synchronized DeviceManager.UsbDeviceType getDeviceType()
         {
         return this.deviceType;
         }

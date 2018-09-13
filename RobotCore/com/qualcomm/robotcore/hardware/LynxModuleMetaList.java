@@ -109,12 +109,25 @@ public class LynxModuleMetaList implements Iterable<LynxModuleMeta>
         }
 
     //----------------------------------------------------------------------------------------------
-    // Iteration
+    // Iteration and access
     //----------------------------------------------------------------------------------------------
 
     @Override public Iterator<LynxModuleMeta> iterator()
         {
         return Arrays.asList(this.modules).iterator();
+        }
+
+    public LynxModuleMeta getParent()
+        {
+        for (int i = 0; i < modules.length; i++)
+            {
+            LynxModuleMeta meta = modules[i];
+            if (meta.isParent())
+                {
+                return meta;
+                }
+            }
+        return null;
         }
 
     //----------------------------------------------------------------------------------------------
@@ -171,9 +184,4 @@ public class LynxModuleMetaList implements Iterable<LynxModuleMeta>
         result.append("]");
         return result.toString();
         }
-
-    //----------------------------------------------------------------------------------------------
-    // Types
-    //----------------------------------------------------------------------------------------------
-
     }

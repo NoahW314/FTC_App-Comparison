@@ -38,7 +38,6 @@ import android.os.Bundle;
 import android.preference.PreferenceManager;
 import android.support.annotation.IdRes;
 import android.support.annotation.NonNull;
-import android.support.annotation.Nullable;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.View;
@@ -49,21 +48,22 @@ import android.widget.EditText;
 import android.widget.Spinner;
 
 import com.qualcomm.ftccommon.R;
+import com.qualcomm.robotcore.hardware.ScannedDevices;
 import com.qualcomm.robotcore.hardware.configuration.BuiltInConfigurationType;
 import com.qualcomm.robotcore.hardware.configuration.ConfigurationType;
 import com.qualcomm.robotcore.hardware.configuration.ConfigurationUtility;
 import com.qualcomm.robotcore.hardware.configuration.ControllerConfiguration;
 import com.qualcomm.robotcore.hardware.configuration.DeviceConfiguration;
 import com.qualcomm.robotcore.hardware.configuration.Utility;
+import com.qualcomm.robotcore.robocol.Command;
 import com.qualcomm.robotcore.util.RobotLog;
 
+import org.firstinspires.ftc.robotcore.internal.network.NetworkConnectionHandler;
 import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 import org.firstinspires.ftc.robotcore.internal.network.CallbackResult;
 import org.firstinspires.ftc.robotcore.internal.ui.ThemedActivity;
 
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Comparator;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -185,7 +185,7 @@ public abstract class EditActivity extends ThemedActivity
 
     public static String formatSerialNumber(Context context, ControllerConfiguration controllerConfiguration)
         {
-        String result = controllerConfiguration.getSerialNumber().toString(context);
+        String result = controllerConfiguration.getSerialNumber().toString();
         if (controllerConfiguration.getSerialNumber().isFake())
             {
             return result;
@@ -375,43 +375,26 @@ public abstract class EditActivity extends ThemedActivity
 
     public String displayNameOfConfigurationType(ConfigurationType.DisplayNameFlavor flavor, ConfigurationType type)
         {
-        return type.getDisplayName(flavor, this);
+        return type.getDisplayName(flavor);
         }
 
     // Localization technique from http://www.katr.com/article_android_spinner01.php
-    protected class ConfigurationTypeAndDisplayName implements Comparable<ConfigurationTypeAndDisplayName>
+    protected class ConfigurationTypeAndDisplayName
         {
         public final ConfigurationType.DisplayNameFlavor flavor;
         public final ConfigurationType configurationType;
         public final String            displayName;
-        public final Comparator<ConfigurationType> comparator;
 
-        public ConfigurationTypeAndDisplayName(ConfigurationType.DisplayNameFlavor flavor, ConfigurationType configurationType, @Nullable Comparator<ConfigurationType> comparator)
+        public ConfigurationTypeAndDisplayName(ConfigurationType.DisplayNameFlavor flavor, ConfigurationType configurationType)
             {
             this.flavor            = flavor;
             this.configurationType = configurationType;
             this.displayName       = displayNameOfConfigurationType(this.flavor, configurationType);
-            this.comparator        = comparator;
             }
 
         @Override public String toString()
             {
             return this.displayName;
-            }
-
-        @Override public int compareTo(@NonNull ConfigurationTypeAndDisplayName another)
-            {
-            // Compare first by the comparator if we have one
-            if (comparator != null)
-                {
-                int result = comparator.compare(this.configurationType, another.configurationType);
-                if (result != 0)
-                    {
-                    return result;
-                    }
-                }
-            // Otherwise, just compare by display names
-            return this.displayName.compareTo(another.displayName);
             }
         }
 
@@ -443,25 +426,16 @@ public abstract class EditActivity extends ThemedActivity
         }
 
     protected void localizeConfigTypeSpinnerTypes(ConfigurationType.DisplayNameFlavor flavor, Spinner spinner, List<ConfigurationType> types)
-        {
-        localizeConfigTypeSpinnerTypes(flavor, spinner, types, null);
-        }
-
-    protected void localizeConfigTypeSpinnerTypes(ConfigurationType.DisplayNameFlavor flavor, Spinner spinner, List<ConfigurationType> types, @Nullable Comparator<ConfigurationType> comparator)
     // Localize the strings in the spinner
         {
         ConfigurationTypeAndDisplayName[] pairs = new ConfigurationTypeAndDisplayName[types.size()];
         for (int i = 0; i < types.size(); i++)
             {
             ConfigurationType type = types.get(i);
-            pairs[i] = new ConfigurationTypeAndDisplayName(flavor, type, comparator);
+            pairs[i] = new ConfigurationTypeAndDisplayName(flavor, type);
             }
 
-        // Sort the spinner alphabetically
-        Arrays.sort(pairs);
-
-        ArrayAdapter<ConfigurationTypeAndDisplayName> newAdapter =
-                new ArrayAdapter<ConfigurationTypeAndDisplayName>(this, android.R.layout.simple_spinner_dropdown_item, pairs);
+        ConfigurationTypeArrayAdapter newAdapter = new ConfigurationTypeArrayAdapter(this, pairs);
         spinner.setAdapter(newAdapter);
         }
 
@@ -560,6 +534,18 @@ public abstract class EditActivity extends ThemedActivity
     //----------------------------------------------------------------------------------------------
     // Networking
     //----------------------------------------------------------------------------------------------
+
+    protected void sendOrInject(Command cmd)
+        {
+        if (remoteConfigure)
+            {
+            NetworkConnectionHandler.getInstance().sendCommand(cmd);
+            }
+        else
+            {
+            NetworkConnectionHandler.getInstance().injectReceivedCommand(cmd);
+            }
+        }
 
     /** When doing remote config and we get notice that the config has changed, we need to
      * update our header string contents and attendant red vs grey etc coloring */

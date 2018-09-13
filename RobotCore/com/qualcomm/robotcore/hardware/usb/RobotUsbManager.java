@@ -34,45 +34,20 @@ package com.qualcomm.robotcore.hardware.usb;
 import com.qualcomm.robotcore.exception.RobotCoreException;
 import com.qualcomm.robotcore.util.SerialNumber;
 
+import java.util.List;
+
 /**
  * USB Manager Interface
  */
 public interface RobotUsbManager {
 
   /**
-   * Scan for USB devices and return the number of devices found
-   *
-   * @return the number of devices in the device info list
+   * Scan for USB devices; return serial numbers of those found
    */
-  int scanForDevices() throws RobotCoreException;
-
-  /**
-   * Returns the number of devices found in the previous execution of {@link #scanForDevices()}.
-   * @return the number of devices found in the previous execution of {@link #scanForDevices()}.
-   */
-  int getScanCount();
-
-  /**
-   * get device serial number
-   * @param index index of device
-   * @return serial number
-   * @throws RobotCoreException
-   */
-  SerialNumber getDeviceSerialNumberByIndex(int index) throws RobotCoreException;
-
-  /**
-   * get device description
-   * @param index index of device
-   * @return description
-   * @throws RobotCoreException
-   */
-  String getDeviceDescriptionByIndex(int index) throws RobotCoreException;
+  List<SerialNumber> scanForDevices() throws RobotCoreException;
 
   /**
    * Open device by serial number
-   * @param serialNumber USB serial number
-   * @return usb device
-   * @throws RobotCoreException
    */
   RobotUsbDevice openBySerialNumber(SerialNumber serialNumber) throws RobotCoreException;
 }

@@ -30,10 +30,15 @@
 
 package com.qualcomm.robotcore.robocol;
 
+import android.support.annotation.Nullable;
+
 import com.qualcomm.robotcore.exception.RobotCoreException;
 import com.qualcomm.robotcore.util.RobotLog;
 import com.qualcomm.robotcore.util.TypeConversion;
 
+import org.firstinspires.ftc.robotcore.internal.system.Deadline;
+
+import java.net.InetSocketAddress;
 import java.nio.BufferOverflowException;
 import java.nio.ByteBuffer;
 import java.util.Comparator;
@@ -45,6 +50,7 @@ import java.util.Comparator;
  * repeatedly until it receives and acknowledgment from the receiver. The receiver should not
  * reprocess repeated commands.
  */
+@SuppressWarnings("WeakerAccess")
 public class Command extends RobocolParsableBase implements Comparable<Command>, Comparator<Command> {
 
   // space for the timestamp (8 bytes), ack byte (1 byte)
@@ -56,20 +62,19 @@ public class Command extends RobocolParsableBase implements Comparable<Command>,
   long    mTimestamp;
   boolean mAcknowledged = false;
   byte    mAttempts = 0;
-  boolean isInjected = false; // not transmitted over network
+  boolean mIsInjected = false; // not transmitted over network
+  @Nullable Deadline mTransmissionDeadline = null;
+  InetSocketAddress mSender; // only on reception
 
   /**
-   * Constructor
-   * @param name name as string
+   * Constructs a {@link Command} for transmission.
    */
   public Command(String name) {
     this(name, "");
   }
 
   /**
-   * Constructor
-   * @param name name as string
-   * @param extra extra data as string
+   * Constructs a {@link Command} for transmission.
    */
   public Command(String name, String extra) {
     mName       = name;
@@ -77,8 +82,12 @@ public class Command extends RobocolParsableBase implements Comparable<Command>,
     mTimestamp  = generateTimestamp();
   }
 
-  public Command(byte[] byteArray) throws RobotCoreException {
-    fromByteArray(byteArray);
+  /**
+   * Constructs a Command from a received {@link RobocolDatagram}.
+   */
+  public Command(RobocolDatagram packet) throws RobotCoreException {
+    fromByteArray(packet.getData());
+    mSender = new InetSocketAddress(packet.getAddress(), packet.getPort());
   }
 
   /**
@@ -121,6 +130,10 @@ public class Command extends RobocolParsableBase implements Comparable<Command>,
     return mAttempts;
   }
 
+  public boolean hasExpired() {
+    return mTransmissionDeadline != null && mTransmissionDeadline.hasExpired();
+  }
+
   /*
    * (non-Javadoc)
    * @see com.qualcomm.robotcore.robocol.RobocolParsable#getRobocolMsgType()
@@ -131,11 +144,19 @@ public class Command extends RobocolParsableBase implements Comparable<Command>,
   }
 
   public boolean isInjected() {
-    return isInjected;
+    return mIsInjected;
   }
 
   public void setIsInjected(boolean isInjected) {
-    this.isInjected = isInjected;
+    this.mIsInjected = isInjected;
+  }
+
+  public void setTransmissionDeadline(Deadline deadline) {
+    mTransmissionDeadline = deadline;
+  }
+
+  public InetSocketAddress getSender() {
+    return mSender;
   }
 
   /*

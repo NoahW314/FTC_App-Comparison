@@ -35,7 +35,12 @@ package org.firstinspires.ftc.robotcore.external.navigation;
 import java.util.Locale;
 
 /**
- * Instances of {@link Acceleration} represent a double integration of {@link Position} over time.
+ * Instances of {@link Acceleration} represent the second derivative of {@link Position} over time. This
+ * is also to say that {@code Position} is a double integration of {@code Acceleration} with respect
+ * to time.
+ *
+ * @see Velocity
+ * @see Position
  */
 public class Acceleration
     {
@@ -43,8 +48,10 @@ public class Acceleration
     // State
     //----------------------------------------------------------------------------------------------
 
-    /** The (nominal) acceleration due to Earth's gravity */
-    public static final double earthGravity = 9.80665; // in units of m/s^2
+    /** The (nominal) acceleration due to Earth's gravity
+     * The units are in m/s^2
+     */
+    public static final double earthGravity = 9.80665;
 
     /**
      * The distance units in which this acceleration is expressed. The time unit is always "per second per second".

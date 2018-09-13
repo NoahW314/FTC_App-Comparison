@@ -47,6 +47,7 @@ import android.widget.TextView;
 
 import com.qualcomm.ftccommon.configuration.EditActivity;
 import com.qualcomm.robotcore.exception.RobotCoreException;
+import com.qualcomm.robotcore.hardware.configuration.LynxConstants;
 import com.qualcomm.robotcore.robocol.Command;
 import com.qualcomm.robotcore.util.RobotLog;
 import com.qualcomm.robotcore.util.SerialNumber;
@@ -148,7 +149,7 @@ public class FtcLynxModuleAddressUpdateActivity extends EditActivity
 
     protected class DisplayedModuleList
         {
-        protected int                  lastModuleAddressChoice = 10;
+        protected int                  lastModuleAddressChoice = LynxConstants.MAX_MODULE_ADDRESS_CHOICE;
         protected AddressConfiguration currentAddressConfiguration = new AddressConfiguration();
         protected ViewGroup            moduleList;
 
@@ -547,7 +548,7 @@ public class FtcLynxModuleAddressUpdateActivity extends EditActivity
 
         // Send the command
         availableLynxModules.clear();
-        request.includeModuleNumbers = true;
+        request.forFirmwareUpdate = true;
         sendOrInject(new Command(CommandList.CMD_GET_USB_ACCESSIBLE_LYNX_MODULES, request.serialize()));
 
         // Wait, but only a while, for  the result
@@ -555,18 +556,6 @@ public class FtcLynxModuleAddressUpdateActivity extends EditActivity
 
         RobotLog.vv(TAG, "found %d lynx modules", result.modules.size());
         return result.modules;
-        }
-
-    protected void sendOrInject(Command cmd)
-        {
-        if (remoteConfigure)
-            {
-            NetworkConnectionHandler.getInstance().sendCommand(cmd);
-            }
-        else
-            {
-            NetworkConnectionHandler.getInstance().injectReceivedCommand(cmd);
-            }
         }
 
     protected <T> T awaitResponse(BlockingQueue<T> queue, T defaultResponse)

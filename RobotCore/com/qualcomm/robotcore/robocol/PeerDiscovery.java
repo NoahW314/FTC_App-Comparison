@@ -33,6 +33,7 @@ package com.qualcomm.robotcore.robocol;
 
 import com.qualcomm.robotcore.R;
 import com.qualcomm.robotcore.exception.RobotCoreException;
+import com.qualcomm.robotcore.exception.RobotProtocolException;
 import com.qualcomm.robotcore.util.RobotLog;
 
 import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
@@ -167,7 +168,7 @@ public class PeerDiscovery extends RobocolParsableBase {
   }
 
   @Override
-  public void fromByteArray(byte[] byteArray) throws RobotCoreException {
+  public void fromByteArray(byte[] byteArray) throws RobotCoreException, RobotProtocolException {
     if (byteArray.length < cbBufferHistorical) {
       throw new RobotCoreException("Expected buffer of at least %d bytes, received %d", cbBufferHistorical, byteArray.length);
     }
@@ -184,7 +185,8 @@ public class PeerDiscovery extends RobocolParsableBase {
     // we could do in the future is the usual major.minor version management, but that doesn't
     // seem worthwhile yet
     if (peerRobocolVersion != RobocolConfig.ROBOCOL_VERSION) {
-        throw new RobotCoreException(AppUtil.getDefContext().getString(R.string.incompatibleAppsError),
+        RobotLog.ee(TAG, "Incompatible robocol versions, remote: %d, local: %d", peerRobocolVersion, RobocolConfig.ROBOCOL_VERSION);
+        throw new RobotProtocolException(AppUtil.getDefContext().getString(R.string.incompatibleAppsError),
                 AppUtil.getInstance().getAppName(), RobocolConfig.ROBOCOL_VERSION,
                 AppUtil.getInstance().getRemoteAppName(), peerRobocolVersion);
     }

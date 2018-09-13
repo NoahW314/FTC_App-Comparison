@@ -32,6 +32,8 @@ package com.qualcomm.robotcore.util;
 
 import android.os.Build;
 
+import com.qualcomm.robotcore.hardware.configuration.LynxConstants;
+
 /**
  * A few constants that help us detect which device we are running on
  */
@@ -40,6 +42,7 @@ public class Device {
 
   public final static String MANUFACTURER_ZTE = "zte";
   public final static String MODEL_ZTE_SPEED = "N9130";
+  public final static String MODEL_REV_CONTROL_HUB = "FIRST Control Hub";
 
   /**
    * Answers whether this is a ZTE Speed phone. For the Speed's, the model number
@@ -49,7 +52,7 @@ public class Device {
    */
   public static boolean isZteSpeed() {
     return Build.MANUFACTURER.equalsIgnoreCase(MANUFACTURER_ZTE) && Build.MODEL.equalsIgnoreCase(MODEL_ZTE_SPEED);
-    }
+  }
 
   /**
    * When running on the ZTE, should we use the ZTE-provided channel-changing utility app,
@@ -65,5 +68,12 @@ public class Device {
    */
   public static boolean wifiP2pRemoteChannelChangeWorks() {
     return !(isZteSpeed() && useZteProvidedWifiChannelEditorOnZteSpeeds());
+  }
+
+  /**
+   * Answers whether this is a REV Control Hub
+   */
+  public static boolean isRevControlHub() {
+    return LynxConstants.isRevControlHub();
   }
 }

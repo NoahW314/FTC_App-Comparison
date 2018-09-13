@@ -5,12 +5,13 @@ import android.support.annotation.Nullable;
 
 import com.qualcomm.robotcore.exception.RobotCoreException;
 import com.qualcomm.robotcore.robocol.Command;
-import com.qualcomm.robotcore.robocol.Heartbeat;
 import com.qualcomm.robotcore.robocol.RobocolDatagram;
 import com.qualcomm.robotcore.robocol.RobocolDatagramSocket;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.RobotLog;
 import com.qualcomm.robotcore.util.ThreadPool;
+
+import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 
 import java.util.concurrent.LinkedBlockingDeque;
 
@@ -19,6 +20,16 @@ public class RecvLoopRunnable implements Runnable {
 
     public static final String TAG = RobocolDatagram.TAG;
     public static       boolean DEBUG = false;
+
+    /*
+     * To turn on traffic stats on the inspection activities, set this
+     * and InspectionActivity.SHOW_TRAFFIC_STATS to true.
+     */
+    private static       boolean DO_TRAFFIC_DATA = false;
+
+    private static ElapsedTime bandwidthSampleTimer = new ElapsedTime(ElapsedTime.Resolution.MILLISECONDS);
+    private final static int BANDWIDTH_SAMPLE_PERIOD = 500;
+    private double bytesPerMilli = 0.0;
 
     public interface RecvLoopCallback {
         CallbackResult packetReceived(RobocolDatagram packet) throws RobotCoreException;
@@ -75,6 +86,7 @@ public class RecvLoopRunnable implements Runnable {
         this.packetProcessingTimer = new ElapsedTime();
         this.commandProcessingTimer = new ElapsedTime();
         this.sProcessingTimerReportingThreshold = 0.5;
+        this.socket.gatherTrafficData(DO_TRAFFIC_DATA);
         RobotLog.vv(TAG, "RecvLoopRunnable created");
     }
 
@@ -114,18 +126,32 @@ public class RecvLoopRunnable implements Runnable {
         commandsToProcess.addLast(cmd);
     }
 
+    public long getBytesPerSecond() {
+        return (long)(bytesPerMilli * 1000);
+    }
+
+    protected void calculateBytesPerMilli() {
+        if (bandwidthSampleTimer.time() >= BANDWIDTH_SAMPLE_PERIOD) {
+            bytesPerMilli = (socket.getRxDataSample() + socket.getTxDataSample()) / bandwidthSampleTimer.time();
+            bandwidthSampleTimer.reset();
+            socket.resetDataSample();
+        }
+    }
+
     @Override
     public void run() {
         ThreadPool.logThreadLifeCycle("RecvLoopRunnable.run()", new Runnable() {
             @Override
             public void run() {
 
+                bandwidthSampleTimer.reset();
+                AppUtil appUtil = AppUtil.getInstance();
                 while (!Thread.currentThread().isInterrupted()) {
 
                     // Block until a packet is received, a timeout or other error occurs, or the socket is closed.
                     // In the second and third cases, null is returned.
                     RobocolDatagram packet = socket.recv();
-                    long tReceived = Heartbeat.getMsTimeSyncTime();
+                    long tReceived = appUtil.getWallClockTime();
 
                     // We might have waited for a while in the recv(), and been interrupted in the meantime
                     if (Thread.currentThread().isInterrupted()) {
@@ -159,7 +185,7 @@ public class RecvLoopRunnable implements Runnable {
                                     // internal processing. The queue allows command processing to take a
                                     // long time w/o adversely affecting network responsiveness, which could
                                     // otherwise lead to apparent disconnects.
-                                    Command command = new Command(packet.getData());
+                                    Command command = new Command(packet);
                                     CallbackResult result = NetworkConnectionHandler.getInstance().processAcknowledgments(command);
                                     if (!result.isHandled()) {
                                       RobotLog.vv(RobocolDatagram.TAG, "received command: %s(%d) %s", command.getName(), command.getSequenceNumber(), command.getExtra());
@@ -191,6 +217,8 @@ public class RecvLoopRunnable implements Runnable {
                         // proactively reclaim the receive buffer of the message (don't wait for GC)
                         packet.close();
                     }
+
+                    if (DO_TRAFFIC_DATA) calculateBytesPerMilli();
                 }
             RobotLog.vv(TAG, "interrupted; %s returning", Thread.currentThread().getName());
             }

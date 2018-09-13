@@ -32,6 +32,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package com.qualcomm.robotcore.hardware.usb.serial;
 
+import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 
 import com.qualcomm.robotcore.hardware.usb.RobotUsbDevice;
@@ -77,6 +78,7 @@ public class RobotUsbDeviceTty extends RobotUsbDeviceImplBase implements RobotUs
     protected final Object              writeLock        = new Object();
     protected Queue<Byte>               readAhead        = new ArrayDeque<Byte>();
     protected boolean                   debugRetainBuffers = false;
+    protected @NonNull String           productName      = "";
 
     //----------------------------------------------------------------------------------------------
     // Construction
@@ -213,7 +215,7 @@ public class RobotUsbDeviceTty extends RobotUsbDeviceImplBase implements RobotUs
                         {
                         this.readAhead.add(data[i]);
                         }
-                    RobotLog.ee(TAG, "didn't read enough data cbToRead=%d cbRead=%d", cbToRead, cbRead);
+                    RobotLog.ee(TAG, "didn't read enough data cbToRead=%d cbRead=%d msTimeout=%d", cbToRead, cbRead, msTimeout);
                     return 0;   // maybe an odd semantic to indicate timeout, but that's what we've got
                     }
                 }
@@ -312,4 +314,13 @@ public class RobotUsbDeviceTty extends RobotUsbDeviceImplBase implements RobotUs
         this.usbIdentifiers = usbIdentifiers;
         }
 
+    public void setProductName(@NonNull String productName)
+        {
+        this.productName = productName;
+        }
+
+    @Override @NonNull public String getProductName()
+        {
+        return productName;
+        }
     }

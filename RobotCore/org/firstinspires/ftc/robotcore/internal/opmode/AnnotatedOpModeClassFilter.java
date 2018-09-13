@@ -335,7 +335,7 @@ public class AnnotatedOpModeClassFilter implements ClassFilter
      */
     void filterOpModeRegistrarMethods(Class clazz)
         {
-        List<Method> methods = ClassUtil.getDeclaredMethods(clazz);
+        List<Method> methods = ClassUtil.getLocalDeclaredMethods(clazz);
         for (Method method : methods)
             {
             int requiredModifiers   = Modifier.STATIC | Modifier.PUBLIC;

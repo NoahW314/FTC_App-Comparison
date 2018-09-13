@@ -37,6 +37,8 @@ import android.content.IntentFilter;
 import android.os.BatteryManager;
 import android.os.Handler;
 
+import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
+
 @SuppressWarnings("WeakerAccess")
 public class BatteryChecker {
 
@@ -84,6 +86,9 @@ public class BatteryChecker {
 
   public static final String TAG = "BatteryChecker";
 
+  // Don't spam the log if there's nothing wrong with the battery.
+  private static final int LOG_THRESHOLD = 70;
+
   private Context context;
   private long repeatDelay;
   private long initialDelay = 5000; // ms. 'not exactly clear why we wait to send
@@ -92,12 +97,15 @@ public class BatteryChecker {
   protected boolean closed;
   protected final Monitor monitor = new Monitor();
 
+  protected final static boolean debugBattery = false;
+  protected final static int BATTERY_WARN_THRESHOLD = 30;
+
   //------------------------------------------------------------------------------------------------
   // Construction & control
   //------------------------------------------------------------------------------------------------
 
-  public BatteryChecker(Context context, BatteryWatcher watcher, long delay) {
-    this.context = context;
+  public BatteryChecker(BatteryWatcher watcher, long delay) {
+    this.context = AppUtil.getDefContext();
     this.watcher = watcher;
     this.repeatDelay = delay;
     batteryHandler = new Handler();
@@ -184,6 +192,10 @@ public class BatteryChecker {
 
   protected void processBatteryChanged(Intent intent) {
 
+    if (intent == null) {
+      return;
+    }
+
     int currentLevel = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
     int scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
 
@@ -191,9 +203,14 @@ public class BatteryChecker {
       int batteryPlugged = BatteryManager.BATTERY_PLUGGED_AC | BatteryManager.BATTERY_PLUGGED_USB | BatteryManager.BATTERY_PLUGGED_WIRELESS;
       boolean isCharging = (intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 1) & batteryPlugged) != 0;
       int percent = (currentLevel * 100) / scale;
-      RobotLog.ii(TAG, "percent remaining: " + percent + " is charging: " + isCharging);
+      logBatteryInfo(percent, isCharging);
       watcher.updateBatteryStatus(new BatteryStatus(percent, isCharging));
     }
   }
 
+  protected void logBatteryInfo(int percent, boolean isCharging) {
+    if ((debugBattery) || (percent < BATTERY_WARN_THRESHOLD)) {
+      RobotLog.ii(TAG, "percent remaining: " + percent + " is charging: " + isCharging);
+    }
+  }
 }

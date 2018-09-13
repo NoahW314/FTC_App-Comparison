@@ -41,12 +41,14 @@ import com.qualcomm.robotcore.exception.RobotCoreException;
 import com.qualcomm.robotcore.hardware.DeviceManager;
 import com.qualcomm.robotcore.hardware.LynxModuleMetaList;
 import com.qualcomm.robotcore.hardware.RobotCoreLynxUsbDevice;
+import com.qualcomm.robotcore.hardware.ScannedDevices;
 import com.qualcomm.robotcore.robocol.Command;
 import com.qualcomm.robotcore.util.NextLock;
 import com.qualcomm.robotcore.util.RobotLog;
 import com.qualcomm.robotcore.util.SerialNumber;
 import com.qualcomm.robotcore.util.ThreadPool;
 
+import org.firstinspires.ftc.robotcore.external.function.Supplier;
 import org.firstinspires.ftc.robotcore.internal.network.NetworkConnectionHandler;
 
 import java.util.Map;
@@ -168,14 +170,34 @@ public class USBScanManager
         {
         synchronized (lynxModuleDiscoveryStateMap)
             {
-            LynxModuleDiscoveryState result = lynxModuleDiscoveryStateMap.get(serialNumber.toString());
+            LynxModuleDiscoveryState result = lynxModuleDiscoveryStateMap.get(serialNumber.getString());
             if (result == null)
                 {
                 result = new LynxModuleDiscoveryState(serialNumber);
-                lynxModuleDiscoveryStateMap.put(serialNumber.toString(), result);
+                lynxModuleDiscoveryStateMap.put(serialNumber.getString(), result);
                 }
             return result;
             }
+        }
+
+    public Supplier<LynxModuleMetaList> getLynxModuleMetaListSupplier(final SerialNumber serialNumber)
+        {
+        return new Supplier<LynxModuleMetaList>()
+            {
+            @Override public LynxModuleMetaList get()
+                {
+                LynxModuleMetaList result = null;
+                try
+                    {
+                    result = startLynxModuleEnumerationIfNecessary(serialNumber).await();
+                    }
+                catch (InterruptedException e)
+                    {
+                    Thread.currentThread().interrupt();
+                    }
+                return result;
+                }
+            };
         }
 
     public ThreadPool.SingletonResult<LynxModuleMetaList> startLynxModuleEnumerationIfNecessary(final SerialNumber serialNumber)
@@ -193,7 +215,7 @@ public class USBScanManager
 
                     // Send a command to the RC to do a scan
                     RobotLog.vv(TAG, "sending remote lynx module discovery request...");
-                    networkConnectionHandler.sendCommand(new Command(CommandList.CMD_DISCOVER_LYNX_MODULES, serialNumber.toString()));
+                    networkConnectionHandler.sendCommand(new Command(CommandList.CMD_DISCOVER_LYNX_MODULES, serialNumber.getString()));
 
                     // Wait for the result (forever, or until interrupted)
                     waiter.awaitNext();
@@ -207,7 +229,7 @@ public class USBScanManager
                     }
                 else
                     {
-                    RobotLog.vv(TAG, "discovering lynx modules on lynx device=%s...", serialNumber.toString());
+                    RobotLog.vv(TAG, "discovering lynx modules on lynx device=%s...", serialNumber);
                     LynxModuleMetaList localResult = null;
                     try
                         {
@@ -271,11 +293,11 @@ public class USBScanManager
                     ScannedDevices localResult = null;
                     try
                         {
-                        localResult = new ScannedDevices(deviceManager.scanForUsbDevices());
+                        localResult = deviceManager.scanForUsbDevices();
                         }
                     catch (RobotCoreException e)
                         {
-                        RobotLog.ee(TAG, "USB bus scan threw exception: " + e.toString());
+                        RobotLog.ee(TAG, e,"USB bus scan threw exception");
                         localResult = null;
                         }
                     finally

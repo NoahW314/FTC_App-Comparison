@@ -65,9 +65,17 @@ package com.qualcomm.robotcore.hardware.configuration;
 
 import android.content.Context;
 import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 
 import com.qualcomm.robotcore.R;
 import com.qualcomm.robotcore.hardware.DeviceManager;
+import com.qualcomm.robotcore.util.RobotLog;
+
+import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
+
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * {@link BuiltInConfigurationType} is an enum representing all the various types of hardware
@@ -75,85 +83,62 @@ import com.qualcomm.robotcore.hardware.DeviceManager;
  */
 public enum BuiltInConfigurationType implements ConfigurationType
     {
-        SERVO("Servo"),
-        CONTINUOUS_ROTATION_SERVO("ContinuousRotationServo"),
-        GYRO("Gyro"),
-        COMPASS("Compass"),
-        IR_SEEKER("IrSeeker"),
-        LIGHT_SENSOR("LightSensor"),
-        ACCELEROMETER("Accelerometer"),
-        MOTOR_CONTROLLER("MotorController"),
-        SERVO_CONTROLLER("ServoController"),
-        LEGACY_MODULE_CONTROLLER("LegacyModuleController"),
-        DEVICE_INTERFACE_MODULE("DeviceInterfaceModule"),
-        I2C_DEVICE("I2cDevice"),
-        I2C_DEVICE_SYNCH("I2cDeviceSynch"),
-        ANALOG_INPUT("AnalogInput"),
-        TOUCH_SENSOR("TouchSensor"),                // either a MR or an NXT touch sensor on a digital port
-        MR_ANALOG_TOUCH_SENSOR("ModernRoboticsAnalogTouchSensor"),   // a MR touch sensor on an analog port
-        OPTICAL_DISTANCE_SENSOR("OpticalDistanceSensor"),
-        ANALOG_OUTPUT("AnalogOutput"),
-        DIGITAL_DEVICE("DigitalDevice"),
-        PULSE_WIDTH_DEVICE("PulseWidthDevice"),
-        IR_SEEKER_V3("IrSeekerV3"),
-        TOUCH_SENSOR_MULTIPLEXER("TouchSensorMultiplexer"),
-        MATRIX_CONTROLLER("MatrixController"),
-        ULTRASONIC_SENSOR("UltrasonicSensor"),
-        ADAFRUIT_COLOR_SENSOR("AdafruitColorSensor"),
-        COLOR_SENSOR("ColorSensor"),    // this is a modern robotics or an NXT color sensor
-        LED("Led"),
-        LYNX_COLOR_SENSOR("LynxColorSensor"),
-        LYNX_USB_DEVICE("LynxUsbDevice"),
-        LYNX_MODULE("LynxModule"),
-        NOTHING("Nothing"),             // in the config UI, NOTHING means no device is attached
-        UNKNOWN("<unknown>");           // UNKNOWN is never actually used in XML
+        GYRO("Gyro", DeviceFlavor.I2C),
+        COMPASS("Compass", null),
+        IR_SEEKER("IrSeeker", null),
+        LIGHT_SENSOR("LightSensor", null),
+        ACCELEROMETER("Accelerometer", null),
+        MOTOR_CONTROLLER("MotorController", null), // Can be HiTechnic or MR
+        SERVO_CONTROLLER("ServoController", null), // Can be HiTechnic or MR
+        LEGACY_MODULE_CONTROLLER("LegacyModuleController", null),
+        DEVICE_INTERFACE_MODULE("DeviceInterfaceModule", null),
+        @Deprecated I2C_DEVICE("I2cDevice", DeviceFlavor.I2C),
+        @Deprecated I2C_DEVICE_SYNCH("I2cDeviceSynch", DeviceFlavor.I2C),
+        TOUCH_SENSOR("TouchSensor", DeviceFlavor.DIGITAL_IO),   // either a MR touch sensor on a digital port or an NXT touch sensor
+        ANALOG_OUTPUT("AnalogOutput", DeviceFlavor.ANALOG_OUTPUT),
+        PULSE_WIDTH_DEVICE("PulseWidthDevice", null),
+        IR_SEEKER_V3("IrSeekerV3", DeviceFlavor.I2C),
+        TOUCH_SENSOR_MULTIPLEXER("TouchSensorMultiplexer", null),
+        MATRIX_CONTROLLER("MatrixController", null),
+        ULTRASONIC_SENSOR("UltrasonicSensor", null),
+        ADAFRUIT_COLOR_SENSOR("AdafruitColorSensor", DeviceFlavor.I2C),
+        COLOR_SENSOR("ColorSensor", DeviceFlavor.I2C),    // this is a modern robotics or an NXT color sensor
+        LYNX_COLOR_SENSOR("LynxColorSensor", DeviceFlavor.I2C),
+        LYNX_USB_DEVICE("LynxUsbDevice", null),
+        LYNX_MODULE("LynxModule", null),
+        WEBCAM("Webcam", null),
+        ROBOT("Robot", null),                 // not an actual config type, but is an XML tag we know about
+        NOTHING("Nothing", null),             // in the config UI, NOTHING means no device is attached
+        UNKNOWN("<unknown>", null);           // UNKNOWN is never actually used in XML
 
-    public final String xmlTag;
+    private final String xmlTag;
+    private final DeviceFlavor deviceFlavor;
 
-    BuiltInConfigurationType(String xmlTag)
+    private final Context context = AppUtil.getDefContext();
+
+    private static final List<BuiltInConfigurationType> valuesCache = Collections.unmodifiableList(Arrays.asList(values()));
+
+    /**
+     * Pass deviceFlavor if one of the types besides BUILT_IN applies, otherwise pass null.
+     */
+    BuiltInConfigurationType(String xmlTag, @Nullable DeviceFlavor deviceFlavor)
         {
         this.xmlTag = xmlTag;
+        this.deviceFlavor = deviceFlavor;
         }
 
-    public static ConfigurationType fromXmlTag(String xmlTag)
+    public static BuiltInConfigurationType fromXmlTag(String xmlTag)
         {
-        if (xmlTag.equalsIgnoreCase(SERVO.xmlTag)) return SERVO;
-        if (xmlTag.equalsIgnoreCase(CONTINUOUS_ROTATION_SERVO.xmlTag)) return CONTINUOUS_ROTATION_SERVO;
-        if (xmlTag.equalsIgnoreCase(GYRO.xmlTag)) return GYRO;
-        if (xmlTag.equalsIgnoreCase(COMPASS.xmlTag)) return COMPASS;
-        if (xmlTag.equalsIgnoreCase(IR_SEEKER.xmlTag)) return IR_SEEKER;
-        if (xmlTag.equalsIgnoreCase(LIGHT_SENSOR.xmlTag)) return LIGHT_SENSOR;
-        if (xmlTag.equalsIgnoreCase(ACCELEROMETER.xmlTag)) return ACCELEROMETER;
-        if (xmlTag.equalsIgnoreCase(MOTOR_CONTROLLER.xmlTag)) return MOTOR_CONTROLLER;
-        if (xmlTag.equalsIgnoreCase(SERVO_CONTROLLER.xmlTag)) return SERVO_CONTROLLER;
-        if (xmlTag.equalsIgnoreCase(LEGACY_MODULE_CONTROLLER.xmlTag)) return LEGACY_MODULE_CONTROLLER;
-        if (xmlTag.equalsIgnoreCase(DEVICE_INTERFACE_MODULE.xmlTag)) return DEVICE_INTERFACE_MODULE;
-        if (xmlTag.equalsIgnoreCase(I2C_DEVICE.xmlTag)) return I2C_DEVICE;
-        if (xmlTag.equalsIgnoreCase(I2C_DEVICE_SYNCH.xmlTag)) return I2C_DEVICE_SYNCH;
-        if (xmlTag.equalsIgnoreCase(ANALOG_INPUT.xmlTag)) return ANALOG_INPUT;
-        if (xmlTag.equalsIgnoreCase(TOUCH_SENSOR.xmlTag)) return TOUCH_SENSOR;
-        if (xmlTag.equalsIgnoreCase(MR_ANALOG_TOUCH_SENSOR.xmlTag)) return MR_ANALOG_TOUCH_SENSOR;
-        if (xmlTag.equalsIgnoreCase(OPTICAL_DISTANCE_SENSOR.xmlTag)) return OPTICAL_DISTANCE_SENSOR;
-        if (xmlTag.equalsIgnoreCase(ANALOG_OUTPUT.xmlTag)) return ANALOG_OUTPUT;
-        if (xmlTag.equalsIgnoreCase(DIGITAL_DEVICE.xmlTag)) return DIGITAL_DEVICE;
-        if (xmlTag.equalsIgnoreCase(PULSE_WIDTH_DEVICE.xmlTag)) return PULSE_WIDTH_DEVICE;
-        if (xmlTag.equalsIgnoreCase(IR_SEEKER_V3.xmlTag)) return IR_SEEKER_V3;
-        if (xmlTag.equalsIgnoreCase(TOUCH_SENSOR_MULTIPLEXER.xmlTag)) return TOUCH_SENSOR_MULTIPLEXER;
-        if (xmlTag.equalsIgnoreCase(MATRIX_CONTROLLER.xmlTag)) return MATRIX_CONTROLLER;
-        if (xmlTag.equalsIgnoreCase(ULTRASONIC_SENSOR.xmlTag)) return ULTRASONIC_SENSOR;
-        if (xmlTag.equalsIgnoreCase(ADAFRUIT_COLOR_SENSOR.xmlTag)) return ADAFRUIT_COLOR_SENSOR;
-        if (xmlTag.equalsIgnoreCase(COLOR_SENSOR.xmlTag)) return COLOR_SENSOR;
-        if (xmlTag.equalsIgnoreCase(LYNX_COLOR_SENSOR.xmlTag)) return LYNX_COLOR_SENSOR;
-        if (xmlTag.equalsIgnoreCase(LYNX_USB_DEVICE.xmlTag)) return LYNX_USB_DEVICE;
-        if (xmlTag.equalsIgnoreCase(LYNX_MODULE.xmlTag)) return LYNX_MODULE;
-        if (xmlTag.equalsIgnoreCase(LED.xmlTag)) return LED;
-        if (xmlTag.equalsIgnoreCase(NOTHING.xmlTag)) return NOTHING;
+        for (BuiltInConfigurationType type : valuesCache)
+            {
+            if (xmlTag.equalsIgnoreCase(type.xmlTag)) return type;
+            }
         return UNKNOWN;
         }
 
     public static ConfigurationType fromString(String toString)
         {
-        for (ConfigurationType configType : BuiltInConfigurationType.values())
+        for (ConfigurationType configType : valuesCache)
             {
             if (toString.equalsIgnoreCase(configType.toString()))
                 {
@@ -163,7 +148,7 @@ public enum BuiltInConfigurationType implements ConfigurationType
         return BuiltInConfigurationType.UNKNOWN;
         }
 
-    public static ConfigurationType fromUSBDeviceType(DeviceManager.DeviceType type)
+    public static ConfigurationType fromUSBDeviceType(DeviceManager.UsbDeviceType type)
         {
         switch (type)
             {
@@ -172,54 +157,50 @@ public enum BuiltInConfigurationType implements ConfigurationType
             case MODERN_ROBOTICS_USB_DEVICE_INTERFACE_MODULE:   return DEVICE_INTERFACE_MODULE;
             case MODERN_ROBOTICS_USB_LEGACY_MODULE:             return LEGACY_MODULE_CONTROLLER;
             case LYNX_USB_DEVICE:                               return LYNX_USB_DEVICE;
+            case WEBCAM:                                        return WEBCAM;
             default:                                            return UNKNOWN;
             }
         }
 
-    @Override public boolean isDeviceFlavor(UserConfigurationType.Flavor flavor)
+    @Override public boolean isDeviceFlavor(DeviceFlavor flavor)
         {
-        if (flavor == UserConfigurationType.Flavor.I2C)
+        if (flavor == DeviceFlavor. BUILT_IN)
             {
-            switch (this)
-                {
-                case I2C_DEVICE:
-                case I2C_DEVICE_SYNCH:
-                case IR_SEEKER_V3:
-                case ADAFRUIT_COLOR_SENSOR:
-                case LYNX_COLOR_SENSOR:
-                case COLOR_SENSOR:
-                case GYRO:
-                    return true;
-                }
+            return true;
             }
-        else if (flavor == UserConfigurationType.Flavor.MOTOR)
+        return flavor == this.deviceFlavor;
+        }
+
+    @NonNull
+    @Override public DeviceFlavor getDeviceFlavor()
+        {
+        if (deviceFlavor != null)
             {
-            // There are no built-in motor types (anymore :-)
+            return deviceFlavor;
             }
-        return false;
+        return DeviceFlavor.BUILT_IN;
         }
 
     @Override @NonNull
-    public DeviceManager.DeviceType toUSBDeviceType()
+    public DeviceManager.UsbDeviceType toUSBDeviceType()
         {
         switch (this)
             {
-            case MOTOR_CONTROLLER:          return DeviceManager.DeviceType.MODERN_ROBOTICS_USB_DC_MOTOR_CONTROLLER;
-            case SERVO_CONTROLLER:          return DeviceManager.DeviceType.MODERN_ROBOTICS_USB_SERVO_CONTROLLER;
-            case DEVICE_INTERFACE_MODULE:   return DeviceManager.DeviceType.MODERN_ROBOTICS_USB_DEVICE_INTERFACE_MODULE;
-            case LEGACY_MODULE_CONTROLLER:  return DeviceManager.DeviceType.MODERN_ROBOTICS_USB_LEGACY_MODULE;
-            case LYNX_USB_DEVICE:           return DeviceManager.DeviceType.LYNX_USB_DEVICE;
-            default:                        return DeviceManager.DeviceType.FTDI_USB_UNKNOWN_DEVICE;
+            case MOTOR_CONTROLLER:          return DeviceManager.UsbDeviceType.MODERN_ROBOTICS_USB_DC_MOTOR_CONTROLLER;
+            case SERVO_CONTROLLER:          return DeviceManager.UsbDeviceType.MODERN_ROBOTICS_USB_SERVO_CONTROLLER;
+            case DEVICE_INTERFACE_MODULE:   return DeviceManager.UsbDeviceType.MODERN_ROBOTICS_USB_DEVICE_INTERFACE_MODULE;
+            case LEGACY_MODULE_CONTROLLER:  return DeviceManager.UsbDeviceType.MODERN_ROBOTICS_USB_LEGACY_MODULE;
+            case LYNX_USB_DEVICE:           return DeviceManager.UsbDeviceType.LYNX_USB_DEVICE;
+            case WEBCAM:                    return DeviceManager.UsbDeviceType.WEBCAM;
+            default:                        return DeviceManager.UsbDeviceType.FTDI_USB_UNKNOWN_DEVICE;
             }
         }
 
     @Override @NonNull
-    public String getDisplayName(DisplayNameFlavor flavor, Context context)
+    public String getDisplayName(DisplayNameFlavor flavor)
         {
         switch (this)
             {
-            case SERVO:                     return context.getString(R.string.configTypeServo);
-            case CONTINUOUS_ROTATION_SERVO: return context.getString(R.string.configTypeContinuousRotationServo);
             case COMPASS:                   return context.getString(R.string.configTypeHTCompass);
             case IR_SEEKER:                 return context.getString(R.string.configTypeHTIrSeeker);
             case LIGHT_SENSOR:              return context.getString(R.string.configTypeHTLightSensor);
@@ -230,22 +211,18 @@ public enum BuiltInConfigurationType implements ConfigurationType
             case DEVICE_INTERFACE_MODULE:   return context.getString(R.string.configTypeDeviceInterfaceModule);
             case I2C_DEVICE:                return context.getString(R.string.configTypeI2cDevice);
             case I2C_DEVICE_SYNCH:          return context.getString(R.string.configTypeI2cDeviceSynch);
-            case ANALOG_INPUT:              return context.getString(R.string.configTypeAnalogInput);
-            case OPTICAL_DISTANCE_SENSOR:   return context.getString(R.string.configTypeOpticalDistanceSensor);
             case ANALOG_OUTPUT:             return context.getString(R.string.configTypeAnalogOutput);
-            case DIGITAL_DEVICE:            return context.getString(R.string.configTypeDigitalDevice);
             case PULSE_WIDTH_DEVICE:        return context.getString(R.string.configTypePulseWidthDevice);
             case IR_SEEKER_V3:              return context.getString(R.string.configTypeIrSeekerV3);
             case TOUCH_SENSOR_MULTIPLEXER:  return context.getString(R.string.configTypeHTTouchSensorMultiplexer);
             case MATRIX_CONTROLLER:         return context.getString(R.string.configTypeMatrixController);
             case ULTRASONIC_SENSOR:         return context.getString(R.string.configTypeNXTUltrasonicSensor);
             case ADAFRUIT_COLOR_SENSOR:     return context.getString(R.string.configTypeAdafruitColorSensor);
-            case LED:                       return context.getString(R.string.configTypeLED);
             case LYNX_COLOR_SENSOR:         return context.getString(R.string.configTypeLynxColorSensor);
             case LYNX_USB_DEVICE:           return context.getString(R.string.configTypeLynxUSBDevice);
             case LYNX_MODULE:               return context.getString(R.string.configTypeLynxModule);
             case NOTHING:                   return context.getString(R.string.configTypeNothing);
-            case MR_ANALOG_TOUCH_SENSOR:    return context.getString(R.string.configTypeMRTouchSensor);
+            case WEBCAM:                    return context.getString(R.string.configTypeWebcam);
             case TOUCH_SENSOR:
                 return flavor==DisplayNameFlavor.Legacy
                         ? context.getString(R.string.configTypeNXTTouchSensor)
@@ -264,8 +241,28 @@ public enum BuiltInConfigurationType implements ConfigurationType
             }
         }
 
+    @Override
+    public boolean isDeprecated()
+        {
+        try
+            {
+            return BuiltInConfigurationType.class.getField(toString()).isAnnotationPresent(Deprecated.class);
+            }
+        catch (NoSuchFieldException e)
+            {
+            RobotLog.logStackTrace(e); // This should not be able to happen, ever.
+            return false;
+            }
+        }
+
     @Override @NonNull public String getXmlTag()
         {
         return this.xmlTag;
+        }
+
+    @Override @NonNull public String[] getXmlTagAliases()
+        {
+        // This implementation can be changed if aliases are needed for a built-in type
+        return new String[0];
         }
     }

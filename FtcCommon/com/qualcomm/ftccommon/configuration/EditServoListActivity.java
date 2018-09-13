@@ -33,10 +33,18 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 package com.qualcomm.ftccommon.configuration;
 
 import com.qualcomm.ftccommon.R;
+import com.qualcomm.robotcore.hardware.configuration.ConfigurationType;
 
 public class EditServoListActivity extends EditPortListSpinnerActivity
     {
     @Override public String getTag() { return this.getClass().getSimpleName(); }
+
+    @Override
+    protected ConfigurationType.DeviceFlavor getDeviceFlavorBeingConfigured()
+        {
+        return ConfigurationType.DeviceFlavor.SERVO;
+        }
+
     public EditServoListActivity()
         {
         this.layoutMain             = R.layout.servo_list;

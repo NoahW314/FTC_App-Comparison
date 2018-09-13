@@ -34,6 +34,8 @@ import com.qualcomm.robotcore.hardware.AnalogInputController;
 import com.qualcomm.robotcore.hardware.DigitalChannel;
 import com.qualcomm.robotcore.hardware.DigitalChannelController;
 import com.qualcomm.robotcore.hardware.TouchSensor;
+import com.qualcomm.robotcore.hardware.configuration.annotations.AnalogSensorType;
+import com.qualcomm.robotcore.hardware.configuration.annotations.DeviceProperties;
 
 import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 
@@ -42,6 +44,10 @@ import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
  * This can operate on either a DigitalChannelController or on an AnalogInputController.
  */
 @SuppressWarnings("WeakerAccess")
+// These annotations ONLY describe this touch sensor in ANALOG mode.
+// Its digital mode is still defined in the BuiltInConfigurationType enum.
+@AnalogSensorType
+@DeviceProperties(name = "@string/configTypeMRTouchSensor", xmlTag = "ModernRoboticsAnalogTouchSensor", builtIn = true, description = "@string/mr_touch_sensor_description")
 public class ModernRoboticsTouchSensor implements TouchSensor {
 
   private DigitalChannelController digitalController = null;

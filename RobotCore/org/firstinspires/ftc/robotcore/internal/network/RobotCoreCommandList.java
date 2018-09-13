@@ -116,6 +116,25 @@ public class RobotCoreCommandList
     public static final String CMD_REQUEST_INSPECTION_REPORT = "CMD_REQUEST_INSPECTION_REPORT";
     public static final String CMD_REQUEST_INSPECTION_REPORT_RESP = "CMD_REQUEST_INSPECTION_REPORT_RESP";
 
+    public static final String CMD_REQUEST_ABOUT_INFO = "CMD_REQUEST_ABOUT_INFO";
+    public static final String CMD_REQUEST_ABOUT_INFO_RESP = "CMD_REQUEST_ABOUT_INFO_RESP";
+    public static class AboutInfo
+        {
+        public String appVersion;
+        public String libVersion;
+        public String networkProtocolVersion;
+        public String buildTime;
+        public String networkConnectionInfo;
+        public String serialize()
+            {
+            return SimpleGson.getInstance().toJson(this);
+            }
+        public static AboutInfo deserialize(String serialized)
+            {
+            return SimpleGson.getInstance().fromJson(serialized, AboutInfo.class);
+            }
+        }
+
     //----------------------------------------------------------------------------------------------
     // Robot semantics and management
     //----------------------------------------------------------------------------------------------

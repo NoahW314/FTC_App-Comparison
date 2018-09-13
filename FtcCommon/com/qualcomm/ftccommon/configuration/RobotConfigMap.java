@@ -35,11 +35,15 @@ package com.qualcomm.ftccommon.configuration;
 import android.content.Context;
 
 import com.qualcomm.robotcore.hardware.DeviceManager;
+import com.qualcomm.robotcore.hardware.ScannedDevices;
 import com.qualcomm.robotcore.hardware.configuration.BuiltInConfigurationType;
 import com.qualcomm.robotcore.hardware.configuration.ConfigurationType;
+import com.qualcomm.robotcore.hardware.configuration.ConfigurationUtility;
 import com.qualcomm.robotcore.hardware.configuration.ControllerConfiguration;
 import com.qualcomm.robotcore.util.RobotLog;
 import com.qualcomm.robotcore.util.SerialNumber;
+
+import org.firstinspires.ftc.robotcore.internal.system.Misc;
 
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -139,14 +143,14 @@ public class RobotConfigMap implements Serializable
         RobotLog.vv(tag, "robotConfigMap: %s", message);
         for (ControllerConfiguration controllerConfiguration : this.controllerConfigurations())
             {
-            RobotLog.vv(tag, "   serial=%s id=0x%08x name='%s' ", controllerConfiguration.getSerialNumber().toString(), controllerConfiguration.hashCode(), controllerConfiguration.getName());
+            RobotLog.vv(tag, "   serial=%s id=0x%08x name='%s' ", controllerConfiguration.getSerialNumber(), controllerConfiguration.hashCode(), controllerConfiguration.getName());
             }
         }
     // a debugging utility
     public void writeToLog(String tag, String message, ControllerConfiguration controllerConfiguration)
         {
         writeToLog(tag, message);
-        RobotLog.vv(tag, "  :serial=%s id=0x%08x name='%s' ", controllerConfiguration.getSerialNumber().toString(), controllerConfiguration.hashCode(), controllerConfiguration.getName());
+        RobotLog.vv(tag, "  :serial=%s id=0x%08x name='%s' ", controllerConfiguration.getSerialNumber(), controllerConfiguration.hashCode(), controllerConfiguration.getName());
         }
 
     //----------------------------------------------------------------------------------------------
@@ -184,7 +188,7 @@ public class RobotConfigMap implements Serializable
 
         // Invert the map, so we can easily lookup (ConfigurationType -> extra controllers)
         Map<ConfigurationType, List<SerialNumber>> extraByType = new HashMap<ConfigurationType, List<SerialNumber>>();
-        for (Map.Entry<SerialNumber,DeviceManager.DeviceType> pair : extraDevices.entrySet())
+        for (Map.Entry<SerialNumber,DeviceManager.UsbDeviceType> pair : extraDevices.entrySet())
             {
             ConfigurationType configurationType = BuiltInConfigurationType.fromUSBDeviceType(pair.getValue());
             if (configurationType != BuiltInConfigurationType.UNKNOWN)
@@ -294,7 +298,7 @@ public class RobotConfigMap implements Serializable
             }
 
         // Then add others we know about from scanning but haven't added yet
-        for (Map.Entry<SerialNumber, DeviceManager.DeviceType> entry : scannedDevices.entrySet())
+        for (Map.Entry<SerialNumber, DeviceManager.UsbDeviceType> entry : scannedDevices.entrySet())
             {
             SerialNumber serialNumber = entry.getKey();
 
@@ -319,9 +323,9 @@ public class RobotConfigMap implements Serializable
      */
     protected String generateName(Context context, ConfigurationType type, List<ControllerConfiguration> resultSoFar)
         {
-        for (int i = 0; ; i++)
+        for (int i = ConfigurationUtility.firstNamedDeviceNumber; ; i++)
             {
-            String name = String.format("%s %d", type.getDisplayName(ConfigurationType.DisplayNameFlavor.Normal, context), i);
+            String name = Misc.formatForUser("%s %d", type.getDisplayName(ConfigurationType.DisplayNameFlavor.Normal), i);
             if (!nameExists(name, resultSoFar))
                 {
                 return name;

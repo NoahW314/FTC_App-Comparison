@@ -67,6 +67,13 @@ public interface DcMotorControllerEx extends DcMotorController
 
     /**
      * Sets the target velocity of the indicated motor.
+     * @param motor the port number of the motor on this controller
+     * @param ticksPerSecond the new target rate for that motor, in ticks per second
+     */
+    void setMotorVelocity(int motor, double ticksPerSecond);
+
+    /**
+     * Sets the target velocity of the indicated motor.
      * @param motor         motor whose velocity is to be adjusted
      * @param angularRate   the new target rate for that motor, in 'unit's per second
      * @param unit          the unit inw which angularRate is expressed.
@@ -75,10 +82,17 @@ public interface DcMotorControllerEx extends DcMotorController
     void setMotorVelocity(int motor, double angularRate, AngleUnit unit);
 
     /**
-     * Returns the targeted velocity of the indicated motor.
+     * Returns the velocity of the indicated motor in ticks per second.
+     * @param motor         the motor whose velocity is desired
+     * @return              the current target velocity of the motor in ticks per second
+     */
+    double getMotorVelocity(int motor);
+
+    /**
+     * Returns the velocity of the indicated motor.
      * @param motor         the motor whose velocity is desired
      * @param unit          the angular unit in which the velocity is to be expressed
-     * @return              the current target velocity of the motor
+     * @return              the current velocity of the motor
      * @see DcMotorEx#getVelocity(AngleUnit)
      */
     double getMotorVelocity(int motor, AngleUnit unit);
@@ -91,8 +105,22 @@ public interface DcMotorControllerEx extends DcMotorController
      *
      * @see DcMotorEx#setPIDCoefficients(DcMotor.RunMode, PIDCoefficients)
      * @see #getPIDCoefficients(int, DcMotor.RunMode)
+     *
+     * @deprecated Use {@link #setPIDFCoefficients(int, DcMotor.RunMode, PIDFCoefficients)} instead
      */
+    @Deprecated
     void setPIDCoefficients(int motor, DcMotor.RunMode mode, PIDCoefficients pidCoefficients);
+
+    /**
+     * Sets the coefficients used for PIDF control on the indicated motor when in the indicated mode
+     * @param motor the motor whose PIDF coefficients are to be set
+     * @param mode the mode on that motor whose coefficients are to be set
+     * @param pidfCoefficients the new coefficients to set
+     *
+     * @see DcMotorEx#setPIDFCoefficients(DcMotor.RunMode, PIDFCoefficients)
+     * @see #getPIDFCoefficients(int, DcMotor.RunMode)
+     */
+    void setPIDFCoefficients(int motor, DcMotor.RunMode mode, PIDFCoefficients pidfCoefficients) throws UnsupportedOperationException;
 
     /**
      * Returns the coefficients used for PID control on the indicated motor when in the indicated mode
@@ -102,8 +130,22 @@ public interface DcMotorControllerEx extends DcMotorController
      *
      * @see DcMotorEx#getPIDCoefficients(DcMotor.RunMode)
      * @see #setPIDCoefficients(int, DcMotor.RunMode, PIDCoefficients)
+     *
+     * @deprecated Use {@link #getPIDFCoefficients(int, DcMotor.RunMode)} instead
      */
+    @Deprecated
     PIDCoefficients getPIDCoefficients(int motor, DcMotor.RunMode mode);
+
+    /**
+     * Returns the coefficients used for PIDF control on the indicated motor when in the indicated mode
+     * @param motor the motor whose PIDF coefficients are desired
+     * @param mode the mode on that motor whose coefficients are to be queried
+     * @return the coefficients used for PIDF control on the indicated motor when in the indicated mode
+     *
+     * @see DcMotorEx#getPIDCoefficients(DcMotor.RunMode)
+     * @see #setPIDFCoefficients(int, DcMotor.RunMode, PIDFCoefficients)
+     */
+    PIDFCoefficients getPIDFCoefficients(int motor, DcMotor.RunMode mode);
 
     /**
      * Sets the target position and tolerance for a 'run to position' operation.

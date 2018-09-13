@@ -324,7 +324,7 @@ public class ReadWriteRunnableStandard implements ReadWriteRunnable {
     setFullActive();
 
     ElapsedTime timer = new ElapsedTime();
-    String timerString = "Device " + serialNumber.toString();
+    String timerString = "Device " + serialNumber;
 
     // Tell those awaiting our startup that we are up and running
     running = true;

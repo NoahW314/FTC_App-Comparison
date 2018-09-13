@@ -40,46 +40,49 @@ import java.lang.annotation.Target;
 
 import com.qualcomm.robotcore.hardware.HardwareDevice;
 import com.qualcomm.robotcore.hardware.HardwareMap;
+import com.qualcomm.robotcore.hardware.configuration.annotations.I2cDeviceType;
 
 /**
+ * @deprecated
+ *
+ * Use {@link I2cDeviceType} instead.
+ *
  * {@link I2cSensor} annotations may be placed on classes which are implementations of I2C sensors.
  * Such classes will be configurable using the configuration UI, and instances thereof will appear
  * in the hardware map in the uncategorized mapping. Classes on which this annotation is placed must
- * have a constructor with at least one of the following signatures:
+ * implement {@link HardwareDevice} and have a constructor with at least one of the following signatures:
  * <ol>
- *     <li>ctor(I2cDeviceSyncSimple i2cDeviceSynch)</li>
  *     <li>ctor(I2cDeviceSync i2cDeviceSynch)</li>
- *     <li>ctor(I2cDevice i2cDevice)</li>
- *     <li>ctor(I2cController i2cController, int port)</li>
+ *     <li>ctor(I2cDeviceSyncSimple i2cDeviceSynch)</li> (Only used when configured on a REV Hub)
+ *     <li>ctor(I2cDevice i2cDevice)</li> (Only used when configured on a CDIM)
+ *     <li>ctor(I2cController i2cController, int port)</li> (Only used when configured on a CDIM)
  * </ol>
  *
  * @see HardwareMap#put(String, HardwareDevice)
  * @see HardwareMap#get(Class, String)
  * @see HardwareMap#get(String)
+ *
  */
 @Documented
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
+@Deprecated
 public @interface I2cSensor
     {
     /**
-     * Returns the XML tag to use to represent configured instances of the annotated
+     * Specifies the XML tag to use to represent configured instances of the annotated
      * class as recorded in saved robot configurations. You should choose a tag that
-     * is different than any other sensor type.
-     * @return the XML tag to use for instances of the annotated sensor class
+     * is different from all other configuration types.
      */
     String xmlTag() default "";
 
     /**
-     * Returns the name of the annotated class to use when describing the class in
-     * configuration user interfaces.
-     * @return the name to use for this kind of sensor in user interfaces
+     * Specifies the name of the sensor to be displayed in configuration user interfaces.
      */
     String name() default "";
 
     /**
-     * Returns a brief descriptive phrase that describes this kind of sensor.
-     * @return a brief descriptive phrase that describes this kind of sensor.
+     * Specifies a brief descriptive phrase that describes this kind of sensor.
      */
     String description() default "an I2c sensor";
     }

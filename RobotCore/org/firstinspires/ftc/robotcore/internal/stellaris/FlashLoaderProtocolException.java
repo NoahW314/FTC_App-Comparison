@@ -50,6 +50,11 @@ public class FlashLoaderProtocolException extends Exception
         this(message + " : " + command.getClass().getSimpleName());
         }
 
+    public FlashLoaderProtocolException(String message, Exception e)
+        {
+        this(message + " : Exception=" + e.getClass().getSimpleName());
+        }
+
     public FlashLoaderProtocolException(String message)
         {
         super(message);

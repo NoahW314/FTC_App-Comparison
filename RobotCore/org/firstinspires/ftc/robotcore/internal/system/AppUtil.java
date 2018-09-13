@@ -32,24 +32,32 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package org.firstinspires.ftc.robotcore.internal.system;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlarmManager;
 import android.app.AlertDialog;
 import android.app.Application;
+import android.app.Dialog;
 import android.app.PendingIntent;
 import android.app.ProgressDialog;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.res.Configuration;
+import android.hardware.usb.UsbDevice;
+import android.hardware.usb.UsbManager;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
 import android.support.annotation.ColorInt;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.text.InputType;
+import android.text.TextUtils;
 import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -57,11 +65,16 @@ import android.widget.Toast;
 import com.qualcomm.robotcore.R;
 import com.qualcomm.robotcore.robocol.Command;
 import com.qualcomm.robotcore.util.RobotLog;
+import com.qualcomm.robotcore.util.ThreadPool;
+import com.qualcomm.robotcore.util.WeakReferenceSet;
 
-import org.firstinspires.ftc.robotcore.external.Consumer;
 import org.firstinspires.ftc.robotcore.external.Predicate;
+import org.firstinspires.ftc.robotcore.external.function.Consumer;
+import org.firstinspires.ftc.robotcore.external.function.Continuation;
+import org.firstinspires.ftc.robotcore.external.function.ContinuationResult;
 import org.firstinspires.ftc.robotcore.internal.collections.MutableReference;
 import org.firstinspires.ftc.robotcore.internal.files.MediaTransferProtocolMonitor;
+import org.firstinspires.ftc.robotcore.internal.network.CallbackLooper;
 import org.firstinspires.ftc.robotcore.internal.network.NetworkConnectionHandler;
 import org.firstinspires.ftc.robotcore.internal.network.RobotCoreCommandList;
 import org.firstinspires.ftc.robotcore.internal.ui.ProgressParameters;
@@ -75,6 +88,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.GregorianCalendar;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -83,6 +98,10 @@ import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * {@link AppUtil} contains a few utilities related to application and activity management.
@@ -98,12 +117,14 @@ public class AppUtil
     /** The root of all external storage that we use */
     public static final File ROOT_FOLDER = Environment.getExternalStorageDirectory();
 
-    /** Where to place logs */
-    public static final File LOG_FOLDER = ROOT_FOLDER;
-
     /** {@link #FIRST_FOLDER} is the root of the tree we use in non-volatile storage. Robot configurations
      * are stored in this folder. */
     public static final File FIRST_FOLDER = new File(ROOT_FOLDER + "/FIRST/");
+
+    /** Where to place logs */
+    public static final File LOG_FOLDER = ROOT_FOLDER;
+    public static final File MATCH_LOG_FOLDER = new File(FIRST_FOLDER + "/matchlogs/");
+    public static final int MAX_MATCH_LOGS_TO_KEEP = 5;
 
     /** Dirctory in which .xml robot configurations should live */
     public static final File CONFIG_FILES_DIR = FIRST_FOLDER;
@@ -112,6 +133,7 @@ public class AppUtil
     public static final File BLOCK_OPMODES_DIR = new File(FIRST_FOLDER, "/blocks/");
     public static final String BLOCKS_BLK_EXT = ".blk";
     public static final String BLOCKS_JS_EXT = ".js";
+    public static final File BLOCKS_SOUNDS_DIR = new File(BLOCK_OPMODES_DIR, "/sounds/");
 
     /** {@link #ROBOT_SETTINGS} is a folder in which it's convenient to store team-generated settings
      * associated with their robot */
@@ -124,6 +146,13 @@ public class AppUtil
     public static final File UPDATES_DIR = new File(FIRST_FOLDER, "/updates/");
     public static final File RC_APP_UPDATE_DIR = new File(UPDATES_DIR, "/Robot Controller Application/");
     public static final File LYNX_FIRMWARE_UPDATE_DIR = new File(UPDATES_DIR, "/Expansion Hub Firmware/");
+
+    /** {@link #SOUNDS_DIR} is used by the SoundPlayer. {@link #SOUNDS_CACHE} is a cache of remoted sounds */
+    public static final File SOUNDS_DIR = new File(FIRST_FOLDER, "sounds");
+    public static final File SOUNDS_CACHE = new File(SOUNDS_DIR, "cache");
+
+    /** Where to place webcam calibration files */
+    public static final File WEBCAM_CALIBRATIONS_DIR = new File(FIRST_FOLDER + "/webcamcalibrations/");
 
     //----------------------------------------------------------------------------------------------
     // Static State
@@ -150,12 +179,17 @@ public class AppUtil
     // State
     //----------------------------------------------------------------------------------------------
 
+    private final Object        usbfsRootLock = new Object();
+    private final Object        dialogLock = new Object();
     private @NonNull Application application;
     private LifeCycleMonitor    lifeCycleMonitor;
     private Activity            rootActivity;
     private Activity            currentActivity;
     private ProgressDialog      currentProgressDialog;
+    private final Lock          requestPermissionLock;
     private Random              random;
+    private @Nullable String    usbFileSystemRoot; // never transitions from non-null to null
+    private final WeakReferenceSet<UsbFileSystemRootListener> usbfsListeners = new WeakReferenceSet<>();
 
     //----------------------------------------------------------------------------------------------
     // Construction
@@ -168,6 +202,7 @@ public class AppUtil
 
     protected AppUtil()
         {
+        this.requestPermissionLock = new ReentrantLock();
         }
 
     protected void initialize(@NonNull Application application)
@@ -182,8 +217,11 @@ public class AppUtil
 
         // REVIEW: Why do this AFTER registering?
         this.application = application;
-        
+
         RobotLog.vv(TAG, "initializing: getExternalStorageDirectory()=%s", Environment.getExternalStorageDirectory());
+
+        usbFileSystemRoot = null;
+        getUsbFileSystemRoot();
         }
 
     //----------------------------------------------------------------------------------------------
@@ -437,6 +475,125 @@ public class AppUtil
         return result;
         }
 
+    /**
+     * Find the path in the Linux file system to the USB root. This is needed, ultimately,
+     * by LibUsb, and on Android L (?) and later, we can't just enumerate the Linux file system
+     * ourselves (in native code, of course), due to security considerations.
+     *
+     * If there currently is a USB device attached, we should be able to do this. But if there
+     * isn't, then we're probably out of luck until some device attaches.
+     */
+    public @Nullable String getUsbFileSystemRoot()
+        {
+        if (usbFileSystemRoot == null)
+            {
+            synchronized (usbfsRootLock)
+                {
+                UsbManager usbManager = (UsbManager) AppUtil.getDefContext().getSystemService(Context.USB_SERVICE);
+                for (String usbDeviceName : usbManager.getDeviceList().keySet())
+                    {
+                    String path = usbFileSystemRootFromDeviceName(usbDeviceName);
+                    if (path != null)
+                        {
+                        setUsbFileSystemRoot(path);
+                        break;
+                        }
+                    }
+                }
+            }
+        return usbFileSystemRoot;
+        }
+
+    /** Similar to {@link #getUsbFileSystemRoot()}, but returns a default value if we don't have a real one */
+    public @NonNull String getNonNullUsbFileSystemRoot()
+        {
+        String result = getUsbFileSystemRoot();
+        if (result == null)
+            {
+            result = "/dev/bus/usb"; // as good a guess as any
+            }
+        return result;
+        }
+
+    public void setUsbFileSystemRoot(UsbDevice usbDevice)
+        {
+        setUsbFileSystemRoot(usbFileSystemRootFromDeviceName(usbDevice.getDeviceName()));
+        }
+
+    protected static @Nullable String usbFileSystemRootFromDeviceName(String usbDeviceName)
+        {
+        // Example: "/dev/bus/usb/001/002"
+        final String[] nameParts = TextUtils.isEmpty(usbDeviceName) ? null : usbDeviceName.split("/");
+        if (nameParts != null && nameParts.length > 2)
+            {
+            // Example: { "", "dev", "bus", "usb", "001", "002" }
+            final StringBuilder builder = new StringBuilder(nameParts[0]);
+            for (int i = 1; i < nameParts.length - 2; i++)
+                {
+                builder.append("/").append(nameParts[i]);
+                }
+            // Example: "/dev/bus/usb"
+            return builder.toString();
+            }
+        return null;
+        }
+
+    protected void setUsbFileSystemRoot(@Nullable String usbFileSystemRoot)
+        {
+        if (usbFileSystemRoot != null)
+            {
+            if (this.usbFileSystemRoot == null) // test outside for efficiency
+                {
+                synchronized (usbfsRootLock)
+                    {
+                    if (this.usbFileSystemRoot == null) // test inside for correctness
+                        {
+                        RobotLog.ii(TAG, "found usbFileSystemRoot: %s", usbFileSystemRoot);
+                        this.usbFileSystemRoot = usbFileSystemRoot;
+                        notifyUsbListeners(usbFileSystemRoot);
+                        }
+                    }
+                }
+            }
+        }
+
+    protected void notifyUsbListeners(String usbFileSystemRoot)
+        {
+        Collection<UsbFileSystemRootListener> listeners;
+        synchronized (usbfsListeners)
+            {
+            listeners = new ArrayList<>(usbfsListeners);
+            }
+
+        // Notification is an up-call: avoid locks as much as possible so as to avoid deadlocks
+        // caused by lock-acquisition inversion.
+        for (UsbFileSystemRootListener listener : listeners)
+            {
+            listener.onUsbFileSystemRootChanged(usbFileSystemRoot);
+            }
+        }
+
+    public void addUsbfsListener(UsbFileSystemRootListener listener)
+        {
+        synchronized (usbfsListeners)
+            {
+            usbfsListeners.add(listener);
+            }
+        }
+
+    public void removeUsbfsListener(UsbFileSystemRootListener listener)
+        {
+        synchronized (usbfsListeners)
+            {
+            usbfsListeners.remove(listener);
+            }
+        }
+
+    public interface UsbFileSystemRootListener
+        {
+        void onUsbFileSystemRootChanged(String usbFileSystemRoot);
+        }
+
     //----------------------------------------------------------------------------------------------
     // Life Cycle
     //----------------------------------------------------------------------------------------------
@@ -552,46 +709,18 @@ public class AppUtil
         }
 
     //----------------------------------------------------------------------------------------------
-    // UI interaction
+    // General UI interaction
     //----------------------------------------------------------------------------------------------
 
-    public @ColorInt int getColor(int id)
+    public static @ColorInt int getColor(int id)
         {
-        if (Build.VERSION.SDK_INT >= 23)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
             {
             return getDefContext().getColor(id);
             }
         else
             {
             return getDefContext().getResources().getColor(id);
-            }
-        }
-
-    /**
-     * This works around a deliberate bug Google introduced to prevent options menus from working
-     * on large screens. It is a hack, in the classic sense of the word. But it works. Onward...
-     *
-     * @param activity the guy whose options menu is to be opened
-     * @see <a href="http://stackoverflow.com/questions/9996333/openoptionsmenu-function-not-working-in-ics/17903128#17903128">discussion</a>
-     */
-    public void openOptionsMenuFor(Activity activity)
-        {
-        Configuration config = activity.getResources().getConfiguration();
-        if ((config.screenLayout & Configuration.SCREENLAYOUT_SIZE_MASK) > Configuration.SCREENLAYOUT_SIZE_LARGE)
-            {
-            int originalScreenLayout = config.screenLayout;
-            config.screenLayout = Configuration.SCREENLAYOUT_SIZE_LARGE;
-            try {
-                activity.openOptionsMenu();
-                }
-            finally
-                {
-                config.screenLayout = originalScreenLayout;
-                }
-            }
-        else
-            {
-            activity.openOptionsMenu();
             }
         }
 
@@ -647,7 +776,7 @@ public class AppUtil
         {
         this.runOnUiThread(new Runnable()
             {
-            @Override public void run()
+            /* 'leakage' not of significance here */@SuppressLint("StaticFieldLeak") @Override public void run()
                 {
                 new AsyncTask<Object,Void,Void>()
                     {
@@ -752,6 +881,235 @@ public class AppUtil
         }
 
     //----------------------------------------------------------------------------------------------
+    // USB Permissions Management
+    //----------------------------------------------------------------------------------------------
+
+    /**
+     * Requests permission to access a USB device if same is not currently available.
+     * The result of the request is delivered asynchronously.
+     *
+     * @param tag           application tag with which to do any logging
+     * @param modalContext  the context used to scope modal dialogs that might need be shown
+     * @param usbDevice     the device for whom permission is requested
+     * @param deadline      the deadline within which the request must complete. If the deadline expires,
+     *                      or is cancelled, before the user consents to the use of the device, then
+     *                      false is returned
+     * @param handler       the mechanism through which resultReport is provided
+     * @param resultReport  invoked once the permission result is known. This may be invoked either
+     *                      BEFORE or AFTER asyncRequestUsbPermission() has returned. The invocation is made
+     *                      on the thread associated with the indicated handler, or the handler of
+     *                      the current thread (if that is null), or the main thread (if THAT is null).
+     */
+    public void asyncRequestUsbPermission(String tag, Context modalContext, UsbDevice usbDevice, Deadline deadline, @Nullable Handler handler, Consumer<Boolean> resultReport)
+        {
+        asyncRequestUsbPermission(tag, modalContext, usbDevice, deadline, Continuation.create(handler, resultReport));
+        }
+
+    /**
+     * Requests permission to access a USB device if same is not currently available.
+     * The result of the request is delivered asynchronously.
+     *
+     * @param tag           application tag with which to do any logging
+     * @param modalContext  the context used to scope modal dialogs that might need be shown
+     * @param usbDevice     the device for whom permission is requested
+     * @param deadline      the deadline within which the request must complete. If the deadline expires,
+     *                      or is cancelled, before the user consents to the use of the device, then
+     *                      false is returned
+     * @param threadPool    the mechanism through which resultReport is provided
+     * @param resultReport  invoked once the permission result is known. This may be invoked either
+     *                      BEFORE or AFTER asyncRequestUsbPermission() has returned. The invocation is made
+     *                      on a thread of the indicated thread pool.
+     */
+    public void asyncRequestUsbPermission(String tag, Context modalContext, UsbDevice usbDevice, Deadline deadline, @NonNull ExecutorService threadPool, Consumer<Boolean> resultReport)
+        {
+        asyncRequestUsbPermission(tag, modalContext, usbDevice, deadline, Continuation.create(threadPool, resultReport));
+        }
+
+    /**
+     * Requests permission to access a USB device if same is not currently available.
+     * The result of the request is delivered asynchronously.
+     *
+     * @param tag           application tag with which to do any logging
+     * @param modalContext  the context used to scope modal dialogs that might need be shown
+     * @param usbDevice     the device for whom permission is requested
+     * @param deadline      the deadline within which the request must complete. If the deadline expires,
+     *                      or is cancelled, before the user consents to the use of the device, then
+     *                      false is returned
+     * @param continuation  invoked once the permission result is known. This may be invoked either
+     *                      BEFORE or AFTER asyncRequestUsbPermission() has returned
+     */
+    public void asyncRequestUsbPermission(
+            final String tag,
+            final Context modalContext,
+            final UsbDevice usbDevice,
+            final Deadline deadline,
+            final Continuation<? extends Consumer<Boolean>> continuation)
+        {
+        RobotLog.vv(tag,"asyncRequestUsbPermission()...");
+        try {
+            Assert.assertFalse(CallbackLooper.isLooperThread());
+
+            // First check to see if we've already got permission
+            final UsbManager usbManager = (UsbManager) modalContext.getSystemService(Context.USB_SERVICE);
+            if (usbManager.hasPermission(usbDevice))
+                {
+                RobotLog.dd(tag, "permission already available for %s", usbDevice.getDeviceName());
+                continuation.dispatch(new ContinuationResult<Consumer<Boolean>>()
+                    {
+                    @Override public void handle(Consumer<Boolean> resultReport)
+                        {
+                        resultReport.accept(true);
+                        }
+                    });
+                }
+            else
+                {
+                final MutableReference<Boolean> result = new MutableReference<>(false);
+                final Runnable runnable = new Runnable()
+                    {
+                    @Override public void run()
+                        {
+                        // We don't have permission. We're going to have to talk to the user. But to avoid confusion,
+                        // we only allow one such dialog to appear at any given time. TODO: Review how well that really works.
+                        try {
+                            if (deadline.tryLock(requestPermissionLock))
+                                {
+                                try {
+                                    // Use an ACTION that specific to the device in question, just in case there's other requests
+                                    // floating around. If, somehow, there is more than one request for the same device, they'll
+                                    // all be treated as equivalent.
+                                    final String intentPrefix = "org.firstinspires.ftc.USB_PERMISSION_REQUEST:";
+                                    final String actionUsbPermissionRequest = intentPrefix + usbDevice.getDeviceName();
+                                    final CountDownLatch permissionResultAvailable = new CountDownLatch(1);
+                                    final BroadcastReceiver receiver = new BroadcastReceiver()
+                                        {
+                                        @Override public void onReceive(Context context, Intent intent)
+                                            {
+                                            if (intent.getAction().equals(actionUsbPermissionRequest))
+                                                {
+                                                UsbDevice notifiedDevice = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
+                                                if (notifiedDevice!=null && notifiedDevice.getDeviceName().equals(usbDevice.getDeviceName()))
+                                                    {
+                                                    result.setValue(intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false));
+                                                    if (!result.getValue())
+                                                        {
+                                                        RobotLog.vv(tag, "requestPermission(%s): user declined permission", notifiedDevice.getDeviceName());
+                                                        }
+                                                    RobotLog.vv(tag, "releasing permissionResultAvailable latch");
+                                                    permissionResultAvailable.countDown();
+                                                    }
+                                                else
+                                                    RobotLog.ee(tag, "unexpected permission request response");
+                                                }
+                                            }
+                                        };
+
+                                    // https://developer.android.com/guide/topics/connectivity/usb/host.html
+                                    final IntentFilter intentFilter = new IntentFilter(actionUsbPermissionRequest);
+
+                                    // Note the threading: in order minimize interactions with the application threads, particularly the
+                                    // application main thread, we use a special purpose dedicated 'CallbackLooper' thread whose whole purpose
+                                    // in life is to serve this role. No one's code should ever block that thread for any significant time.
+                                    modalContext.registerReceiver(receiver, intentFilter, null, CallbackLooper.getDefault().getHandler());
+                                    try {
+                                        PendingIntent pendingIntent = PendingIntent.getBroadcast(modalContext, 0, new Intent(actionUsbPermissionRequest), PendingIntent.FLAG_ONE_SHOT);
+                                        //
+                                        // Post the dialog that asks for the user's permission
+                                        //
+                                        usbManager.requestPermission(usbDevice, pendingIntent);
+                                        //
+                                        // Wait until the user interacts with the dialog, the indicated timeout occurs,
+                                        // or user code indicates explicitly that the wait should be cancelled. Note that
+                                        // in the latter two cases, the dialog will unfortunately stay on the screen as
+                                        // a non-functional zombie since we have no way for it to be removed.
+                                        //
+                                        if (deadline.await(permissionResultAvailable))
+                                            {
+                                            RobotLog.vv(tag, "permissionResultAvailable latch awaited");
+                                            }
+                                        else
+                                            {
+                                            RobotLog.vv(tag, "requestPermission(): cancelled or timed out waiting for user response");
+                                            pendingIntent.cancel(); // seems like good housekeeping
+                                            }
+                                        }
+                                    catch (InterruptedException e)
+                                        {
+                                        Thread.currentThread().interrupt();
+                                        }
+                                    finally
+                                        {
+                                        modalContext.unregisterReceiver(receiver);
+                                        }
+                                    }
+                                finally
+                                    {
+                                    requestPermissionLock.unlock();
+                                    }
+                                }
+                            else
+                                {
+                                RobotLog.vv(tag, "requestPermission(): requestPermissionLock.tryLock() returned false");
+                                }
+                            }
+                        catch (InterruptedException e)
+                            {
+                            Thread.currentThread().interrupt();
+                            }
+                        finally
+                            {
+                            RobotLog.vv(tag, "USB permission request for %s: result=%s", usbDevice.getDeviceName(), result.getValue());
+                            }
+                        }
+                    };
+
+                if (continuation.isHandler())
+                    {
+                    // Run the request on a worker thread, then thunk the result to the handler
+                    ThreadPool.getDefault().submit(new Runnable()
+                        {
+                        @Override public void run()
+                            {
+                            runnable.run();
+                            continuation.dispatch(new ContinuationResult<Consumer<Boolean>>()
+                                {
+                                @Override public void handle(Consumer<Boolean> resultReport)
+                                    {
+                                    resultReport.accept(result.getValue());
+                                    }
+                                });
+                            }
+                        });
+
+                    }
+                else
+                    {
+                    // Run the whole thing in on a one worker thread in the same thread pool
+                    // that the continuation is targeted to
+                    continuation.<Void>createForNewTarget(null).dispatch(new ContinuationResult<Void>()
+                        {
+                        @Override public void handle(Void aVoid)
+                            {
+                            runnable.run();
+                            continuation.dispatchHere(new ContinuationResult<Consumer<Boolean>>()
+                                {
+                                @Override public void handle(Consumer<Boolean> resultReport)
+                                    {
+                                    resultReport.accept(result.getValue());
+                                    }
+                                });
+                            }
+                        });
+                    }
+                }
+            }
+        finally
+            {
+            RobotLog.vv(tag,"...asyncRequestUsbPermission()");
+            }
+        }
+
+    //----------------------------------------------------------------------------------------------
     // Alert / Confirm / Prompt Dialog
     // https://developer.android.com/guide/topics/ui/dialogs.html
     //----------------------------------------------------------------------------------------------
@@ -787,152 +1145,195 @@ public class AppUtil
             {
             return textResult;
             }
+
+        // Dismiss the dialog if it hasn't been dismissed already
+        public void dismissDialog()
+            {
+            AppUtil.getInstance().runOnUiThread(new Runnable()
+                {
+                @Override public void run()
+                    {
+                    Dialog dialog = DialogContext.this.dialog;
+                    if (dialog != null)
+                        {
+                        dialog.dismiss();
+                        }
+                    }
+                });
+            }
+        }
+
+    public static class DialogParams extends MemberwiseCloneable<DialogParams>
+        {
+        public UILocation       uiLocation;
+        public String           title;
+        public String           message;
+        public DialogFlavor     flavor         = DialogFlavor.ALERT;
+        public Activity         activity       = AppUtil.getInstance().getActivity();
+        public @Nullable String defaultValue   = null;
+        public @Nullable String uuidString     = null;
+
+        public DialogParams(UILocation uiLocation, String title, String message)
+            {
+            this.uiLocation = uiLocation;
+            this.title = title;
+            this.message = message;
+            }
+
+        public DialogParams copy()
+            {
+            return super.memberwiseClone();
+            }
         }
 
     public DialogContext showAlertDialog(UILocation uiLocation, String title, String message)
         {
-        return showAlertDialog(uiLocation, getActivity(), title, message);
-        }
-    public DialogContext showAlertDialog(String uuidString, UILocation uiLocation, String title, String message) // for remoting
-        {
-        return showDialog(uuidString, uiLocation, DialogFlavor.ALERT, getActivity(), title, message, null, null);
-        }
-    public synchronized DialogContext showAlertDialog(final UILocation uiLocation, final Activity activity, final String title, final String message)
-        {
-        return showDialog(uiLocation, DialogFlavor.ALERT, activity, title, message, null, null);
+        return showDialog(new DialogParams(uiLocation, title, message));
         }
 
-    public synchronized DialogContext showDialog(
-                 final UILocation uiLocation, final DialogFlavor flavor, final Activity activity,
-                 final String title, final String message, @Nullable final String defaultValue,
-                 @Nullable final Consumer<DialogContext> runOnDismiss)
+    public DialogContext showDialog(@NonNull DialogParams params)
         {
-        return showDialog(null, uiLocation, flavor, activity, title, message, defaultValue, runOnDismiss);
+        return showDialog(params, (Continuation<Consumer<DialogContext>>)null);
+        }
+    public DialogContext showDialog(@NonNull DialogParams params, @Nullable Consumer<DialogContext> runOnDismiss)
+        {
+        return showDialog(params, (Handler)null, runOnDismiss);
+        }
+    public DialogContext showDialog(@NonNull DialogParams params, @Nullable Handler handler, @Nullable Consumer<DialogContext> runOnDismiss)
+        {
+        return showDialog(params, runOnDismiss != null ? Continuation.create(handler, runOnDismiss) : null);
+        }
+    public DialogContext showDialog(@NonNull DialogParams params, @NonNull Executor threadPool, @Nullable Consumer<DialogContext> runOnDismiss)
+        {
+        return showDialog(params, runOnDismiss != null ? Continuation.create(threadPool, runOnDismiss) : null);
         }
 
-    private synchronized DialogContext showDialog(@Nullable String uuidString,
-                 final UILocation uiLocation, final DialogFlavor flavor, final Activity activity,
-                 final String title, final String message, @Nullable final String defaultValue,
-                 @Nullable final Consumer<DialogContext> runOnDismiss)
+    public DialogContext showDialog(@NonNull DialogParams params, @Nullable final Continuation<? extends Consumer<DialogContext>> runOnDismiss)
         {
-        final RobotCoreCommandList.ShowDialog showDialog = new RobotCoreCommandList.ShowDialog();
-        showDialog.title = title;
-        showDialog.message = message;
-        showDialog.uuidString = uuidString != null ? uuidString : UUID.randomUUID().toString();
-
-        final MutableReference<DialogContext> result = new MutableReference<>();
-        this.synchronousRunOnUiThread(new Runnable() // note the synchronicity
+        synchronized (dialogLock)
             {
-            @Override public void run()
+            // Capture so as to decouple from possible user shenanigans
+            final DialogParams paramsCopy = params.copy();
+
+            final RobotCoreCommandList.ShowDialog showDialog = new RobotCoreCommandList.ShowDialog();
+            showDialog.title = paramsCopy.title;
+            showDialog.message = paramsCopy.message;
+            showDialog.uuidString = paramsCopy.uuidString != null ? paramsCopy.uuidString : UUID.randomUUID().toString();
+
+            final MutableReference<DialogContext> result = new MutableReference<>();
+            this.synchronousRunOnUiThread(new Runnable() // note the synchronicity
                 {
-                // Whenever the dialog goes away, for whatever reason, we need to (a) fire the
-                // CountDownLatch to unstick whomever might be awaiting, and (b) make sure to dismiss
-                // from the other side, too, if appropriate.
-                final DialogContext dialogContext = new DialogContext(showDialog.uuidString);
+                @Override public void run()
+                    {
+                    // Whenever the dialog goes away, for whatever reason, we need to (a) fire the
+                    // CountDownLatch to unstick whomever might be awaiting, and (b) make sure to dismiss
+                    // from the other side, too, if appropriate.
+                    final DialogContext dialogContext = new DialogContext(showDialog.uuidString);
 
-                AlertDialog.Builder builder = new AlertDialog.Builder(activity);
-                builder.setTitle(title);
-                builder.setMessage(message);
-                switch (flavor)
-                    {
-                    case ALERT:
-                        builder.setNeutralButton(R.string.buttonNameOK, new DialogInterface.OnClickListener()
-                            {
-                            @Override public void onClick(DialogInterface dialog, int which)
+                    AlertDialog.Builder builder = new AlertDialog.Builder(paramsCopy.activity);
+                    builder.setTitle(paramsCopy.title);
+                    builder.setMessage(paramsCopy.message);
+                    switch (paramsCopy.flavor)
+                        {
+                        case ALERT:
+                            builder.setNeutralButton(R.string.buttonNameOK, new DialogInterface.OnClickListener()
                                 {
-                                dialogContext.outcome = DialogContext.Outcome.CONFIRMED;
-                                }
-                            });
-                        break;
-                    case PROMPT:
-                        // https://stackoverflow.com/questions/10903754/input-text-dialog-android
-                        dialogContext.input = new EditText(activity);
-                        dialogContext.input.setInputType(InputType.TYPE_CLASS_TEXT);
-                        if (defaultValue != null) dialogContext.input.setText(defaultValue);
-                        builder.setView(dialogContext.input);
-                        // fall through
-                    case CONFIRM:
-                        if (uiLocation != UILocation.ONLY_LOCAL) throw new IllegalArgumentException("remote confirmation dialogs not yet supported");
-                        builder.setPositiveButton(R.string.buttonNameOK, new DialogInterface.OnClickListener()
-                            {
-                            @Override public void onClick(DialogInterface dialog, int which)
-                                {
-                                RobotLog.vv(TAG, "dialog OK clicked: uuid=%s", dialogContext.uuidString);
-                                dialogContext.outcome = DialogContext.Outcome.CONFIRMED;
-                                // Capture the text while we know we're on a good thread
-                                if (dialogContext.input != null)
+                                @Override public void onClick(DialogInterface dialog, int which)
                                     {
-                                    dialogContext.textResult = dialogContext.input.getText();
-                                    }
-                                dialog.dismiss();
-                                }
-                            });
-                        builder.setNegativeButton(R.string.buttonNameCancel, new DialogInterface.OnClickListener()
-                            {
-                            @Override public void onClick(DialogInterface dialog, int which)
-                                {
-                                RobotLog.vv(TAG, "dialog cancel clicked: uuid=%s", dialogContext.uuidString);
-                                dialog.cancel();
-                                }
-                            });
-                        break;
-                    }
-
-                dialogContext.dialog = builder.create();
-                dialogContext.dialog.setOnShowListener(new DialogInterface.OnShowListener()
-                    {
-                    @Override public void onShow(DialogInterface dialog)
-                        {
-                        RobotLog.vv(TAG, "dialog shown: uuid=%s", dialogContext.uuidString);
-                        }
-                    });
-                dialogContext.dialog.setOnCancelListener(new DialogInterface.OnCancelListener()
-                    {
-                    @Override public void onCancel(DialogInterface dialog)
-                        {
-                        RobotLog.vv(TAG, "dialog cancelled: uuid=%s", dialogContext.uuidString);
-                        dialogContext.outcome = DialogContext.Outcome.CANCELLED;
-                        }
-                    });
-                dialogContext.dialog.setOnDismissListener(new DialogInterface.OnDismissListener()
-                    {
-                    @Override public void onDismiss(DialogInterface dialog)
-                        {
-                        RobotLog.vv(TAG, "dialog dismissed: uuid=%s", dialogContext.uuidString);
-                        dialogContext.dismissed.countDown();
-                        if (runOnDismiss != null)
-                            {
-                            runOnUiThread(activity, new Runnable()
-                                {
-                                @Override public void run()
-                                    {
-                                    runOnDismiss.accept(dialogContext);
+                                    dialogContext.outcome = DialogContext.Outcome.CONFIRMED;
                                     }
                                 });
-                            }
-                        if (dialogContext.isArmed)
-                            {
-                            // Actively dismissing on the DS should also dismiss on the RC, and visa versa
-                            RobotCoreCommandList.DismissDialog dismissDialog = new RobotCoreCommandList.DismissDialog(showDialog.uuidString);
-                            dismissDialog(UILocation.BOTH, dismissDialog);
-                            }
+                            break;
+                        case PROMPT:
+                            // https://stackoverflow.com/questions/10903754/input-text-dialog-android
+                            dialogContext.input = new EditText(paramsCopy.activity);
+                            dialogContext.input.setInputType(InputType.TYPE_CLASS_TEXT);
+                            if (paramsCopy.defaultValue != null) dialogContext.input.setText(paramsCopy.defaultValue);
+                            builder.setView(dialogContext.input);
+                            // fall through
+                        case CONFIRM:
+                            if (paramsCopy.uiLocation != UILocation.ONLY_LOCAL) throw new IllegalArgumentException("remote confirmation dialogs not yet supported");
+                            builder.setPositiveButton(R.string.buttonNameOK, new DialogInterface.OnClickListener()
+                                {
+                                @Override public void onClick(DialogInterface dialog, int which)
+                                    {
+                                    RobotLog.vv(TAG, "dialog OK clicked: uuid=%s", dialogContext.uuidString);
+                                    dialogContext.outcome = DialogContext.Outcome.CONFIRMED;
+                                    // Capture the text while we know we're on a good thread
+                                    if (dialogContext.input != null)
+                                        {
+                                        dialogContext.textResult = dialogContext.input.getText();
+                                        }
+                                    dialog.dismiss();
+                                    }
+                                });
+                            builder.setNegativeButton(R.string.buttonNameCancel, new DialogInterface.OnClickListener()
+                                {
+                                @Override public void onClick(DialogInterface dialog, int which)
+                                    {
+                                    RobotLog.vv(TAG, "dialog cancel clicked: uuid=%s", dialogContext.uuidString);
+                                    dialog.cancel();
+                                    }
+                                });
+                            break;
                         }
-                    });
 
-                dialogContextMap.put(dialogContext.uuidString, dialogContext);
-                result.value = dialogContext;
-                dialogContext.dialog.show();
-				}
-            });
+                    dialogContext.dialog = builder.create();
+                    dialogContext.dialog.setOnShowListener(new DialogInterface.OnShowListener()
+                        {
+                        @Override public void onShow(DialogInterface dialog)
+                            {
+                            RobotLog.vv(TAG, "dialog shown: uuid=%s", dialogContext.uuidString);
+                            }
+                        });
+                    dialogContext.dialog.setOnCancelListener(new DialogInterface.OnCancelListener()
+                        {
+                        @Override public void onCancel(DialogInterface dialog)
+                            {
+                            RobotLog.vv(TAG, "dialog cancelled: uuid=%s", dialogContext.uuidString);
+                            dialogContext.outcome = DialogContext.Outcome.CANCELLED;
+                            }
+                        });
+                    dialogContext.dialog.setOnDismissListener(new DialogInterface.OnDismissListener()
+                        {
+                        @Override public void onDismiss(DialogInterface dialog)
+                            {
+                            RobotLog.vv(TAG, "dialog dismissed: uuid=%s", dialogContext.uuidString);
+                            dialogContext.dismissed.countDown();
+                            if (runOnDismiss != null)
+                                {
+                                runOnDismiss.dispatch(new ContinuationResult<Consumer<DialogContext>>()
+                                    {
+                                    @Override public void handle(Consumer<DialogContext> dialogContextConsumer)
+                                        {
+                                        dialogContextConsumer.accept(dialogContext);
+                                        }
+                                    });
+                                }
+                            if (dialogContext.isArmed)
+                                {
+                                // Actively dismissing on the DS should also dismiss on the RC, and visa versa
+                                RobotCoreCommandList.DismissDialog dismissDialog = new RobotCoreCommandList.DismissDialog(showDialog.uuidString);
+                                dismissDialog(UILocation.BOTH, dismissDialog);
+                                }
+                            }
+                        });
 
-        Assert.assertNotNull(result.value);
+                    dialogContextMap.put(dialogContext.uuidString, dialogContext);
+                    result.setValue(dialogContext);
+                    dialogContext.dialog.show();
+                    }
+                                      });
 
-        if (uiLocation==UILocation.BOTH)
-            {
-            NetworkConnectionHandler.getInstance().sendCommand(new Command(RobotCoreCommandList.CMD_SHOW_DIALOG, showDialog.serialize()));
+            Assert.assertNotNull(result.getValue());
+
+            if (paramsCopy.uiLocation==UILocation.BOTH)
+                {
+                NetworkConnectionHandler.getInstance().sendCommand(new Command(RobotCoreCommandList.CMD_SHOW_DIALOG, showDialog.serialize()));
+                }
+
+            return result.getValue();
             }
-
-        return result.value;
         }
 
     public void dismissDialog(UILocation uiLocation, RobotCoreCommandList.DismissDialog dismissDialog)
@@ -1025,12 +1426,22 @@ public class AppUtil
     //----------------------------------------------------------------------------------------------
 
     /**
-     * Returns the contextually running {@link Activity}
+     * Returns the contextually running {@link Activity}. This should RARELY be null, but might
+     * possibly be if we currently are only running services
      * @return the contextually running {@link Activity}
      */
-    public Activity getActivity()
+    public @Nullable Activity getActivity()
         {
         return currentActivity;
+        }
+
+    /**
+     * Returns an appropriate context against which to launch modal dialogs, etc.
+     * @return
+     */
+    public @NonNull Context getModalContext()
+        {
+        return currentActivity != null ? currentActivity : getApplication();
         }
 
     /**
@@ -1108,9 +1519,67 @@ public class AppUtil
         return formatter;
         }
 
+    /**
+     * Returns the current system wall clock time.
+     */
+    public long getWallClockTime()
+        {
+        return System.currentTimeMillis();
+        }
+
+    /**
+     * Attempts to set the clock returned by {@link #getWallClockTime()}. W/o a modified Android
+     * kernel, this will be unsuccessful, due to a check in kernel/security/commoncap.c. On the Control
+     * Hub, that has been disabled. Note that no error is reported on failure.
+     *
+     * Also attempts to set the current time zone for the system, not just this process.
+     */
+    public void setWallClockTime(long millis)
+        {
+        nativeSetCurrentTimeMillis(millis);
+        }
+
+    /**
+     * Set the system timezone by whatever means necessary :-)
+     */
+    public void setTimeZone(String timeZone)
+        {
+        TimeZone before = TimeZone.getDefault();
+        AlarmManager alarmManager = (AlarmManager)AppUtil.getDefContext().getSystemService(Context.ALARM_SERVICE);
+        alarmManager.setTimeZone(timeZone);
+        TimeZone.setDefault(null); TimeZone after = TimeZone.getDefault();
+        RobotLog.vv(TAG, "attempted to set timezone: before=%s after=%s", before.getID(), after.getID());
+        }
+
+    /**
+     * Is the indicated time one that could reasonably exist for a robot controller or a driver station?
+     * What we're really trying to do here is to detect systems that have no battery-backed-up
+     * clock on board. Those, on boot, will start counting from the Unix epoch, which is in 1970.
+     */
+    public boolean isSaneWalkClockTime(long millis)
+        {
+        GregorianCalendar calendar = new GregorianCalendar();
+        calendar.setTimeInMillis(millis);
+        return calendar.get(GregorianCalendar.YEAR) > 1975;
+        }
+
+    private native boolean nativeSetCurrentTimeMillis(long millis);
+
     //----------------------------------------------------------------------------------------------
     // System
     //----------------------------------------------------------------------------------------------
+
+    /** Warning: calling this method can be very expensive, due to the
+     * need to create stack traces. Do not use in production code. */
+    public String findCaller(String message, int frameOffset)
+        {
+        StackTraceElement element = (new RuntimeException()).getStackTrace()[2+frameOffset]; // 2 is one for RuntimeException, one for our own caller.
+        String fullClassName = element.getClassName();
+        String callingClass = fullClassName.substring(fullClassName.lastIndexOf('.')+1);
+        String fileName = new File(element.getFileName()).getName();
+        int line = element.getLineNumber();
+        return Misc.formatInvariant("%s caller=[%s:%d] %s", message, fileName, line, callingClass);
+        }
 
     public RuntimeException unreachable()
         {

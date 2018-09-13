@@ -78,6 +78,7 @@ public class PreferenceRemoterRC extends PreferenceRemoter
         rcPrefsOfInterestToDS.add(context.getString(R.string.pref_sound_on_off));
         rcPrefsOfInterestToDS.add(context.getString(R.string.pref_wifip2p_remote_channel_change_works));
         rcPrefsOfInterestToDS.add(context.getString(R.string.pref_has_independent_phone_battery));
+        rcPrefsOfInterestToDS.add(context.getString(R.string.pref_has_speaker));
         }
 
     @Override

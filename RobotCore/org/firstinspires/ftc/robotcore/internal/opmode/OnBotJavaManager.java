@@ -39,6 +39,7 @@ import com.qualcomm.robotcore.util.ReadWriteFile;
 import com.qualcomm.robotcore.util.RobotLog;
 import com.qualcomm.robotcore.util.ThreadPool;
 
+import com.qualcomm.robotcore.util.Version;
 import org.firstinspires.ftc.robotcore.external.Supplier;
 import org.firstinspires.ftc.robotcore.external.ThrowingCallable;
 import org.firstinspires.ftc.robotcore.internal.android.dx.command.DxConsole;
@@ -148,7 +149,7 @@ public class OnBotJavaManager implements Closeable
 
     public static final File assetRoot              = new File("java");
     public static final String platformClassPathName = "android.jar";
-    public static final String[] ftcLibNames         = new String[] { "Blocks-classes.jar", "FtcCommon-classes.jar", "Hardware-classes.jar", "Inspection-classes.jar", "RobotCore-classes.jar" };
+    public static final String[] ftcLibNames         = new String[] { "onbotjava-classes.jar" };
 
     //----------------------------------------------------------------------------------------------
     // State
@@ -233,9 +234,10 @@ public class OnBotJavaManager implements Closeable
             AssetManager assetManager = AppUtil.getDefContext().getAssets();
             try (InputStream inputStream = assetManager.open(asset.getPath(), AssetManager.ACCESS_STREAMING))
                 {
-                if (!libFile.exists() || inputStream.available() != libFile.length())
+                if (!libFile.exists() || asset.length() != libFile.length() || asset.lastModified() != libFile.lastModified())
                     {
                     AppUtil.getInstance().copyStream(inputStream, libFile);
+                    libFile.setLastModified(asset.lastModified());
                     }
                 }
             }

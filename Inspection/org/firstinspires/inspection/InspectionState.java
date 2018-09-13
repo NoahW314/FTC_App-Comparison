@@ -39,14 +39,24 @@ import android.content.pm.PackageManager;
 import android.os.BatteryManager;
 import android.os.Build;
 
+import com.qualcomm.robotcore.hardware.HardwareMap;
+import com.qualcomm.robotcore.hardware.RobotCoreLynxModule;
+import com.qualcomm.robotcore.hardware.RobotCoreLynxUsbDevice;
 import com.qualcomm.robotcore.util.Device;
+import com.qualcomm.robotcore.util.Hardware;
+import com.qualcomm.robotcore.wifi.NetworkType;
 
+import org.firstinspires.ftc.robotcore.internal.network.DeviceNameManager;
+import org.firstinspires.ftc.robotcore.internal.network.DeviceNameManagerFactory;
+import org.firstinspires.ftc.robotcore.internal.network.NetworkConnectionHandler;
+import org.firstinspires.ftc.robotcore.internal.network.WifiDirectDeviceNameManager;
+import org.firstinspires.ftc.robotcore.internal.network.WifiUtil;
 import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 import org.firstinspires.ftc.robotcore.internal.collections.SimpleGson;
-import org.firstinspires.ftc.robotcore.internal.network.DeviceNameManager;
 import org.firstinspires.ftc.robotcore.internal.network.StartResult;
 import org.firstinspires.ftc.robotcore.internal.network.WifiDirectAgent;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -68,6 +78,7 @@ public class InspectionState
     public String manufacturer;
     public String model;
     public String osVersion;
+    public String firmwareVersion;
     public int sdkInt;
     public boolean airplaneModeOn;
     public boolean bluetoothOn;
@@ -85,6 +96,9 @@ public class InspectionState
     public int    driverStationVersionCode;
     public boolean isAppInventorInstalled;
     public boolean channelChangerRequired;
+    public long    rxDataCount;
+    public long    txDataCount;
+    public long    bytesPerSecond;
 
     //----------------------------------------------------------------------------------------------
     // Construction and initialization
@@ -94,27 +108,25 @@ public class InspectionState
         {
         }
 
-    public void initializeLocal()
+    public void initializeLocal(HardwareMap hardwareMap)
         {
-        DeviceNameManager nameManager = DeviceNameManager.getInstance();
-        StartResult startResult = nameManager.start();
-        initializeLocal(nameManager);
+        DeviceNameManager nameManager = DeviceNameManagerFactory.getInstance();
+        StartResult startResult = new StartResult();
+        nameManager.start(startResult);
+        initializeLocal(nameManager, hardwareMap);
         nameManager.stop(startResult);
         }
 
-    public void initializeLocal(DeviceNameManager nameManager)
+    public void initializeLocal(DeviceNameManager nameManager, HardwareMap hardwareMap)
         {
         this.manufacturer = Build.MANUFACTURER;
         this.model = Build.MODEL;
         this.osVersion = Build.VERSION.RELEASE;
+        this.firmwareVersion = getFirmwareDisplayVersion(hardwareMap);
         this.sdkInt = Build.VERSION.SDK_INT;
-        this.airplaneModeOn = WifiDirectAgent.getInstance().isAirplaneModeOn();
-        this.bluetoothOn = WifiDirectAgent.getInstance().isBluetoothOn();
-        this.wifiEnabled = WifiDirectAgent.getInstance().isWifiEnabled();
-        this.wifiConnected = WifiDirectAgent.getInstance().isWifiConnected();
-        this.wifiDirectEnabled = WifiDirectAgent.getInstance().isWifiDirectEnabled();
-        this.wifiDirectConnected = WifiDirectAgent.getInstance().isWifiDirectConnected();
-        this.deviceName = nameManager.getDeviceName();
+        this.airplaneModeOn = WifiUtil.isAirplaneModeOn();
+        this.bluetoothOn = WifiUtil.isBluetoothOn();
+        this.wifiEnabled = WifiUtil.isWifiEnabled();
         this.batteryFraction = getLocalBatteryFraction();
 
         this.zteChannelChangeVersion        = getPackageVersion(zteChannelChangePackage);
@@ -124,10 +136,37 @@ public class InspectionState
         this.driverStationVersion           = getPackageVersion(driverStationPackage);
         this.driverStationVersionCode       = getPackageVersionCode(driverStationPackage);
         this.isAppInventorInstalled         = isAppInventorLocallyInstalled();
+        this.deviceName                     = nameManager.getDeviceName();
 
         this.channelChangerRequired = Device.isZteSpeed()
                 && Device.useZteProvidedWifiChannelEditorOnZteSpeeds()
                 && AppUtil.getInstance().isRobotController();
+
+        NetworkConnectionHandler networkConnectionHandler = NetworkConnectionHandler.getInstance();
+        if (networkConnectionHandler.getNetworkType() == NetworkType.WIRELESSAP)
+            {
+            if (Device.isRevControlHub())
+                {
+                this.wifiEnabled = WifiUtil.isWifiApEnabled();
+                if (this.wifiEnabled) this.wifiConnected = true;
+                }
+                else
+                {
+                this.deviceName = WifiUtil.getConnectedSsid();
+                this.wifiDirectEnabled = WifiUtil.isWifiEnabled();
+                this.wifiConnected = WifiUtil.isWifiConnected();
+                }
+            this.wifiDirectConnected = false;  // Not shown on inspection activity.  Why does it exist?
+            }
+            else
+            {
+            this.wifiConnected = WifiDirectAgent.getInstance().isWifiConnected();
+            this.wifiDirectEnabled = WifiDirectAgent.getInstance().isWifiDirectEnabled();
+            this.wifiDirectConnected = WifiDirectAgent.getInstance().isWifiDirectConnected();
+            }
+            this.rxDataCount = networkConnectionHandler.getRxDataCount();
+            this.txDataCount = networkConnectionHandler.getTxDataCount();
+            this.bytesPerSecond = networkConnectionHandler.getBytesPerSecond();
         }
 
     public static boolean isPackageInstalled(String packageVersion) { return !packageVersion.equals(noPackageVersion); }
@@ -182,6 +221,76 @@ public class InspectionState
             {
             return noPackageVersion;
             }
+        }
+
+    /*
+     * getFirmwareVersions
+     *
+     * Returns a list of firmware versions for all connected expansion/control hubs
+     */
+    protected List<String> getFirmwareVersions(HardwareMap hardwareMap)
+        {
+        List<String> versions = new ArrayList<String>();
+
+        if (hardwareMap == null)
+            {
+            return versions;
+            }
+
+        List<RobotCoreLynxModule> lynxModules = hardwareMap.getAll(RobotCoreLynxModule.class);
+
+        for (RobotCoreLynxModule lynxModule : lynxModules)
+            {
+            versions.add(lynxModule.getFirmwareVersionString());
+            }
+            return versions;
+        }
+
+    /*
+     * getFirmwareDisplayVersion
+     *
+     * Returns displayable text that we can use for firmware version on the Inspection activity.
+     * For simplification purposes, this will be either the firmware string, or in the case of multiple
+     * hubs and mismatched firmare, the text "Mismatched".  This eliminates the need to have an arbitrary
+     * number of firmware entries but prompts the user to go look at the firmware on the user's hubs.
+     */
+    protected String getFirmwareDisplayVersion(HardwareMap hardwareMap)
+        {
+        List<String> versions = getFirmwareVersions(hardwareMap);
+        String first;
+
+        if (versions.isEmpty())
+            {
+            return "N/A";
+            }
+
+        if (versions.size() == 1)
+            {
+            return formatFirmwareVersion(versions.get(0));
+            }
+            else
+            {
+            first = versions.get(0);
+            for (String version : versions)
+                {
+                if (!version.equals(first))
+                    {
+                    return "Mismatched";
+                    }
+                }
+            return formatFirmwareVersion(first);
+            }
+        }
+
+    /*
+     * formatFirmwareVersion
+     *
+     * Strip the leading hardware revision, and all alphabetic chars.
+     */
+    protected String formatFirmwareVersion(String version)
+        {
+        String tmp = version.substring(version.indexOf(',')+1).replaceAll("[a-zA-Z: ]*", "").replaceAll(",", ".");
+        return tmp;
         }
 
     protected boolean isAppInventorLocallyInstalled()

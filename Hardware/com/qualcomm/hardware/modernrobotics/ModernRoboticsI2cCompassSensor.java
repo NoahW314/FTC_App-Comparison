@@ -39,7 +39,8 @@ import com.qualcomm.robotcore.hardware.I2cDeviceSynch;
 import com.qualcomm.robotcore.hardware.I2cDeviceSynchDevice;
 import com.qualcomm.robotcore.hardware.I2cWaitControl;
 import com.qualcomm.robotcore.hardware.TimestampedData;
-import com.qualcomm.robotcore.hardware.configuration.I2cSensor;
+import com.qualcomm.robotcore.hardware.configuration.annotations.DeviceProperties;
+import com.qualcomm.robotcore.hardware.configuration.annotations.I2cDeviceType;
 import com.qualcomm.robotcore.hardware.usb.RobotUsbDevice;
 import com.qualcomm.robotcore.util.TypeConversion;
 
@@ -60,7 +61,8 @@ import java.util.Locale;
  * @see <a href="http://www.modernroboticsinc.com/compass">MR Compass Sensor</a>
  * @see <a href="https://cdn-shop.adafruit.com/datasheets/LSM303DLHC.PDF">LSM 303 datasheet</a>
  */
-@I2cSensor(name = "MR Compass Sensor", description = "a MR compass sensor", xmlTag = "ModernRoboticsI2cCompassSensor")
+@I2cDeviceType
+@DeviceProperties(name = "@string/mr_compass_name", description = "@string/mr_compass_description", xmlTag = "ModernRoboticsI2cCompassSensor", builtIn = true)
 public class ModernRoboticsI2cCompassSensor extends I2cDeviceSynchDevice<I2cDeviceSynch> implements CompassSensor, I2cAddrConfig
     {
     //----------------------------------------------------------------------------------------------

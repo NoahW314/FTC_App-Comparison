@@ -68,7 +68,7 @@ import com.qualcomm.hardware.HardwareFactory;
 import com.qualcomm.hardware.R;
 import com.qualcomm.hardware.modernrobotics.comm.ReadWriteRunnable;
 import com.qualcomm.hardware.modernrobotics.comm.ReadWriteRunnableStandard;
-import com.qualcomm.robotcore.eventloop.EventLoopManager;
+import com.qualcomm.robotcore.eventloop.SyncdDevice;
 import com.qualcomm.robotcore.exception.RobotCoreException;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.hardware.ServoController;
@@ -166,7 +166,7 @@ public final class ModernRoboticsUsbServoController extends ModernRoboticsUsbCon
      * @param device FTDI device
      * @throws InterruptedException
      */
-    public ModernRoboticsUsbServoController(final Context context, final SerialNumber serialNumber, OpenRobotUsbDevice openRobotUsbDevice, EventLoopManager manager)
+    public ModernRoboticsUsbServoController(final Context context, final SerialNumber serialNumber, OpenRobotUsbDevice openRobotUsbDevice, SyncdDevice.Manager manager)
             throws RobotCoreException, InterruptedException
         {
         super(context, serialNumber, manager, openRobotUsbDevice, new CreateReadWriteRunnable() 

@@ -34,6 +34,7 @@ package com.qualcomm.hardware.lynx;
 
 import android.support.annotation.NonNull;
 
+import com.qualcomm.hardware.lynx.commands.LynxCommand;
 import com.qualcomm.hardware.lynx.commands.LynxMessage;
 import com.qualcomm.robotcore.exception.RobotCoreException;
 import com.qualcomm.robotcore.hardware.Engagable;
@@ -51,8 +52,9 @@ public interface LynxModuleIntf extends RobotCoreLynxModule, HardwareDevice, Eng
     <T> T acquireI2cLockWhile(Supplier<T> supplier)                     throws InterruptedException, RobotCoreException, LynxNackException;
     void acquireNetworkTransmissionLock(@NonNull LynxMessage message)   throws InterruptedException;
     void releaseNetworkTransmissionLock(@NonNull LynxMessage message)   throws InterruptedException;
-    void validateCommandNumber(int commandNumber)               throws LynxUnsupportedCommandNumberException;
-    void sendCommand(LynxMessage message)                       throws InterruptedException, LynxUnsupportedCommandNumberException;
+    void validateCommand(LynxMessage lynxMessage)               throws LynxUnsupportedCommandException;
+    boolean isCommandSupported(Class<? extends LynxCommand> command);
+    void sendCommand(LynxMessage message)                       throws InterruptedException, LynxUnsupportedCommandException;
     void resetPingTimer(@NonNull LynxMessage message);
     void retransmit(LynxMessage message)                        throws InterruptedException;
     void finishedWithMessage(LynxMessage message)               throws InterruptedException;

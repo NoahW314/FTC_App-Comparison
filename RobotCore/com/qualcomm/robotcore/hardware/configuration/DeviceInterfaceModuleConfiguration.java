@@ -31,8 +31,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. */
 
 package com.qualcomm.robotcore.hardware.configuration;
 
+import com.qualcomm.robotcore.exception.RobotCoreException;
 import com.qualcomm.robotcore.util.SerialNumber;
 
+import org.xmlpull.v1.XmlPullParser;
+import org.xmlpull.v1.XmlPullParserException;
+
+import java.io.IOException;
 import java.util.List;
 
 public class DeviceInterfaceModuleConfiguration extends ControllerConfiguration<DeviceConfiguration> {
@@ -43,8 +48,18 @@ public class DeviceInterfaceModuleConfiguration extends ControllerConfiguration<
   private List<DeviceConfiguration> digitalDevices;
   private List<DeviceConfiguration> analogOutputDevices;
 
+  public DeviceInterfaceModuleConfiguration() {
+    this("", SerialNumber.createFake());
+  }
+
   public DeviceInterfaceModuleConfiguration(String name, SerialNumber serialNumber) {
     super(name, serialNumber, BuiltInConfigurationType.DEVICE_INTERFACE_MODULE);
+
+    pwmOutputs          = ConfigurationUtility.buildEmptyDevices(0, ModernRoboticsConstants.NUMBER_OF_PWM_CHANNELS,   BuiltInConfigurationType.PULSE_WIDTH_DEVICE);
+    i2cDevices          = ConfigurationUtility.buildEmptyDevices(0, ModernRoboticsConstants.NUMBER_OF_I2C_CHANNELS,   BuiltInConfigurationType.I2C_DEVICE);
+    analogInputDevices  = ConfigurationUtility.buildEmptyDevices(0, ModernRoboticsConstants.NUMBER_OF_ANALOG_INPUTS,  BuiltInConfigurationType.NOTHING);
+    digitalDevices      = ConfigurationUtility.buildEmptyDevices(0, ModernRoboticsConstants.NUMBER_OF_DIGITAL_IOS,    BuiltInConfigurationType.NOTHING);
+    analogOutputDevices = ConfigurationUtility.buildEmptyDevices(0, ModernRoboticsConstants.NUMBER_OF_ANALOG_OUTPUTS, BuiltInConfigurationType.NOTHING);
   }
 
   public void setPwmOutputs(List<DeviceConfiguration> pwmDevices) {
@@ -85,5 +100,41 @@ public class DeviceInterfaceModuleConfiguration extends ControllerConfiguration<
 
   public void setAnalogOutputDevices(List<DeviceConfiguration> analogOutputDevices) {
     this.analogOutputDevices = analogOutputDevices;
+  }
+
+  @Override
+  protected void deserializeChildElement(ConfigurationType configurationType, XmlPullParser parser, ReadXMLFileHandler xmlReader) throws IOException, XmlPullParserException, RobotCoreException {
+    super.deserializeChildElement(configurationType, parser, xmlReader);
+
+    if (configurationType == BuiltInConfigurationType.PULSE_WIDTH_DEVICE) {
+      DeviceConfiguration device = new DeviceConfiguration();
+      device.deserialize(parser, xmlReader);
+      pwmOutputs.set(device.getPort(), device);
+    }
+
+    else if (configurationType.isDeviceFlavor(ConfigurationType.DeviceFlavor.I2C)) {
+      DeviceConfiguration device = new DeviceConfiguration();
+      device.deserialize(parser, xmlReader);
+      i2cDevices.set(device.getPort(), device);
+    }
+
+    else if (configurationType.isDeviceFlavor(ConfigurationType.DeviceFlavor.ANALOG_SENSOR)) {
+      DeviceConfiguration device = new DeviceConfiguration();
+      device.deserialize(parser, xmlReader);
+      analogInputDevices.set(device.getPort(), device);
+    }
+
+    else if (configurationType.isDeviceFlavor(ConfigurationType.DeviceFlavor.DIGITAL_IO)) {
+      DeviceConfiguration device = new DeviceConfiguration();
+      device.deserialize(parser, xmlReader);
+      digitalDevices.set(device.getPort(), device);
+    }
+
+    else if (configurationType.isDeviceFlavor(ConfigurationType.DeviceFlavor.ANALOG_OUTPUT)) {
+      DeviceConfiguration device = new DeviceConfiguration();
+      device.deserialize(parser, xmlReader);
+      analogOutputDevices.set(device.getPort(), device);
+    }
+
   }
 }

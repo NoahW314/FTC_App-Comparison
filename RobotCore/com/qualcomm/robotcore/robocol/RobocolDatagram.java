@@ -3,9 +3,7 @@ package com.qualcomm.robotcore.robocol;
 import com.qualcomm.robotcore.exception.RobotCoreException;
 
 import java.net.DatagramPacket;
-import java.net.DatagramSocket;
 import java.net.InetAddress;
-import java.net.SocketException;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
@@ -131,6 +129,9 @@ public class RobocolDatagram {
 
    public InetAddress getAddress() {
       return packet.getAddress();
+   }
+   public int getPort() {
+      return packet.getPort();
    }
 
    public void setAddress(InetAddress address) {

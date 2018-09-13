@@ -151,7 +151,7 @@ public class ClassManager {
         List<String> classNames = new ArrayList<String>(Collections.list(dexFile.entries()));
 
         // Deal with instant run's craziness
-        classNames.addAll(InstantRunDexHelper.getAllClassNames(context));
+        classNames.addAll(InstantRunHelper.getAllClassNames(context));
 
         // Load classes from OnBotJava
         classNames.addAll(getOnBotJavaClassNames());

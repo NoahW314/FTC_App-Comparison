@@ -62,12 +62,39 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package com.qualcomm.ftccommon.configuration;
 
+import android.view.View;
+import android.widget.Spinner;
+
+import com.qualcomm.robotcore.hardware.configuration.ConfigurationType;
+import com.qualcomm.robotcore.hardware.configuration.ConfigurationTypeManager;
 import com.qualcomm.robotcore.hardware.configuration.LynxI2cDeviceConfiguration;
+
+import java.util.List;
 
 /**
  * Created by bob on 2016-10-21.
  */
 public class EditI2cDevicesActivityLynx extends EditI2cDevicesActivityAbstract<LynxI2cDeviceConfiguration>
     {
+    private int i2cBus;
+
     @Override public String getTag() { return this.getClass().getSimpleName(); }
+
+    @Override
+    protected void deserialize(EditParameters parameters)
+        {
+        super.deserialize(parameters);
+        this.i2cBus = parameters.getI2cBus();
+        }
+
+    @Override
+    protected void localizeSpinner(View itemView)
+        {
+        Spinner spinner = (Spinner) itemView.findViewById(this.idItemSpinner);
+
+        List<ConfigurationType> deviceTypes =
+                ConfigurationTypeManager.getInstance().getApplicableConfigTypes(ConfigurationType.DeviceFlavor.I2C, controlSystem, i2cBus);
+
+        localizeConfigTypeSpinnerTypes(ConfigurationType.DisplayNameFlavor.Normal, spinner, deviceTypes);
+        }
     }

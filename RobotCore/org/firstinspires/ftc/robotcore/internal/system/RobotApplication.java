@@ -49,6 +49,7 @@ public class RobotApplication extends Application
 
         AppUtil.onApplicationStart(this);
         RobotLog.onApplicationStart();
+        ClassFactoryImpl.onApplicationStart();
         ServiceController.onApplicationStart();
         }
     }

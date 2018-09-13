@@ -38,8 +38,6 @@ import android.os.Looper;
 import com.qualcomm.robotcore.util.RobotLog;
 import com.qualcomm.robotcore.util.ThreadPool;
 
-import org.firstinspires.ftc.robotcore.internal.system.Assert;
-
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -57,9 +55,16 @@ import java.util.concurrent.TimeUnit;
     public static final String TAG = "CallbackLooper";
 
     // It's useful to have a default, but at times others may want their own, too
-    protected static CallbackLooper defaultInstance;
-    public static CallbackLooper getDefault() { return defaultInstance; }
-    static { defaultInstance = new CallbackLooper(); defaultInstance.start(); }
+    protected static class InstanceHolder
+        {
+        public static final CallbackLooper theInstance = new CallbackLooper();
+        static {
+            theInstance.start();
+            }
+        }
+    public static CallbackLooper getDefault() { return InstanceHolder.theInstance; }
+
+    protected final static ThreadLocal<CallbackLooper> tls = new ThreadLocal<>();
 
     protected ExecutorService   executorService;
     protected Looper            looper;
@@ -97,11 +102,10 @@ import java.util.concurrent.TimeUnit;
         return handler;
         }
 
-    public boolean isLooperThread()
+    /** Is the current thread a looper thread from any CallbackLooper instance? */
+    public static boolean isLooperThread()
         {
-        Assert.assertNotNull(looper);
-        Assert.assertNotNull(looper.getThread());
-        return looper.getThread() == Thread.currentThread();
+        return tls.get() != null;
         }
 
     //----------------------------------------------------------------------------------------------
@@ -127,6 +131,8 @@ import java.util.concurrent.TimeUnit;
                     Looper.prepare();
                     looper = Looper.myLooper();
                     handler = new Handler(looper);
+                    //
+                    tls.set(CallbackLooper.this);
                     //
                     latch.countDown();  // let start() return
                     //

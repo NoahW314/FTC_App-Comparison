@@ -51,7 +51,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 /**
- * {@link FileBasedLock} provides non-recursive exclusive-lock semeantics across threads and
+ * {@link FileBasedLock} provides non-recursive exclusive-lock semantics across threads and
  * across processes by means of file-system artifacts: a directory, files, and timestamps.
  * Recovery for crashed processes is provided.
  */

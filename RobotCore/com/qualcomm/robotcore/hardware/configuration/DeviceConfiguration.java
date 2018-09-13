@@ -1,4 +1,4 @@
-/* Copyright (c) 2014, 2015 Qualcomm Technologies Inc
+/* Copyright (c) 2014, 2015 Qualcomm Technologies Inc, Noah Andrews
 
 All rights reserved.
 
@@ -31,11 +31,16 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. */
 
 package com.qualcomm.robotcore.hardware.configuration;
 
+import android.support.annotation.CallSuper;
+
+import com.qualcomm.robotcore.exception.RobotCoreException;
 import com.qualcomm.robotcore.util.RobotLog;
 
 import org.xmlpull.v1.XmlPullParser;
+import org.xmlpull.v1.XmlPullParserException;
 import org.xmlpull.v1.XmlSerializer;
 
+import java.io.IOException;
 import java.io.Serializable;
 import java.util.Collections;
 import java.util.Comparator;
@@ -171,13 +176,80 @@ public class DeviceConfiguration implements Serializable, Comparable<DeviceConfi
             }
         }
 
-    public void deserializeAttributes(XmlPullParser parser)
+    /**
+     * Initialize this DeviceConfiguration from XML
+     * @param parser An XmlPullParser pointed at the corresponding open tag
+     * @param xmlReader A ReadXMLFileHandler instance to call onDeviceParsed on
+     */
+    public final void deserialize(XmlPullParser parser, ReadXMLFileHandler xmlReader) throws IOException, XmlPullParserException, RobotCoreException
         {
-        this.setName(parser.getAttributeValue(null, XMLATTR_NAME));
-        //
-        String portAttr = parser.getAttributeValue(null, DeviceConfiguration.XMLATTR_PORT);
-        int port = portAttr == null ? 0 : Integer.parseInt(portAttr);
-        this.setPort(port);
+        String openingTagName = parser.getName();
+        deserializeAttributes(parser);
+        setConfigurationType(ReadXMLFileHandler.deform(openingTagName));
+        setEnabled(true); // We only write *enabled* devices, so if we *read* one, it's enabled.
+
+        int eventType = parser.next();
+        String currentTagName = parser.getName();
+        ConfigurationType configurationType = ReadXMLFileHandler.deform(currentTagName);
+
+        while (eventType != XmlPullParser.END_DOCUMENT)
+            { // we shouldn't reach the end of the document here
+            if (eventType == XmlPullParser.END_TAG)
+                {
+                if (currentTagName != null && currentTagName.equals(openingTagName))
+                    {
+                    // We've finished processing all children
+                    onDeserializationComplete(xmlReader);
+                    return;
+                    }
+                }
+
+            if (eventType == XmlPullParser.START_TAG)
+                {
+                deserializeChildElement(configurationType, parser, xmlReader);
+                }
+            eventType = parser.next();
+            currentTagName = parser.getName();
+            configurationType = ReadXMLFileHandler.deform(currentTagName);
+            }
+        // we should never reach the end of the document while parsing this part. If we do, it's an error.
+        RobotLog.logAndThrow("Reached the end of the XML file while processing a device.");
         }
 
+    /**
+     * This gets called while the parser is pointed at the open tag for this device configuration.
+     *
+     * Override this to deserialize additional attributes of the open tag, or to do additional initialization
+     *
+     * Do NOT advance the parser from this method.
+     */
+    @CallSuper
+    protected void deserializeAttributes(XmlPullParser parser)
+        {
+        setName(parser.getAttributeValue(null, XMLATTR_NAME));
+
+        String portAttr = parser.getAttributeValue(null, DeviceConfiguration.XMLATTR_PORT);
+        int port = portAttr == null ? -1 : Integer.parseInt(portAttr);  // -1 means no port specified
+        setPort(port);
+        }
+
+    /**
+     * This gets called while the parser is pointed at the open tag for a child device configuration.
+     *
+     * This method MUST be overridden by any subclass that needs to access XML child elements.
+     *
+     * When this method returns, the parser can be advanced only as far as the child's end tag.
+     * Do not parse multiple child elements.
+     */
+    protected void deserializeChildElement(ConfigurationType configurationType, XmlPullParser parser, ReadXMLFileHandler xmlReader) throws IOException, XmlPullParserException, RobotCoreException
+        { }
+
+    /**
+     * This gets called when the serialization process has been completed.
+     */
+    @CallSuper
+    protected void onDeserializationComplete(ReadXMLFileHandler xmlReader)
+        {
+        xmlReader.onDeviceParsed(this);
+        }
 }

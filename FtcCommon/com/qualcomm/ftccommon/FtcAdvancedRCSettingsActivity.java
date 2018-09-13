@@ -40,8 +40,8 @@ import android.preference.PreferenceFragment;
 import com.qualcomm.robotcore.util.Device;
 import com.qualcomm.robotcore.util.RobotLog;
 
+import org.firstinspires.ftc.robotcore.internal.network.DeviceNameManagerFactory;
 import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
-import org.firstinspires.ftc.robotcore.internal.network.DeviceNameManager;
 import org.firstinspires.ftc.robotcore.internal.system.PreferencesHelper;
 import org.firstinspires.ftc.robotcore.internal.ui.ThemedActivity;
 import org.firstinspires.ftc.robotcore.internal.ui.UILocation;
@@ -123,7 +123,7 @@ public class FtcAdvancedRCSettingsActivity extends ThemedActivity
         setContentView(R.layout.activity_generic_settings);
 
         // Always make sure we have a real device name before we launch
-        DeviceNameManager.getInstance().initializeDeviceNameIfNecessary();
+        DeviceNameManagerFactory.getInstance().initializeDeviceNameIfNecessary();
 
         // Display the fragment as the main content.
         SettingsFragment settingsFragment = new SettingsFragment();

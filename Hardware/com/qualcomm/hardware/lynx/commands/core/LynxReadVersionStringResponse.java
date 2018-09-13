@@ -32,10 +32,10 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package com.qualcomm.hardware.lynx.commands.core;
 
+import android.support.annotation.Nullable;
+
 import com.qualcomm.hardware.lynx.LynxModuleIntf;
 import com.qualcomm.hardware.lynx.commands.LynxDatagram;
-
-import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
@@ -66,11 +66,11 @@ public class LynxReadVersionStringResponse extends LynxDekaInterfaceResponse
     // Accessors
     //----------------------------------------------------------------------------------------------
 
-    public String getVersionString()
+    public @Nullable String getNullableVersionString()
         {
         if (rgbText == null)
             {
-            return AppUtil.getDefContext().getString(com.qualcomm.robotcore.R.string.lynxUnavailableFWVersionString);
+            return null;
             }
         else
             {

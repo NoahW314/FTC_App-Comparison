@@ -64,11 +64,18 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 package com.qualcomm.ftccommon.configuration;
 
 import com.qualcomm.ftccommon.R;
+import com.qualcomm.robotcore.hardware.configuration.ConfigurationType;
 
 public class EditDigitalDevicesActivity extends EditPortListSpinnerActivity
     {
     @Override public String getTag() { return this.getClass().getSimpleName(); }
     public static final RequestCode requestCode = RequestCode.EDIT_DIGITAL;
+
+    @Override
+    protected ConfigurationType.DeviceFlavor getDeviceFlavorBeingConfigured()
+        {
+        return ConfigurationType.DeviceFlavor.DIGITAL_IO;
+        }
 
     public EditDigitalDevicesActivity()
         {

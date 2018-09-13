@@ -32,7 +32,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package com.qualcomm.hardware.lynx.commands;
 
-import com.qualcomm.hardware.lynx.LynxUnsupportedCommandNumberException;
+import com.qualcomm.hardware.lynx.LynxUnsupportedCommandException;
 import com.qualcomm.hardware.lynx.LynxModuleIntf;
 import com.qualcomm.hardware.lynx.LynxNackException;
 import com.qualcomm.hardware.lynx.commands.standard.LynxAck;
@@ -229,10 +229,10 @@ public abstract class LynxRespondable<RESPONSE extends LynxMessage> extends Lynx
             try {
                 this.module.sendCommand(this);
                 }
-            catch (LynxUnsupportedCommandNumberException e)
+            catch (LynxUnsupportedCommandException e)
                 {
-                // The module doesn't actually support this command, as it has an older sense of some interface.
-                // Act like we got a nack from the module
+                // The module doesn't actually support this command, as it has an older sense of some interface,
+                // or doesn't know about the interface at all. Act like we got a nack from the module
                 throwNackForUnsupportedCommand(e);
                 }
             awaitAckResponseOrNack();
@@ -266,7 +266,7 @@ public abstract class LynxRespondable<RESPONSE extends LynxMessage> extends Lynx
                     }
                 throw e;
                 }
-            catch (LynxUnsupportedCommandNumberException e)
+            catch (LynxUnsupportedCommandException e)
                 {
                 // The module doesn't actually support this command, as it has an older sense of some interface.
                 // Return the default response for the command, if any; otherwise, act like we got a nack from the module.
@@ -296,11 +296,12 @@ public abstract class LynxRespondable<RESPONSE extends LynxMessage> extends Lynx
         return false;
         }
 
-    protected void throwNackForUnsupportedCommand(LynxUnsupportedCommandNumberException e) throws LynxNackException
+    protected void throwNackForUnsupportedCommand(LynxUnsupportedCommandException e) throws LynxNackException
         {
-        this.nackReceived = new LynxNack(this.getModule(), LynxNack.ReasonCode.COMMAND_ROUTING_ERROR);
-        throw new LynxNackException(this, "%s: command #0x%04x not supported by mod#=%d",
+        this.nackReceived = new LynxNack(this.getModule(), LynxNack.ReasonCode.PACKET_TYPE_ID_UNKNOWN);
+        throw new LynxNackException(this, "%s: command %s(#0x%04x) not supported by mod#=%d",
                 this.getClass().getSimpleName(),
+                e.getClazz().getSimpleName(),
                 e.getCommandNumber(),
                 this.getModuleAddress());
         }

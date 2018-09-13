@@ -31,6 +31,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. */
 
 package com.qualcomm.robotcore.hardware.usb.ftdi;
 
+import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 
 import com.qualcomm.robotcore.hardware.usb.RobotUsbDevice;
@@ -55,7 +56,7 @@ public class RobotUsbDeviceFtdi extends RobotUsbDeviceImplBase implements RobotU
   public static boolean DEBUG = false;
   @Override public String getTag() { return TAG; }
 
-  private FtDevice                   device;
+  private final FtDevice             device;
   private int                        cbus_mask    = 0;
   private int                        cbus_outputs = 0;
 
@@ -202,7 +203,12 @@ public class RobotUsbDeviceFtdi extends RobotUsbDeviceImplBase implements RobotU
     return result;
   }
 
-  //------------------------------------------------------------------------------------------------
+  @Override
+  public @NonNull String getProductName() {
+    return device.getDeviceInfo().productName;
+  }
+
+//------------------------------------------------------------------------------------------------
   // FTDI cbus control logic
   //  APIs modeled after https://github.com/lsgunth/pyft232/blob/master/ft232/d2xx.py
   //------------------------------------------------------------------------------------------------

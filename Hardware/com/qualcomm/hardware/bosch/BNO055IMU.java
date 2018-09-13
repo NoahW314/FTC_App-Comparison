@@ -521,21 +521,37 @@ public interface BNO055IMU
     public static final I2cAddr I2CADDR_ALTERNATE   = I2cAddr.create7bit(0x29);
 
     enum TempUnit { CELSIUS(0), FARENHEIT(1); public final byte bVal; TempUnit(int i)  { bVal =(byte)i; }
-        org.firstinspires.ftc.robotcore.external.navigation.TempUnit toTempUnit()
+        public org.firstinspires.ftc.robotcore.external.navigation.TempUnit toTempUnit()
             {
             if (this==CELSIUS)
                 return org.firstinspires.ftc.robotcore.external.navigation.TempUnit.CELSIUS;
             else
                 return org.firstinspires.ftc.robotcore.external.navigation.TempUnit.FARENHEIT;
             }
+        public static TempUnit fromTempUnit(org.firstinspires.ftc.robotcore.external.navigation.TempUnit tempUnit)
+            {
+            if (tempUnit==org.firstinspires.ftc.robotcore.external.navigation.TempUnit.CELSIUS)
+              return CELSIUS;
+            else if (tempUnit==org.firstinspires.ftc.robotcore.external.navigation.TempUnit.FARENHEIT)
+              return FARENHEIT;
+            else
+              throw new UnsupportedOperationException("TempUnit." + tempUnit + " is not supported by BNO055IMU");
+            }
     }
     enum AngleUnit { DEGREES(0), RADIANS(1); public final byte bVal; AngleUnit(int i) { bVal =(byte)i; }
-        org.firstinspires.ftc.robotcore.external.navigation.AngleUnit toAngleUnit()
+        public org.firstinspires.ftc.robotcore.external.navigation.AngleUnit toAngleUnit()
             {
             if (this==DEGREES)
                 return org.firstinspires.ftc.robotcore.external.navigation.AngleUnit.DEGREES;
             else
                 return org.firstinspires.ftc.robotcore.external.navigation.AngleUnit.RADIANS;
+            }
+        public static AngleUnit fromAngleUnit(org.firstinspires.ftc.robotcore.external.navigation.AngleUnit angleUnit)
+            {
+            if (angleUnit==org.firstinspires.ftc.robotcore.external.navigation.AngleUnit.DEGREES)
+                return DEGREES;
+            else
+                return RADIANS;
             }
     }
     enum AccelUnit { METERS_PERSEC_PERSEC(0), MILLI_EARTH_GRAVITY(1); public final byte bVal; AccelUnit(int i) { bVal =(byte)i; }}

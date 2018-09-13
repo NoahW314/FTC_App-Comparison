@@ -30,6 +30,8 @@
 
 package com.qualcomm.robotcore.util;
 
+import android.support.annotation.Nullable;
+
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.Charset;
@@ -223,7 +225,60 @@ public class TypeConversion {
     return utf8String;
   }
 
+  public static int doubleToFixedInt(double value, int fractionBits) {
+    return (int)Math.round(value * power2(fractionBits));
+  }
+
+  public static double doubleFromFixed(int value, int fractionBits) {
+    return (double)value / power2(fractionBits);
+  }
+
+  public static long doubleToFixedLong(double value, int fractionBits) {
+    return (long)Math.round(value * power2(fractionBits));
+  }
+
+  public static double doubleFromFixed(long value, int fractionBits) {
+    return (double)value / power2(fractionBits);
+  }
+
   public static String utf8ToString(byte[] utf8String) {
     return new String(utf8String, UTF8_CHARSET);
   }
+
+  private static double power2(int n) {
+    switch (n) {
+      case 0: return 1.;
+      case 1: return 2.;
+      case 2: return 4.;
+      case 3: return 8.;
+      case 4: return 16.;
+      case 5: return 32.;
+      case 6: return 64.;
+      case 7: return 128.;
+      case 8: return 256.;
+      case 9: return 512.;
+      case 10: return 1024.;
+      case 11: return 2048.;
+      case 12: return 4096.;
+      case 13: return 8192.;
+      case 14: return 16384.;
+      case 15: return 32768.;
+      case 16: return 65536.;
+      case 20: return 1048576.;
+      case 24: return 16777216.;
+      case 32: return 4294967296.;
+      case 64: return 18446744073709551616.;
+      default: return Math.pow(2, n);
+    }
+  }
+
+  public static boolean toBoolean(@Nullable Boolean value) {
+    return toBoolean(value, false);
+  }
+
+  public static boolean toBoolean(@Nullable Boolean value, boolean defaultValue) {
+    return value != null ? value.booleanValue() : defaultValue;
+  }
+
+
 }

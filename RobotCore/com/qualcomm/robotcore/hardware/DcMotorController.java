@@ -30,7 +30,7 @@
 
 package com.qualcomm.robotcore.hardware;
 
-import com.qualcomm.robotcore.hardware.configuration.MotorConfigurationType;
+import com.qualcomm.robotcore.hardware.configuration.typecontainers.MotorConfigurationType;
 
 /**
  * Interface for working with DC Motor Controllers
@@ -141,4 +141,10 @@ public interface DcMotorController extends HardwareDevice {
    * @return integer, unscaled
    */
   int getMotorCurrentPosition(int motor);
+
+  /**
+   * Reset the state we hold for the given motor so that it's clean at the start of an opmode
+   * @param motor
+   */
+  void resetDeviceConfigurationForOpMode(int motor);
 }

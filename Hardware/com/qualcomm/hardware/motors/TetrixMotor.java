@@ -34,11 +34,13 @@ package com.qualcomm.hardware.motors;
 
 import com.qualcomm.robotcore.hardware.configuration.DistributorInfo;
 import com.qualcomm.robotcore.hardware.configuration.ModernRoboticsMotorControllerParams;
-import com.qualcomm.robotcore.hardware.configuration.MotorType;
+import com.qualcomm.robotcore.hardware.configuration.annotations.DeviceProperties;
+import com.qualcomm.robotcore.hardware.configuration.annotations.MotorType;
 
 import org.firstinspires.ftc.robotcore.external.navigation.Rotation;
 
-@MotorType(xmlTag="TetrixMotor", name="Tetrix Motor", ticksPerRev=1440, gearing=52, maxRPM=165, orientation=Rotation.CW)
+@MotorType(ticksPerRev=1440, gearing=52, maxRPM=165, orientation=Rotation.CW)
+@DeviceProperties(xmlTag="TetrixMotor", name="Tetrix Motor", builtIn = true)
 @DistributorInfo(distributor="Pitsco", model="W39530", url="http://www.pitsco.com/TETRIX_DC_Gear_Motor")
 @ModernRoboticsMotorControllerParams(P=160, I=56, D=128, ratio=19)
 public interface TetrixMotor

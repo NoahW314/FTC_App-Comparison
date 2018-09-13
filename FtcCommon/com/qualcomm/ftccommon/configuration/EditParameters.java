@@ -36,16 +36,14 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
 
-import com.qualcomm.robotcore.hardware.DeviceManager;
-import com.qualcomm.robotcore.hardware.configuration.ConfigurationType;
+import com.qualcomm.robotcore.hardware.ControlSystem;
+import com.qualcomm.robotcore.hardware.ScannedDevices;
 import com.qualcomm.robotcore.hardware.configuration.DeviceConfiguration;
-import com.qualcomm.robotcore.util.SerialNumber;
 
 import org.firstinspires.ftc.robotcore.internal.system.Assert;
 
 import java.io.Serializable;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -91,6 +89,11 @@ public class EditParameters<ITEM_T extends DeviceConfiguration> implements Seria
     private int maxItemCount = 0;
 
     /**
+     * the I2C bus number (only applicable to REV)
+     */
+    private int i2cBus = 0;
+
+    /**
      * whether the user can grow the size of the list or not
      */
     private boolean growable = false;
@@ -112,9 +115,9 @@ public class EditParameters<ITEM_T extends DeviceConfiguration> implements Seria
     private List<RobotConfigFile> extantRobotConfigurations = new ArrayList<RobotConfigFile>();
 
     /**
-     * an array of configuration types
+     * the type of Control System that is being edited
      */
-    private ConfigurationType[] configurationTypes = null;
+    private ControlSystem controlSystem = null;
 
     /**
      * optional explicit configuration
@@ -236,6 +239,16 @@ public class EditParameters<ITEM_T extends DeviceConfiguration> implements Seria
         return this.initialPortNumber;
         }
 
+    public int getI2cBus()
+        {
+        return i2cBus;
+        }
+
+    public void setI2cBus(int i2cBus)
+        {
+        this.i2cBus = i2cBus;
+        }
+
     public RobotConfigMap getRobotConfigMap()
         {
         return this.robotConfigMap;
@@ -262,14 +275,14 @@ public class EditParameters<ITEM_T extends DeviceConfiguration> implements Seria
         this.extantRobotConfigurations = configurations;
         }
 
-    public ConfigurationType[] getConfigurationTypes()
+    public ControlSystem getControlSystem()
         {
-        return this.configurationTypes;
+        return controlSystem;
         }
 
-    public void setConfigurationTypes(ConfigurationType[] configurationTypes)
+    public void setControlSystem(ControlSystem controlSystem)
         {
-        this.configurationTypes = configurationTypes;
+        this.controlSystem = controlSystem;
         }
 
     public RobotConfigFile getCurrentCfgFile()
@@ -301,7 +314,7 @@ public class EditParameters<ITEM_T extends DeviceConfiguration> implements Seria
             }
         if (this.scannedDevices != null && this.scannedDevices.size() > 0)
             {
-            result.putSerializable("scannedDevices", this.scannedDevices);
+            result.putString("scannedDevices", this.scannedDevices.toSerializationString());
             }
         if (this.robotConfigMap != null && this.robotConfigMap.size() > 0)
             {
@@ -311,9 +324,9 @@ public class EditParameters<ITEM_T extends DeviceConfiguration> implements Seria
             {
             result.putString("extantRobotConfigurations", RobotConfigFileManager.serializeXMLConfigList(extantRobotConfigurations));
             }
-        if (this.configurationTypes != null)
+        if (this.controlSystem != null)
             {
-            result.putSerializable("configurationTypes", this.configurationTypes);
+            result.putSerializable("controlSystem", this.controlSystem);
             }
         if (this.currentCfgFile != null)
             {
@@ -322,6 +335,7 @@ public class EditParameters<ITEM_T extends DeviceConfiguration> implements Seria
         result.putBoolean("haveRobotConfigMap", this.haveRobotConfigMapParameter);
         result.putInt("initialPortNumber", this.initialPortNumber);
         result.putInt("maxItemCount", this.maxItemCount);
+        result.putInt("i2cBus", this.i2cBus);
         result.putBoolean("growable", this.growable);
         result.putBoolean("isConfigDirty", this.isConfigDirty);
         if (this.itemClass != null)
@@ -356,7 +370,7 @@ public class EditParameters<ITEM_T extends DeviceConfiguration> implements Seria
                 }
             else if (key.equals("scannedDevices"))
                 {
-                result.scannedDevices = new ScannedDevices((HashMap<SerialNumber, DeviceManager.DeviceType>) bundle.getSerializable(key));
+                result.scannedDevices = ScannedDevices.fromSerializationString(bundle.getString(key));
                 }
             else if (key.equals("robotConfigMap"))
                 {
@@ -370,14 +384,9 @@ public class EditParameters<ITEM_T extends DeviceConfiguration> implements Seria
                 {
                 result.extantRobotConfigurations = RobotConfigFileManager.deserializeXMLConfigList(bundle.getString(key));
                 }
-            else if (key.equals("configurationTypes"))
+            else if (key.equals("controlSystem"))
                 {
-                Object[] objects = (Object[]) bundle.getSerializable(key);
-                result.configurationTypes = new ConfigurationType[objects.length];
-                for (int i = 0; i < objects.length; i++)
-                    {
-                    result.configurationTypes[i] = (ConfigurationType)objects[i];
-                    }
+                result.controlSystem = (ControlSystem) bundle.getSerializable(key);
                 }
             else if (key.equals("currentCfgFile"))
                 {
@@ -386,6 +395,10 @@ public class EditParameters<ITEM_T extends DeviceConfiguration> implements Seria
             else if (key.equals("initialPortNumber"))
                 {
                 result.initialPortNumber = bundle.getInt(key);
+                }
+            else if (key.equals("i2cBus"))
+                {
+                result.i2cBus = bundle.getInt(key);
                 }
             else if (key.equals("maxItemCount"))
                 {

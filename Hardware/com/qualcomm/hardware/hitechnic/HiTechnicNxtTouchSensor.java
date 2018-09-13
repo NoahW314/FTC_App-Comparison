@@ -69,7 +69,7 @@ public class HiTechnicNxtTouchSensor extends LegacyModulePortDeviceImpl implemen
 
   public String status() {
     return String.format("NXT Touch Sensor, connected via device %s, port %d",
-        module.getSerialNumber().toString(), physicalPort);  }
+        module.getSerialNumber(), physicalPort);  }
 
   @Override
   public double getValue() {

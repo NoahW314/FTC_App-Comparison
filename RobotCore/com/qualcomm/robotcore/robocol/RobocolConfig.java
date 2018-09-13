@@ -55,7 +55,8 @@ public class RobocolConfig {
    * and network controller. If that protocol changes in a non-backward-compatible way, increment
    * this constant to ensure incompatible apps do not attempt to communicate with each other.
    */
-  public static final byte ROBOCOL_VERSION = 112;
+
+  public static final byte ROBOCOL_VERSION = 121;
 
   // The actual max packet size is the min of this value and whatever the OS says we can use
   public static final int MAX_MAX_PACKET_SIZE = 65520;  // + 16 bytes overhead == 64k

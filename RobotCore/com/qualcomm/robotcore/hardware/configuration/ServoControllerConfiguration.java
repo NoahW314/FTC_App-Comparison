@@ -31,26 +31,48 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. */
 
 package com.qualcomm.robotcore.hardware.configuration;
 
+import com.qualcomm.robotcore.exception.RobotCoreException;
 import com.qualcomm.robotcore.util.SerialNumber;
 
-import java.util.ArrayList;
+import org.xmlpull.v1.XmlPullParser;
+import org.xmlpull.v1.XmlPullParserException;
+
+import java.io.IOException;
 import java.util.List;
 
-public class ServoControllerConfiguration extends ControllerConfiguration<ServoConfiguration> {
+/**
+ * Represents a configured MR or HiTechnic standalone servo controller
+ *
+ * Hardware ports are indexed by 1.
+ */
+public class ServoControllerConfiguration extends ControllerConfiguration<DeviceConfiguration> {
 
   public ServoControllerConfiguration(){
-    super("", new ArrayList<ServoConfiguration>(), new SerialNumber(), BuiltInConfigurationType.SERVO_CONTROLLER);
+    super("", ConfigurationUtility.buildEmptyServos(ModernRoboticsConstants.INITIAL_SERVO_PORT, ModernRoboticsConstants.NUMBER_OF_SERVOS), SerialNumber.createFake(), BuiltInConfigurationType.SERVO_CONTROLLER);
   }
 
-  public ServoControllerConfiguration(String name, List<ServoConfiguration> servos, SerialNumber serialNumber) {
+  public ServoControllerConfiguration(String name, List<DeviceConfiguration> servos, SerialNumber serialNumber) {
     super(name, servos, serialNumber, BuiltInConfigurationType.SERVO_CONTROLLER);
   }
 
-  public List<ServoConfiguration> getServos() {
+  public List<DeviceConfiguration> getServos() {
     return super.getDevices();
   }
 
-  public void setServos(List<ServoConfiguration> servos){
+  public void setServos(List<DeviceConfiguration> servos){
     super.setDevices(servos);
   }
+
+  @Override
+  protected void deserializeChildElement(ConfigurationType configurationType, XmlPullParser parser, ReadXMLFileHandler xmlReader) throws IOException, XmlPullParserException, RobotCoreException {
+    super.deserializeChildElement(configurationType, parser, xmlReader); // Doesn't currently do anything, but leave for future-proofing
+    if (configurationType.isDeviceFlavor(ConfigurationType.DeviceFlavor.SERVO)) {
+      DeviceConfiguration servo = new DeviceConfiguration();
+      servo.deserialize(parser, xmlReader);
+
+      // ModernRobotics HW is indexed by 1, but internally this code indexes by 0.
+      getServos().set(servo.getPort() - ModernRoboticsConstants.INITIAL_SERVO_PORT, servo);
+    }
+  }
+
 }

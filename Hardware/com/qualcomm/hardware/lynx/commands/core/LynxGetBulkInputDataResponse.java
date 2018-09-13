@@ -47,7 +47,27 @@ public class LynxGetBulkInputDataResponse extends LynxDekaInterfaceResponse
     // State
     //----------------------------------------------------------------------------------------------
 
-    public final int cbPayload = 32;
+    /*
+        uint8_t     digitalInputs;
+        int32_t     motor0position_enc;
+        int32_t     motor1position_enc;
+        int32_t     motor2position_enc;
+        int32_t     motor3position_enc;
+        uint8_t     motorStatus;
+        int16_t     motor0velocity_cps;  // counts per second
+        int16_t     motor1velocity_cps;
+        int16_t     motor2velocity_cps;
+        int16_t     motor3velocity_cps;
+        int16_t     analog0_mV;
+        int16_t     analog1_mV;
+        int16_t     analog2_mV;
+        int16_t     analog3_mV;
+     */
+    public final int cbPayload = 1
+            + LynxConstants.NUMBER_OF_MOTORS * 4
+            + 1
+            + LynxConstants.NUMBER_OF_MOTORS * 2
+            + LynxConstants.NUMBER_OF_ANALOG_INPUTS * 2;
 
     byte        digitalInputs   = 0;
     int[]       encoders        = new int[LynxConstants.NUMBER_OF_MOTORS];

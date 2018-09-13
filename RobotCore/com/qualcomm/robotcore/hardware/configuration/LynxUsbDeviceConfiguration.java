@@ -32,8 +32,15 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package com.qualcomm.robotcore.hardware.configuration;
 
+import android.support.annotation.NonNull;
+
+import com.qualcomm.robotcore.exception.RobotCoreException;
 import com.qualcomm.robotcore.util.SerialNumber;
 
+import org.xmlpull.v1.XmlPullParser;
+import org.xmlpull.v1.XmlPullParserException;
+
+import java.io.IOException;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedList;
@@ -52,33 +59,31 @@ public class LynxUsbDeviceConfiguration extends ControllerConfiguration<LynxModu
     //----------------------------------------------------------------------------------------------
 
     public static final String XMLATTR_PARENT_MODULE_ADDRESS = "parentModuleAddress";
-    public static final int DEFAULT_PARENT_MODULE_ADDRESS = 1;
 
-    int parentModuleAddress = DEFAULT_PARENT_MODULE_ADDRESS;
+    int parentModuleAddress = LynxConstants.DEFAULT_PARENT_MODULE_ADDRESS;
 
     //----------------------------------------------------------------------------------------------
     // Construction
     //----------------------------------------------------------------------------------------------
 
+    // For use in deserializing from XML
+    public LynxUsbDeviceConfiguration()
+        {
+        super("", new LinkedList<LynxModuleConfiguration>(), SerialNumber.createFake(), BuiltInConfigurationType.LYNX_USB_DEVICE);
+        }
+
     public LynxUsbDeviceConfiguration(String name, List<LynxModuleConfiguration> modules, SerialNumber serialNumber)
         {
         super(name, new LinkedList<LynxModuleConfiguration>(modules), serialNumber, BuiltInConfigurationType.LYNX_USB_DEVICE);
-        // Sort in increasing order by module address
-        Collections.sort(this.getModules(), new Comparator<DeviceConfiguration>()
-            {
-            @Override public int compare(DeviceConfiguration lhs, DeviceConfiguration rhs)
-                {
-                return lhs.getPort() - rhs.getPort();
-                }
-            });
+        initialize();
+        }
 
-        for (LynxModuleConfiguration module : modules)
+    @Override public void setSerialNumber(@NonNull SerialNumber serialNumber)
+        {
+        super.setSerialNumber(serialNumber);
+        for (LynxModuleConfiguration module : getModules())
             {
-            if (module.isParent())
-                {
-                this.setParentModuleAddress(module.getModuleAddress());
-                break;
-                }
+            module.setUsbDeviceSerialNumber(serialNumber);
             }
         }
 
@@ -86,6 +91,9 @@ public class LynxUsbDeviceConfiguration extends ControllerConfiguration<LynxModu
     // Operations
     //----------------------------------------------------------------------------------------------
 
+    /**
+     * Returns the module address of the Lynx module which is directly USB connected
+     */
     public int getParentModuleAddress()
         {
         return this.parentModuleAddress;
@@ -101,8 +109,56 @@ public class LynxUsbDeviceConfiguration extends ControllerConfiguration<LynxModu
         return this.getDevices();
         }
 
-    public void setModules(List<LynxModuleConfiguration> modules)
+    @Override
+    protected void deserializeAttributes(XmlPullParser parser)
         {
-        this.setDevices(modules);
+        super.deserializeAttributes(parser);
+        String parentAddressString = parser.getAttributeValue(null, XMLATTR_PARENT_MODULE_ADDRESS);
+        if (parentAddressString != null && !parentAddressString.isEmpty())
+            {
+            setParentModuleAddress(Integer.parseInt(parentAddressString));
+            }
+        }
+
+    @Override
+    protected void deserializeChildElement(ConfigurationType configurationType, XmlPullParser parser, ReadXMLFileHandler xmlReader) throws IOException, XmlPullParserException, RobotCoreException
+        {
+        super.deserializeChildElement(configurationType, parser, xmlReader);
+        if (configurationType == BuiltInConfigurationType.LYNX_MODULE)
+            {
+            LynxModuleConfiguration moduleConfiguration = new LynxModuleConfiguration();
+            moduleConfiguration.deserialize(parser, xmlReader);
+            getModules().add(moduleConfiguration);
+            }
+        }
+
+    @Override
+    protected void onDeserializationComplete(ReadXMLFileHandler xmlReader)
+        {
+        initialize();
+        super.onDeserializationComplete(xmlReader);
+        }
+
+
+    private void initialize()
+        {
+        // Sort in increasing order by module address
+        Collections.sort(this.getModules(), new Comparator<DeviceConfiguration>()
+            {
+            @Override public int compare(DeviceConfiguration lhs, DeviceConfiguration rhs)
+                {
+                return lhs.getPort() - rhs.getPort();
+                }
+            });
+
+        for (LynxModuleConfiguration module : getModules())
+            {
+            module.setUsbDeviceSerialNumber(getSerialNumber());
+            module.setIsParent(module.getModuleAddress() == parentModuleAddress);
+            if (module.isParent())
+                {
+                this.setParentModuleAddress(module.getModuleAddress());
+                }
+            }
         }
     }

@@ -114,7 +114,7 @@ public class HiTechnicNxtAccelerationSensor extends I2cControllerPortDeviceImpl 
   @Override
   public String status() {
     return String.format("NXT Acceleration Sensor, connected via device %s, port %d",
-        controller.getSerialNumber().toString(), physicalPort);
+        controller.getSerialNumber(), physicalPort);
   }
 
   private double rawToG(double high, double low) {

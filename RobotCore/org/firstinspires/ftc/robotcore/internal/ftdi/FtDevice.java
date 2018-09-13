@@ -42,6 +42,7 @@ import android.hardware.usb.UsbDeviceConnection;
 import android.hardware.usb.UsbEndpoint;
 import android.hardware.usb.UsbInterface;
 import android.hardware.usb.UsbManager;
+import android.os.Build;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 
@@ -152,11 +153,23 @@ public class FtDevice extends FtConstants
 
                 byte[] rawDescriptors = this.getConnection().getRawDescriptors();
                 UsbDeviceDescriptor usbDeviceDescriptor = new UsbDeviceDescriptor(rawDescriptors);
-                this.mDeviceInfo.bcdDevice      = (short) usbDeviceDescriptor.bcdDevice;
-                this.mDeviceInfo.iSerialNumber  = (byte)usbDeviceDescriptor.iSerialNumber;
-                this.mDeviceInfo.serialNumber   = getStringDescriptor(usbDeviceDescriptor.iSerialNumber);
-                this.mDeviceInfo.description    = getStringDescriptor(usbDeviceDescriptor.iProduct);
-                this.mDeviceInfo.id             = usbDeviceDescriptor.idVendor << 16 | usbDeviceDescriptor.idProduct;
+                mDeviceInfo.bcdDevice      = (short) usbDeviceDescriptor.bcdDevice;
+                mDeviceInfo.id             = usbDeviceDescriptor.idVendor << 16 | usbDeviceDescriptor.idProduct;
+                mDeviceInfo.iSerialNumber  = (byte) usbDeviceDescriptor.iSerialNumber;
+
+                // If the system already knows this info, then just ask it
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP)
+                    {
+                    mDeviceInfo.serialNumber = mUsbDevice.getSerialNumber();
+                    mDeviceInfo.manufacturerName = mUsbDevice.getManufacturerName();
+                    mDeviceInfo.productName = mUsbDevice.getProductName();
+                    }
+                else
+                    {
+                    mDeviceInfo.serialNumber = getStringDescriptor(usbDeviceDescriptor.iSerialNumber);
+                    mDeviceInfo.manufacturerName = getStringDescriptor(usbDeviceDescriptor.iManufacturer);
+                    mDeviceInfo.productName = getStringDescriptor(usbDeviceDescriptor.iProduct);
+                    }
 
                 this.mDeviceInfo.location = (this.mUsbDevice.getDeviceId() << 4) | this.mInterfaceID & 0x0F;
                 this.mDeviceInfo.breakOnParam = 8;
@@ -326,7 +339,7 @@ public class FtDevice extends FtConstants
 
     public SerialNumber getSerialNumber()
         {
-        return new SerialNumber(this.getDeviceInfo().serialNumber);
+        return SerialNumber.fromString(this.getDeviceInfo().serialNumber);
         }
 
     private boolean isHiSpeed()
@@ -443,22 +456,22 @@ public class FtDevice extends FtConstants
         if (this.mInterfaceID == 1)
             {
             this.mDeviceInfo.serialNumber = this.mDeviceInfo.serialNumber + "A";
-            this.mDeviceInfo.description = this.mDeviceInfo.description + " A";
+            this.mDeviceInfo.productName = this.mDeviceInfo.productName + " A";
             }
         else if (this.mInterfaceID == 2)
             {
             this.mDeviceInfo.serialNumber = this.mDeviceInfo.serialNumber + "B";
-            this.mDeviceInfo.description = this.mDeviceInfo.description + " B";
+            this.mDeviceInfo.productName = this.mDeviceInfo.productName + " B";
             }
         else if (this.mInterfaceID == 3)
             {
             this.mDeviceInfo.serialNumber = this.mDeviceInfo.serialNumber + "C";
-            this.mDeviceInfo.description = this.mDeviceInfo.description + " C";
+            this.mDeviceInfo.productName = this.mDeviceInfo.productName + " C";
             }
         else if (this.mInterfaceID == 4)
             {
             this.mDeviceInfo.serialNumber = this.mDeviceInfo.serialNumber + "D";
-            this.mDeviceInfo.description = this.mDeviceInfo.description + " D";
+            this.mDeviceInfo.productName = this.mDeviceInfo.productName + " D";
             }
         }
 

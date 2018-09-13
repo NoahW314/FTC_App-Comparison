@@ -30,15 +30,22 @@
 
 package com.qualcomm.robotcore.wifi;
 
-import android.support.annotation.NonNull;
+import android.content.Context;
+import android.net.wifi.WifiInfo;
+import android.net.wifi.WifiManager;
+
+import com.qualcomm.robotcore.util.RobotLog;
 
 import org.firstinspires.ftc.robotcore.internal.network.CallbackResult;
+import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 
 import java.net.InetAddress;
 
 public abstract class NetworkConnection {
 
-  public enum Event {
+  private final static int GHZ_24_BASE_FREQ = 2407;
+
+  public enum NetworkEvent {
     DISCOVERING_PEERS,
     PEERS_AVAILABLE,
     GROUP_CREATED,
@@ -61,15 +68,22 @@ public abstract class NetworkConnection {
   }
 
   public interface NetworkConnectionCallback {
-    CallbackResult onNetworkConnectionEvent(NetworkConnection.Event event);
+    CallbackResult onNetworkConnectionEvent(NetworkEvent event);
+  }
+
+  protected NetworkEvent lastEvent = null;
+  protected NetworkConnectionCallback callback = null;
+  protected final Object callbackLock = new Object();
+  protected Context context;
+
+  public NetworkConnection(Context context) {
+    this.context = context == null ? AppUtil.getDefContext() : context;
   }
 
   public abstract NetworkType getNetworkType();
 
   public abstract void enable();
   public abstract void disable();
-
-  public abstract void setCallback(@NonNull NetworkConnectionCallback callback);
 
   public abstract void discoverPotentialConnections();
 
@@ -107,5 +121,57 @@ public abstract class NetworkConnection {
    */
   public static boolean isDeviceNameValid(String deviceName) {
     return deviceName.matches("^\\p{Print}+$");
+  }
+
+  public void setCallback(NetworkConnectionCallback callback) {
+    synchronized (callbackLock) {
+      this.callback = callback;
+    }
+  }
+
+  public NetworkConnectionCallback getCallback() {
+    synchronized (callbackLock) {
+      return callback;
+    }
+  }
+
+  public int getWifiChannel() {
+    WifiManager wifiManager = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+    WifiInfo info = wifiManager.getConnectionInfo();
+    int freq;
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+      freq = info.getFrequency();
+    } else {
+      freq = 0;
+    }
+
+    /*
+     * Formula here taken from ieee 802.11 spec.
+     */
+    if (freq >= GHZ_24_BASE_FREQ) {
+      return (freq - GHZ_24_BASE_FREQ) / 5;
+    } else {
+      return 0;
+    }
+  }
+
+    /**
+     * sendEvent
+     *
+     * Unicast to a single listener.  No support for multicast.
+     */
+  protected void sendEvent(NetworkEvent event) {
+    if (lastEvent == event) {
+      RobotLog.i("Dropping duplicate network event " + event.toString());
+      return;
+    }
+
+    lastEvent = event;
+
+    synchronized (callbackLock) {
+      if (callback != null) {
+        callback.onNetworkConnectionEvent(event);
+      }
+    }
   }
 }
