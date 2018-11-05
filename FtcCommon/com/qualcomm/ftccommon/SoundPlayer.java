@@ -34,10 +34,13 @@ package com.qualcomm.ftccommon;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.res.AssetFileDescriptor;
+import android.media.AudioAttributes;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
 import android.media.SoundPool;
 import android.net.Uri;
+import android.os.Build;
 import android.preference.PreferenceManager;
 import android.support.annotation.CheckResult;
 import android.support.annotation.Nullable;
@@ -125,6 +128,7 @@ public class SoundPlayer implements SoundPool.OnLoadCompleteListener, SoundPoolI
     protected float                soundOnVolume = 1.0f;
     protected float                soundOffVolume = 0.0f;
     protected float                masterVolume = 1.0f;
+    protected MediaPlayer          mediaSizer;
 
     protected static class CurrentlyPlaying
         {
@@ -155,7 +159,29 @@ public class SoundPlayer implements SoundPool.OnLoadCompleteListener, SoundPoolI
      */
     public SoundPlayer(int simultaneousStreams, int cacheSize)
         {
-        soundPool = new SoundPool(simultaneousStreams, AudioManager.STREAM_MUSIC, /*quality*/0); // can't use SoundPool.Builder on KitKat
+        mediaSizer = new MediaPlayer();
+        if (Build.VERSION.SDK_INT >= 21)
+            {
+            AudioAttributes.Builder audioAttributesBuilder = new AudioAttributes.Builder();
+            audioAttributesBuilder.setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION);
+            AudioAttributes audioAttributes = audioAttributesBuilder.build();
+
+            SoundPool.Builder soundPoolBuilder = new SoundPool.Builder();
+            soundPoolBuilder.setAudioAttributes(audioAttributes);
+            soundPoolBuilder.setMaxStreams(simultaneousStreams);
+            soundPool = soundPoolBuilder.build();
+
+            mediaSizer.setAudioAttributes(audioAttributes);
+            AudioManager audioManager = (AudioManager)(AppUtil.getDefContext().getSystemService(Context.AUDIO_SERVICE));
+            int audioSessionId = audioManager.generateAudioSessionId();
+            mediaSizer.setAudioSessionId(audioSessionId);
+            }
+        else
+            {
+            /** {@link AudioManager#STREAM_NOTIFICATION} might have been a better choice, but we use STREAM_MUSIC because we've always done so; not worth changing */
+            soundPool = new SoundPool(simultaneousStreams, AudioManager.STREAM_MUSIC, /*quality*/0); // can't use SoundPool.Builder on KitKat
+            mediaSizer.setAudioStreamType(AudioManager.STREAM_MUSIC);
+            }
         loadedSounds = new LoadedSoundCache(cacheSize);
         currentlyPlayingSounds = new HashSet<>();
         sharedPreferences = PreferenceManager.getDefaultSharedPreferences(AppUtil.getDefContext());
@@ -190,6 +216,10 @@ public class SoundPlayer implements SoundPool.OnLoadCompleteListener, SoundPoolI
             {
             scheduledThreadPool.shutdownNow();
             ThreadPool.awaitTerminationOrExitApplication(scheduledThreadPool, 3, TimeUnit.SECONDS, "SoundPool", "internal error");
+            }
+        if (mediaSizer != null)
+            {
+            mediaSizer.release();
             }
         }
 
@@ -627,18 +657,43 @@ public class SoundPlayer implements SoundPool.OnLoadCompleteListener, SoundPoolI
 
     protected int getMsDuration(Context context, @RawRes int resourceId)
         {
-        MediaPlayer mediaPlayer = MediaPlayer.create(context, resourceId);
-        int msDuration = mediaPlayer.getDuration();
-        mediaPlayer.release();
-        return msDuration;
+        int msDuration = 0;
+        synchronized (lock)
+            {
+            try {
+                mediaSizer.reset();
+                AssetFileDescriptor afd = context.getResources().openRawResourceFd(resourceId);
+                mediaSizer.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
+                afd.close();
+                mediaSizer.prepare();
+                msDuration = mediaSizer.getDuration();
+                }
+            catch (IOException e)
+                {
+                tracer.traceError(e,"exception preparing media sizer; media duration taken to be zero");;
+                }
+            }
+        return msDuration < 0 ? 0 : msDuration;
         }
 
     protected int getMsDuration(Context context, File file)
         {
-        MediaPlayer mediaPlayer = MediaPlayer.create(context, Uri.fromFile(file));
-        int msDuration = mediaPlayer.getDuration();
-        mediaPlayer.release();
-        return msDuration;
+        Uri uri = Uri.fromFile(file);
+        int msDuration = 0;
+        synchronized (lock)
+            {
+            try {
+                mediaSizer.reset();
+                mediaSizer.setDataSource(context, uri);
+                mediaSizer.prepare();
+                msDuration = mediaSizer.getDuration();
+                }
+            catch (IOException e)
+                {
+                tracer.traceError(e,"exception preparing media sizer; media duration taken to be zero");;
+                }
+            }
+        return msDuration < 0 ? 0 : msDuration;
         }
 
     protected void waitForLoadCompletion()

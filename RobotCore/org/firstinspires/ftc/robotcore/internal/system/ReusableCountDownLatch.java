@@ -117,9 +117,12 @@ public class ReusableCountDownLatch
         return sync.tryAcquireSharedNanos(1, unit.toNanos(timeout));
         }
 
-    public void countDown()
+    /** countDown() is idempotent if starting count is one or zero
+     * @return true if we hit zero for the first time.
+     */
+    public boolean countDown()
         {
-        sync.releaseShared(1);
+        return sync.releaseShared(1);
         }
 
     public long getCount()

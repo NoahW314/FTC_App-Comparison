@@ -203,9 +203,9 @@ public class UpdateUI {
       final String message = String.format(format, strNetworkStatus, strPeerStatus);
 
       // Log if changed
-      if (DEBUG || !message.equals(UpdateUI.this.networkStatusMessage)) RobotLog.v(message);
-      UpdateUI.this.networkStatusMessage = message;
+      if (!message.equals(UpdateUI.this.networkStatusMessage)) RobotLog.vv(TAG, message);
 
+      UpdateUI.this.networkStatusMessage = message;
       activity.runOnUiThread(new Runnable() {
         @Override
         public void run() {
@@ -295,6 +295,7 @@ public class UpdateUI {
   //------------------------------------------------------------------------------------------------
 
   public static final boolean DEBUG = false;
+  private static final String TAG = "UpdateUI";
   private static final int NUM_GAMEPADS = 2;
 
   protected TextView textDeviceName;

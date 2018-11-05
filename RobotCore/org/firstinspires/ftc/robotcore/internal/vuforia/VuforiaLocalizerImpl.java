@@ -161,6 +161,7 @@ public class VuforiaLocalizerImpl implements VuforiaLocalizer
     protected   VuforiaInitPhase        vuforiaInitPhase    = VuforiaInitPhase.Nascent;
 
     protected   ViewGroup               glSurfaceParent     = null;
+    protected   int                     glSurfaceParentPreviousVisibility = 0;
     protected   AutoConfigGLSurfaceView glSurface           = null;
     protected   boolean                 fillSurfaceParent   = false;     // vs show full camera image
     protected   boolean                 isPortrait          = true;
@@ -361,6 +362,10 @@ public class VuforiaLocalizerImpl implements VuforiaLocalizer
     protected void setMonitorViewParent(@Nullable ViewGroup viewParent)
         {
         this.glSurfaceParent = viewParent;
+        if (glSurfaceParent != null)
+            {
+            glSurfaceParentPreviousVisibility = glSurfaceParent.getVisibility();
+            }
         }
 
     @Override public VuforiaTrackables loadTrackablesFromAsset(String assetName)
@@ -745,6 +750,7 @@ public class VuforiaLocalizerImpl implements VuforiaLocalizer
                     // BEFORE the camera is started and video background is configured.
                     surface.setVisibility(View.INVISIBLE);    // invisible until we know if we have to resize it or not
                     parent.addView(surface);
+                    parent.setVisibility(View.VISIBLE);
                     }
                 }});
             }
@@ -769,6 +775,7 @@ public class VuforiaLocalizerImpl implements VuforiaLocalizer
                         parent.removeAllViews();
                         parent.getOverlay().clear();
                         glSurface = null;
+                        parent.setVisibility(glSurfaceParentPreviousVisibility);
                         }
                     }
                 });
@@ -997,6 +1004,9 @@ public class VuforiaLocalizerImpl implements VuforiaLocalizer
             {
             @Override public void run()
                 {
+                if (glSurface == null)
+                  return;
+
                 // What screen real estate do we have to draw on?
                 PointF view = new PointF(glSurface.getWidth(), glSurface.getHeight());
 
@@ -1561,15 +1571,27 @@ public class VuforiaLocalizerImpl implements VuforiaLocalizer
 
     @Override public void enableConvertFrameToBitmap()
         {
-        int[] pixelFormats = new int[] { PIXEL_FORMAT.RGB565 }; // RGBA8888 seems to always fail
+        enableConvertFrameToFormat(PIXEL_FORMAT.RGB565); // RGBA8888 seems to always fail
+        }
+
+    @Override public boolean[] enableConvertFrameToFormat(int... pixelFormats)
+        {
+        boolean[] results = new boolean[pixelFormats.length];
+        int i = 0;
         for (int pixelFormat : pixelFormats)
             {
-            if (Vuforia.setFrameFormat(PIXEL_FORMAT.RGB565, true))
+            if (Vuforia.setFrameFormat(pixelFormat, true))
                 {
+                results[i] = true;
                 }
             else
+                {
+                results[i] = false;
                 tracer.traceError("enableConvertFrameToBitmap(): internal error: setFrameFormat(%d) failed", pixelFormat);
+                }
+            i++;
             }
+        return results;
         }
 
     @Override public Bitmap convertFrameToBitmap(Frame frame)

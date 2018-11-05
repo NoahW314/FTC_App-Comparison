@@ -34,6 +34,7 @@ package org.firstinspires.ftc.robotcore.internal.system;
 
 import android.support.annotation.NonNull;
 
+import com.qualcomm.robotcore.util.RobotLog;
 import com.qualcomm.robotcore.util.ThreadPool;
 
 import org.firstinspires.ftc.robotcore.internal.opmode.OpModeManagerImpl;
@@ -42,6 +43,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -60,6 +62,8 @@ public class WatchdogMonitor
     //----------------------------------------------------------------------------------------------
     // State
     //----------------------------------------------------------------------------------------------
+
+    public static final String TAG = "WatchdogMonitor";
 
     protected       ExecutorService         executorService      = ThreadPool.newSingleThreadExecutor("WatchdogMonitor");
     protected       Runner                  runner               = new Runner();
@@ -137,13 +141,20 @@ public class WatchdogMonitor
     //----------------------------------------------------------------------------------------------
 
     @SuppressWarnings("unchecked")
-    public <V> Future<V> schedule(Callable<V> callable, long timeout, TimeUnit unit)
+    protected <V> Future<V> schedule(Callable<V> callable, long timeout, TimeUnit unit)
         {
         // Wait for any previous monitoring to drain
         try { runner.await(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         //
         runner.initialize(callable, unit.toMillis(timeout));
-        executorService.execute(runner);
+        try {
+            executorService.submit(runner);
+            }
+        catch (RuntimeException e) // RejectedExecutionException in particular may be thrown
+            {
+            RobotLog.ee(TAG, e, "executorService.submit() failed");
+            runner.noteRunComplete();
+            }
         return runner;
         }
 
@@ -172,6 +183,13 @@ public class WatchdogMonitor
             executionException = null;
             isCancelled = false;
             done = false;
+            }
+
+        protected void noteRunComplete()
+            {
+            isCancelledAvailable.countDown(); // paranoia: make *certain* cancel is available; cancel will be false unless we actually got a cancel
+            done = true;
+            runComplete.countDown();
             }
 
         public void await() throws InterruptedException
@@ -236,8 +254,7 @@ public class WatchdogMonitor
                 }
             finally
                 {
-                done = true;
-                runComplete.countDown();
+                noteRunComplete();
                 }
             }
 

@@ -410,6 +410,7 @@ public class EventLoopManager implements RecvLoopRunnable.RecvLoopCallback, Netw
 
   @Override public CallbackResult onNetworkConnectionEvent(NetworkConnection.NetworkEvent event) {
     CallbackResult result = CallbackResult.NOT_HANDLED;
+    RobotLog.ii(TAG, "onNetworkConnectionEvent: " + event.toString());
     switch (event) {
       case PEERS_AVAILABLE:
         result = networkConnectionHandler.handlePeersAvailable();

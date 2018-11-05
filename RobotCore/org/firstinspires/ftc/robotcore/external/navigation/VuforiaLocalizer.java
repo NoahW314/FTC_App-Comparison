@@ -179,6 +179,13 @@ public interface VuforiaLocalizer
     void enableConvertFrameToBitmap();
 
     /**
+     * (Advanced) Ask Vuforia to convert frames to the given requested formats. Returns
+     * success/failure result for each format.
+     * @param pixelFormats Formats to request Vuforia to convert to.
+     */
+    boolean[] enableConvertFrameToFormat(int... pixelFormats);
+
+    /**
      * (Advanced) A helper utility that converts a Vuforia {@link Frame} into an Android {@link Bitmap}.
      */
     @Nullable Bitmap convertFrameToBitmap(Frame frame);

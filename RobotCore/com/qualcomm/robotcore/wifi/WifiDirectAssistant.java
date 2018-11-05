@@ -208,6 +208,7 @@ public class WifiDirectAssistant extends NetworkConnection {
 
       } else if (WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION.equals(action)) {
         RobotLog.dd(TAG, "broadcast: peers changed");
+        // TODO(Permissions): We probably need to request location permission before scanning
         wifiP2pManager.requestPeers(wifiP2pChannel, peerListListener);
 
       } else if (WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION.equals(action)) {

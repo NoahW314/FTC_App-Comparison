@@ -128,6 +128,7 @@ public class LynxUsbDeviceConfiguration extends ControllerConfiguration<LynxModu
             {
             LynxModuleConfiguration moduleConfiguration = new LynxModuleConfiguration();
             moduleConfiguration.deserialize(parser, xmlReader);
+            moduleConfiguration.setIsParent(moduleConfiguration.getModuleAddress() == parentModuleAddress);
             getModules().add(moduleConfiguration);
             }
         }
@@ -154,7 +155,6 @@ public class LynxUsbDeviceConfiguration extends ControllerConfiguration<LynxModu
         for (LynxModuleConfiguration module : getModules())
             {
             module.setUsbDeviceSerialNumber(getSerialNumber());
-            module.setIsParent(module.getModuleAddress() == parentModuleAddress);
             if (module.isParent())
                 {
                 this.setParentModuleAddress(module.getModuleAddress());

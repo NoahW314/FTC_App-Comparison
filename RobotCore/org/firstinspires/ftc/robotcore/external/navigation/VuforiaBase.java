@@ -51,6 +51,7 @@ public abstract class VuforiaBase {
   private final String assetName;
   private final String[] trackableNames;
   private final OpenGLMatrix[] locationsOnField;
+  private volatile VuforiaLocalizer vuforiaLocalizer;
   private volatile VuforiaTrackables vuforiaTrackables;
   private final Map<String, VuforiaTrackableDefaultListener> listenerMap =
       new HashMap<String, VuforiaTrackableDefaultListener>();
@@ -160,8 +161,6 @@ public abstract class VuforiaBase {
         .multiplied(Orientation.getRotationMatrix(
             AxesReference.EXTRINSIC, AxesOrder.XYZ, AngleUnit.DEGREES, xAngle, yAngle, zAngle));
 
-    VuforiaLocalizer vuforiaLocalizer;
-
     Looper looper = Looper.myLooper();
     if (looper != null && !looper.equals(Looper.getMainLooper())) {
       // This method (and all methods in this class) can be called from Blocks on the JavaBridge
@@ -257,6 +256,13 @@ public abstract class VuforiaBase {
       listener.setPhoneInformation(locationOnRobot, parameters.cameraDirection);
     }
     listenerMap.put(name.toUpperCase(Locale.ENGLISH), listener);
+  }
+
+  public VuforiaLocalizer getVuforiaLocalizer() {
+    if (vuforiaLocalizer == null) {
+      throw new IllegalStateException("You forgot to call Vuforia.initialize!");
+    }
+    return vuforiaLocalizer;
   }
 
   /**

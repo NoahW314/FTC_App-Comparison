@@ -34,6 +34,7 @@ package org.firstinspires.ftc.robotcore.external;
 
 import org.firstinspires.ftc.robotcore.external.hardware.camera.CameraManager;
 import org.firstinspires.ftc.robotcore.external.navigation.VuforiaLocalizer;
+import org.firstinspires.ftc.robotcore.external.tfod.TFObjectDetector;
 
 /**
  * {@link ClassFactory} provides a means by which various objects in the SDK may be logically
@@ -67,6 +68,24 @@ public abstract class ClassFactory
      * @see <a href="http://www.vuforia.com/">vuforia.com</a>
      */
     public abstract VuforiaLocalizer createVuforia(VuforiaLocalizer.Parameters parameters);
+
+    /**
+     * Return true if this device is compatible with Tensor Flow Object Detection, false otherwise.
+     */
+    public abstract boolean canCreateTFObjectDetector();
+
+    /**
+     * {@link #createTFObjectDetector(TFObjectDetector.Parameters) createTFObjectDetector} returns
+     * an instance of the Tensor Flow object detector engine configured with the indicated set of parameters.
+     *
+     * @param parameters the parameters used to configure the instance of the engine
+     * @param vuforiaLocalizer the VuforiaLocalizer that will be used to obtain camera frames
+     * @return an instance of the Tensor Flow object detector engine.
+     *
+     * @see TFObjectDetector
+     */
+    public abstract TFObjectDetector createTFObjectDetector(TFObjectDetector.Parameters parameters,
+        VuforiaLocalizer vuforiaLocalizer);
 
     /**
      * Returns a {@link CameraManager} which can be used to access the USB webcams
