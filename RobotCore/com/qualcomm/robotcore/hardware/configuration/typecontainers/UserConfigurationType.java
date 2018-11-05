@@ -67,7 +67,7 @@ public abstract class UserConfigurationType implements ConfigurationType, Serial
 
     private @Expose @NonNull final DeviceFlavor flavor;
     private @Expose @NonNull       String xmlTag;
-    private @Expose @NonNull       String[] xmlTagAliases;
+    private @Expose                String[] xmlTagAliases;
     private @Expose                boolean builtIn = false;
     private @Expose                boolean isOnBotJava;
     private @Expose @NonNull       ControlSystem[] compatibleControlSystems = {MODERN_ROBOTICS, REV_HUB};
@@ -109,6 +109,11 @@ public abstract class UserConfigurationType implements ConfigurationType, Serial
         if (name.isEmpty())
             {
             name = clazz.getSimpleName();
+            }
+
+        if (xmlTagAliases == null)
+            {
+            xmlTagAliases = new String[]{};
             }
         }
 

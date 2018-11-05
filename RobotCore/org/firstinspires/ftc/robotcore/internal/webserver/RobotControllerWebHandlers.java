@@ -30,6 +30,10 @@
 
 package org.firstinspires.ftc.robotcore.internal.webserver;
 
+import android.app.Activity;
+import android.content.pm.ActivityInfo;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.content.res.AssetManager;
 import android.support.annotation.NonNull;
 
@@ -54,9 +58,11 @@ import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.Writer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -121,9 +127,9 @@ public class RobotControllerWebHandlers
         manager.register(URI_RENAME_RC,             decorateWithParms(new RenameRobotController()));
         manager.register(URI_CHANGE_AP_PASSWORD,    decorateWithParms(new ChangeApPassword()));
         manager.register(URI_CHANGE_AP_CHANNEL,     decorateWithParms(new ChangeApChannel()));
-        manager.register(URI_UPDATE_CONTROL_HUB_APK, new FileUpload(AppUtil.RC_APP_UPDATE_DIR.getAbsolutePath()));
-        manager.register(URI_UPLOAD_EXPANSION_HUB_FIRMWARE, new FileUpload(AppUtil.LYNX_FIRMWARE_UPDATE_DIR.getAbsolutePath()));
-        manager.register(URI_UPLOAD_WEBCAM_CALIBRATION_FILE, new FileUpload(AppUtil.WEBCAM_CALIBRATIONS_DIR.getAbsolutePath()));
+        manager.register(URI_UPDATE_CONTROL_HUB_APK, new APKUpdate(AppUtil.RC_APP_UPDATE_DIR.getAbsolutePath()));
+        manager.register(URI_UPLOAD_EXPANSION_HUB_FIRMWARE, new StandardUpload(AppUtil.LYNX_FIRMWARE_UPDATE_DIR.getAbsolutePath()));
+        manager.register(URI_UPLOAD_WEBCAM_CALIBRATION_FILE, new StandardUpload(AppUtil.WEBCAM_CALIBRATIONS_DIR.getAbsolutePath()));
         manager.register(URI_RC_CONFIG,             new RobotControllerConfiguration());
         manager.register(URI_RC_INFO,               new RobotControllerInfoHandler(manager.getWebServer()));
         manager.register(URI_REBOOT,                new Reboot());
@@ -327,9 +333,9 @@ public class RobotControllerWebHandlers
     /**
      * Upload a file to the Android
      */
-    public static final class FileUpload implements WebHandler
+    public static abstract class FileUpload implements WebHandler
     {
-        private final String dirPath;
+        protected final String dirPath;
 
         /**
          * Construction that takes the directory path that the file will be written into as a String
@@ -337,10 +343,19 @@ public class RobotControllerWebHandlers
          *
          * @param dirPath absolute path for the directory.
          */
-        FileUpload(String dirPath)
+        public FileUpload(String dirPath)
         {
             this.dirPath = dirPath;
         }
+
+        /**
+         * Abstract method that must be implemented to return a response. The intention is to
+         * allow post processing to be defined by child classes.
+         *
+         * @param fileName name of file that is being uploaded
+         * @return an "OK" Response if the transfer was a success and an "ERROR" Response otherwise.
+         */
+        public abstract Response hook(String fileName);
 
         /**
          * Write an update file to the Updates directory.
@@ -464,7 +479,152 @@ public class RobotControllerWebHandlers
             } catch (IOException e) {
                 return WebHandlerManager.internalErrorResponse(TAG, e.getMessage());
             }
+            return hook(filename);
+        }
+    }
+
+    /**
+     * StandardUpload
+     *
+     * Class used to specify a Standard upload.
+     */
+    private static class StandardUpload extends FileUpload
+    {
+        StandardUpload(String dirPath)
+        {
+            super(dirPath);
+        }
+        @Override
+        public Response hook(String fileName)
+        {
             return WebHandlerManager.OK_RESPONSE;
+        }
+    }
+
+    /**
+     * APKUpdate
+     *
+     * Class used to specify an APK upload.
+     */
+    private static class APKUpdate extends FileUpload
+    {
+        APKUpdate(String dirPath)
+        {
+            super(dirPath);
+        }
+        /**
+         * The APK is invalid remove it and return a response.
+         *
+         * @param filename name of the APK file
+         * @param extraError any extra information that should be returned in the response text
+         *
+         * @return an Internal Error with a description of what went wrong
+         */
+        private Response invaildAPK(String filename, String extraError)
+        {
+            RobotLog.ii(TAG, "Invalid APK removing from file system");
+            final File toDelete = new File(dirPath, filename);
+            final boolean isRemoved = toDelete.delete();
+            if(!isRemoved)
+            {
+                RobotLog.ii(TAG, "Invalid APK can not be removed");
+            }
+            return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Invalid APK, " + extraError);
+        }
+        /**
+         * Generate a description of the APK.
+         *
+         * @param filePath absolute path to APK
+         * @param info APK Package information that is used to generate the description
+         *
+         * @return the empty string if the candidate has a proper meta tag and a full
+         * description otherwise.
+         */
+        private String getDescription(String filePath, PackageInfo info)
+        {
+            final StringBuilder desc = new StringBuilder();
+            desc.append(filePath).append(System.lineSeparator());
+            desc.append(info.packageName).append(System.lineSeparator());
+            boolean isValidToInstall = false;
+            for (ActivityInfo activityInfo : info.activities)
+            {
+                if (activityInfo.metaData != null)
+                {
+                    if (activityInfo.metaData.getBoolean("org.firstinspires.main.entry", false))
+                    {
+                        desc.append(info.packageName).append("/").append(activityInfo.name).append(System.lineSeparator());
+                        isValidToInstall = true;
+                    }
+                }
+            }
+            if(isValidToInstall)
+            {
+                return desc.toString();
+            }
+            return "";
+        }
+        /**
+         * Attempt to write the description to a file.
+         *
+         * @param filename name of APK
+         * @param desc generated description of APK
+         *
+         * @return An "OK" response if the write succeeded and "ERROR" otherwise.
+         */
+        private Response writeDescriptionFile(String filename, String desc)
+        {
+            final int lastDot = filename.lastIndexOf('.');
+            final String descFileName = filename.substring(0, lastDot) + ".des";
+            final File toWrite = new File(dirPath, descFileName);
+            try (final Writer writer = new FileWriter(toWrite))
+            {
+                writer.write(desc);
+                return WebHandlerManager.OK_RESPONSE;
+            } catch (IOException e)
+            {
+                RobotLog.ii(TAG, e.getMessage());
+                return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", e.getMessage());
+            }
+        }
+        /**
+         * Build a description of the APK that is being installed.
+         * The format of this file follows where each new line implies there is a line separator:
+         * ___________________________________________________
+         * FilePath of APK
+         * Package Name of APK
+         * Activity Manager Path (Main entry point for APK)
+         *
+         * ___________________________________________________
+         *
+         * @param filename name of the file that is being
+         */
+        private Response writeDescription(final String filename)
+        {
+            final PackageManager pm = AppUtil.getInstance().getActivity().getPackageManager();
+            final String filePath = dirPath + "/" + filename;
+            final PackageInfo info = pm.getPackageArchiveInfo(filePath, PackageManager.GET_ACTIVITIES | PackageManager.GET_META_DATA);
+            if (info == null) // Turns out we do not have a valid APK at this point
+            {
+                return invaildAPK(filename, "Error 1");
+            }
+            else
+            {
+                final String desc = getDescription(filePath, info); // generate a description file
+                final boolean isNotValid = desc.isEmpty();
+                if (isNotValid) // We don't have the proper tag - give up
+                {
+                    return invaildAPK(filename, "Error 2");
+                }
+                else
+                {
+                    return writeDescriptionFile(filename, desc);
+                }
+            }
+        }
+        @Override
+        public Response hook(String fileName)
+        {
+            return writeDescription(fileName);
         }
     }
 
