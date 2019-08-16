@@ -21,7 +21,7 @@ written permission.
 NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS
 LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
 "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESSFOR A PARTICULAR PURPOSE
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
 ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
 FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
 DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
@@ -45,7 +45,6 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.content.res.Configuration;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbManager;
 import android.os.AsyncTask;
@@ -53,6 +52,9 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
+import android.os.Looper;
+import android.os.Parcel;
+import android.os.ResultReceiver;
 import android.support.annotation.ColorInt;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
@@ -146,6 +148,7 @@ public class AppUtil
     public static final File UPDATES_DIR = new File(FIRST_FOLDER, "/updates/");
     public static final File RC_APP_UPDATE_DIR = new File(UPDATES_DIR, "/Robot Controller Application/");
     public static final File LYNX_FIRMWARE_UPDATE_DIR = new File(UPDATES_DIR, "/Expansion Hub Firmware/");
+    public static final File OTA_UPDATE_DIR = new File(Environment.getExternalStorageDirectory(), "/OTA-Updates");
 
     /** {@link #SOUNDS_DIR} is used by the SoundPlayer. {@link #SOUNDS_CACHE} is a cache of remoted sounds */
     public static final File SOUNDS_DIR = new File(FIRST_FOLDER, "sounds");
@@ -1383,28 +1386,15 @@ public class AppUtil
      */
     public void showToast(UILocation uiLocation, String msg)
         {
-        showToast(uiLocation, getActivity(), getApplication(), msg);
+        showToast(uiLocation, msg, Toast.LENGTH_SHORT);
         }
-    public void showToast(UILocation uiLocation, String msg, int duration)
+    public void showToast(final UILocation uiLocation, final String msg, final int duration)
         {
-        showToast(uiLocation, getActivity(), getApplication(), msg, duration);
-        }
-    public void showToast(UILocation uiLocation, Context context, String msg )
-        {
-        showToast(uiLocation, getActivity(), context, msg);
-        }
-    public void showToast(UILocation uiLocation, final Activity activity, Context context, String msg)
-        {
-        showToast(uiLocation, activity, context, msg, Toast.LENGTH_SHORT);
-        }
-
-    public void showToast(UILocation uiLocation, final Activity activity, final Context context, final String msg, final int duration)
-        {
-        activity.runOnUiThread(new Runnable()
+        new Handler(Looper.getMainLooper()).post(new Runnable()
             {
             @Override public void run()
                 {
-                Toast toast = Toast.makeText(context, msg, duration);
+                Toast toast = Toast.makeText(getDefContext(), msg, duration);
                 TextView message = (TextView) toast.getView().findViewById(android.R.id.message);
                 message.setTextColor(getColor(R.color.text_toast));
                 message.setTextSize(18);
@@ -1419,6 +1409,25 @@ public class AppUtil
             showToast.duration = duration;
             NetworkConnectionHandler.getInstance().sendCommand(new Command(RobotCoreCommandList.CMD_SHOW_TOAST, showToast.serialize()));
             }
+        }
+
+    // We always ignore any provided activity and context values. It's safest to always use the
+    // application context, and to access the main thread without interacting with the lifecycle
+    // of a particular activity.
+    @Deprecated
+    public void showToast(UILocation uiLocation, Context context, String msg )
+        {
+        showToast(uiLocation, msg);
+        }
+    @Deprecated
+    public void showToast(UILocation uiLocation, final Activity activity, Context context, String msg)
+        {
+        showToast(uiLocation, msg);
+        }
+    @Deprecated
+    public void showToast(UILocation uiLocation, final Activity activity, final Context context, final String msg, final int duration)
+        {
+        showToast(uiLocation, msg, duration);
         }
 
     //----------------------------------------------------------------------------------------------
@@ -1503,6 +1512,11 @@ public class AppUtil
                 {
                 RobotLog.vv(TAG, "rootActivity=%s destroyed", rootActivity.getClass().getSimpleName());
                 rootActivity = null;
+
+                /*
+                 * Don't leave us without a root activity.
+                 */
+                initializeRootActivityIfNecessary();
                 }
             }
         }
@@ -1562,8 +1576,6 @@ public class AppUtil
         calendar.setTimeInMillis(millis);
         return calendar.get(GregorianCalendar.YEAR) > 1975;
         }
-
-    private native boolean nativeSetCurrentTimeMillis(long millis);
 
     //----------------------------------------------------------------------------------------------
     // System
@@ -1625,6 +1637,28 @@ public class AppUtil
         RobotLog.ee(tag, throwable, message);
         exitApplication(-1);
         return new RuntimeException("keep compiler happy", throwable);
+        }
+
+    private native boolean nativeSetCurrentTimeMillis(long millis);
+
+    static
+        {
+        System.loadLibrary("RobotCore");
+        }
+
+    //----------------------------------------------------------------------------------------------
+    // Inter-Process Communication
+    //----------------------------------------------------------------------------------------------
+
+    // https://stackoverflow.com/a/12183036
+    public static ResultReceiver wrapResultReceiverForIpc(ResultReceiver actualReceiver)
+        {
+        Parcel parcel = Parcel.obtain();
+        actualReceiver.writeToParcel(parcel, 0);
+        parcel.setDataPosition(0);
+        ResultReceiver receiverForSending = ResultReceiver.CREATOR.createFromParcel(parcel);
+        parcel.recycle();
+        return receiverForSending;
         }
 
     }

@@ -44,6 +44,7 @@ import java.net.InetAddress;
 public abstract class NetworkConnection {
 
   private final static int GHZ_24_BASE_FREQ = 2407;
+  private final static int GHZ_50_BASE_FREQ = 5000;
 
   public enum NetworkEvent {
     DISCOVERING_PEERS,
@@ -95,6 +96,8 @@ public abstract class NetworkConnection {
 
   public abstract void connect(String connectionName, String connectionPassword);
 
+  public abstract void detectWifiReset();
+
   public abstract InetAddress getConnectionOwnerAddress();
 
   public abstract String getConnectionOwnerName();
@@ -112,6 +115,8 @@ public abstract class NetworkConnection {
   public abstract String getPassphrase();
 
   public abstract WifiDirectAssistant.ConnectStatus getConnectStatus();
+
+  public abstract void onWaitForConnection();
 
   /**
    * Return true if the device name is valid. A valid device name is greater
@@ -148,7 +153,9 @@ public abstract class NetworkConnection {
     /*
      * Formula here taken from ieee 802.11 spec.
      */
-    if (freq >= GHZ_24_BASE_FREQ) {
+    if (freq >= GHZ_50_BASE_FREQ) {
+      return (freq - GHZ_50_BASE_FREQ) / 5;
+    } else if (freq >= GHZ_24_BASE_FREQ) {
       return (freq - GHZ_24_BASE_FREQ) / 5;
     } else {
       return 0;

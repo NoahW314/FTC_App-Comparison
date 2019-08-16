@@ -5,14 +5,14 @@ package org.firstinspires.ftc.robotcore.internal.webserver;
 import com.qualcomm.robotcore.hardware.configuration.LynxConstants;
 
 import org.firstinspires.ftc.robotcore.internal.collections.SimpleGson;
+import org.firstinspires.ftc.robotcore.internal.hardware.android.AndroidBoard;
 import org.firstinspires.ftc.robotcore.internal.network.DeviceNameManagerFactory;
-import org.firstinspires.ftc.robotcore.internal.network.WifiDirectDeviceNameManager;
+import org.firstinspires.ftc.robotcore.internal.network.WifiUtil;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
-
-import fi.iki.elonen.NanoHTTPD;
+import java.util.Map;
 
 /**
  * A class that contains various information about the robot controller's web server
@@ -34,6 +34,9 @@ public class RobotControllerWebInfo {
   private final long timeServerStartedMillis;
   private final String timeServerStarted;
   private final boolean isREVControlHub;
+  private final boolean supports5GhzAp;
+  private final boolean appUpdateRequiresReboot;
+  private final boolean supportsOtaUpdate;
   private FtcUserAgentCategory ftcUserAgentCategory;
 
   public RobotControllerWebInfo(
@@ -47,6 +50,9 @@ public class RobotControllerWebInfo {
     this.timeServerStartedMillis = timeServerStartedMillis;
     this.isREVControlHub = LynxConstants.isRevControlHub();
     this.ftcUserAgentCategory = FtcUserAgentCategory.OTHER;
+    this.supports5GhzAp = WifiUtil.is5GHzAvailable();
+    this.appUpdateRequiresReboot = !AndroidBoard.getInstance().hasControlHubUpdater(); // The Control Hub Updater replaces the old update method, which required a reboot
+    this.supportsOtaUpdate = AndroidBoard.getInstance().hasControlHubUpdater();        // The Control Hub Updater enables the RC app to start OTA updates
 
     SimpleDateFormat formatter = new SimpleDateFormat("MMM dd, h:mm aa", Locale.getDefault());
     this.timeServerStarted = formatter.format(new Date(timeServerStartedMillis));
@@ -88,9 +94,22 @@ public class RobotControllerWebInfo {
     return isREVControlHub;
   }
 
-  public void setFtcUserAgentCategory(NanoHTTPD.IHTTPSession session) {
-    String userAgent = session.getHeaders().get("user-agent");
-    this.ftcUserAgentCategory =FtcUserAgentCategory.fromUserAgent(userAgent);
+  public boolean is5GhzApSupported() {
+    return supports5GhzAp;
+  }
+
+  public boolean doesAppUpdateRequireReboot() {
+    return appUpdateRequiresReboot;
+  }
+
+  public boolean isOtaUpdateSupported() {
+    return supportsOtaUpdate;
+  }
+
+  // todo: fix realign the types of the input
+  public void setFtcUserAgentCategory(Map<String, String> session) {
+    String userAgent = session.get("user-agent");
+    this.ftcUserAgentCategory = FtcUserAgentCategory.fromUserAgent(userAgent);
   }
 
   public String toJson() {
@@ -100,5 +119,4 @@ public class RobotControllerWebInfo {
   public static RobotControllerWebInfo fromJson(String json) {
     return SimpleGson.getInstance().fromJson(json, RobotControllerWebInfo.class);
   }
-
 }

@@ -21,7 +21,7 @@ written permission.
 NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS
 LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
 "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESSFOR A PARTICULAR PURPOSE
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
 ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
 FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
 DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
@@ -147,6 +147,16 @@ public class PreferenceRemoterDS extends PreferenceRemoter
                 // Can't have sound on if they have no speaker
                 preferencesHelper.writeBooleanPrefIfDifferent(context.getString(R.string.pref_sound_on_off_rc), false);
                 }
+            }
+
+        else if (rcPrefAndValue.getPrefName().equals(context.getString(R.string.pref_wifip2p_channel)))
+            {
+            // display channel for now.
+            int prefChannel = (int)rcPrefAndValue.getValue();
+            RobotLog.vv(TAG, "pref_wifip2p_channel: prefChannel = %d", prefChannel);
+
+            // write this value so we can refer to it later on.
+            preferencesHelper.writeIntPrefIfDifferent("pref_wifip2p_channel", prefChannel);
             }
 
         else if (rcPrefAndValue.getPrefName().equals(context.getString(R.string.pref_has_speaker)))

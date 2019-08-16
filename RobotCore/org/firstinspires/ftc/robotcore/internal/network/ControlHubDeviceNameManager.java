@@ -21,7 +21,7 @@ written permission.
 NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS
 LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
 "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESSFOR A PARTICULAR PURPOSE
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
 ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
 FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
 DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
@@ -35,11 +35,12 @@ package org.firstinspires.ftc.robotcore.internal.network;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.os.Build;
 import android.preference.PreferenceManager;
 import android.support.annotation.NonNull;
 
 import com.qualcomm.robotcore.R;
+import com.qualcomm.robotcore.util.AndroidSerialNumberNotFoundException;
+import com.qualcomm.robotcore.util.Device;
 import com.qualcomm.robotcore.util.Intents;
 import com.qualcomm.robotcore.util.RobotLog;
 import com.qualcomm.robotcore.util.ShortHash;
@@ -59,6 +60,7 @@ public class ControlHubDeviceNameManager implements DeviceNameManager {
 
     private static final ControlHubDeviceNameManager theInstance = new ControlHubDeviceNameManager();
     private static final String TAG = NetworkDiscoveryManager.TAG + "_ControlHubNameManager";
+    private static final String MISSING_SERIAL_SSID = "FTC-MISSING-SERIAL";
     private static final int MAX_SSID_CHARS = 4;
 
     private String deviceName;
@@ -112,7 +114,16 @@ public class ControlHubDeviceNameManager implements DeviceNameManager {
      */
     protected String handleFactoryReset()
     {
-        String serialNumber = Build.SERIAL;
+        RobotLog.dd(TAG, "handleFactoryReset");
+        String serialNumber = null;
+        try {
+            serialNumber = Device.getSerialNumber();
+        } catch (AndroidSerialNumberNotFoundException e) {
+            RobotLog.ee(TAG, "Failed to find Android serial number. Setting SSID to " + MISSING_SERIAL_SSID);
+            return MISSING_SERIAL_SSID;
+        }
+
+        RobotLog.dd(TAG, "Serial: %s", serialNumber);
         CRC32 serialCrc32 = new CRC32();
         ShortHash hashid = new ShortHash("FiRsTiNsPiReS");
         int base = hashid.getAlphabetLength();
@@ -198,17 +209,22 @@ public class ControlHubDeviceNameManager implements DeviceNameManager {
     {
         RobotLog.ii(TAG, "Robot controller name: " + deviceName);
 
-        // pref_device_name_internal is only ever set here. So our really did change if and only
+        // Even if the name isn't changing on our end, we should take this opportunity to make sure
+        // the AP service has the correct information, as is done by ControlHubPasswordManager.
+
+        Intent intent = new Intent(Intents.ACTION_FTC_AP_NAME_CHANGE);
+        intent.putExtra(Intents.EXTRA_AP_PREF, deviceName);
+        context.sendBroadcast(intent);
+
+        // pref_device_name_internal is only ever set here. So our name really did change if and only
         // if that property changed.
         if (preferencesHelper.writeStringPrefIfDifferent(context.getString(R.string.pref_device_name_internal), deviceName)) {
             // Make sure that the non-internal notion of the name tracks that
             preferencesHelper.writeStringPrefIfDifferent(context.getString(R.string.pref_device_name), deviceName);
+
             // Do internal bookkeeping
             this.deviceName = deviceName;
-            // Tell the access point
-            Intent intent = new Intent(Intents.ACTION_FTC_AP_NAME_CHANGE);
-            intent.putExtra(Intents.EXTRA_AP_PREF, deviceName);
-            context.sendBroadcast(intent);
+
             // Tell our listeners
             callbacks.callbacksDo(new Consumer<DeviceNameListener>() {
                 @Override public void accept(DeviceNameListener callback) {

@@ -21,7 +21,7 @@ written permission.
 NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS
 LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
 "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESSFOR A PARTICULAR PURPOSE
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
 ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
 FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
 DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
@@ -31,6 +31,9 @@ TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package com.qualcomm.robotcore.hardware.configuration;
+
+import android.os.Build;
+import android.support.annotation.Nullable;
 
 import com.qualcomm.robotcore.util.SerialNumber;
 
@@ -45,15 +48,46 @@ public class LynxConstants
     {
     public static final String TAG = "LynxConstants";
 
-    /** Are we running on a Dragonboard / Lynx combo device */
+    public static final int DRAGONBOARD_CH_VERSION = 0;
+    private static final String DRAGONBOARD_MODEL = "FIRST Control Hub";
+
+    /** Are we running on an Android / Lynx combo device */
     public static boolean isRevControlHub()
         {
         return SystemProperties.getBoolean("persist.ftcandroid.serialasusb", false);
         }
 
+    /** Returns the version of the Control Hub for the purpose of identifying software compatibility.
+     *
+     *  Increasing the CH version number in the OS means that new versions of the SDK and AP service
+     *  will need to be released. Specifically, AndroidBoard.getInstance must be modified to support
+     *  the new version number, and the value of the `org.firstinspires.latestSupportedControlHubVersion`
+     *  meta-data tag in the manifests must be increased. */
+    public static int getControlHubVersion()
+        {
+        int version = SystemProperties.getInt("ro.ftcandroid.controlhubversion", -1);
+        if (version == -1)
+            {
+            if (Build.MODEL.equalsIgnoreCase(DRAGONBOARD_MODEL))
+                {
+                version = DRAGONBOARD_CH_VERSION; // The Dragonboard doesn't have ro.ftcandroid.controlhubversion set.
+                }
+            }
+        return version;
+        }
+
+    /** Get the Control Hub OS version. Returns null if OS version property is not set.
+     *
+     * Value is human-readable, do not attempt to parse.
+     * Use ro.build.date.utc to differentiate between OS versions programmatically. */
+    @Nullable public static String getControlHubOsVersion()
+        {
+        return SystemProperties.get("ro.controlhub.os.version", null);
+        }
+
     /** When running on a Dragonboard / Lynx combo device, should the Dragonboard pretend
      * that it's not there and thus allow the Lynx to be used as an stand-alone extension? */
-    public static boolean disableDragonboard()
+    public static boolean shouldDisableAndroidBoard()
         {
         return SystemProperties.getBoolean("persist.ftcandroid.db.disable", false);
         }

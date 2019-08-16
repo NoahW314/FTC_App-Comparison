@@ -21,7 +21,7 @@ written permission.
 NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS
 LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
 "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESSFOR A PARTICULAR PURPOSE
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
 ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
 FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
 DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
@@ -66,6 +66,7 @@ import com.qualcomm.hardware.lynx.commands.core.LynxSetMotorTargetPositionComman
 import com.qualcomm.hardware.lynx.commands.core.LynxSetMotorTargetVelocityCommand;
 import com.qualcomm.hardware.lynx.commands.standard.LynxNack;
 import com.qualcomm.robotcore.exception.RobotCoreException;
+import com.qualcomm.robotcore.exception.TargetPositionNotSetException;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorController;
 import com.qualcomm.robotcore.hardware.DcMotorControllerEx;
@@ -220,8 +221,20 @@ public class LynxDcMotorController extends LynxController implements DcMotorCont
                 if (DEBUG) RobotLog.vv(TAG,"setMotorEnable mod=%d motor=%d enable=%s", getModuleAddress(), motorZ, ((Boolean) enable).toString());
                 command.send();
                 }
-            catch (InterruptedException|RuntimeException|LynxNackException e)
-                { 
+            catch (LynxNackException e)
+                {
+                LynxNack.ReasonCode reason = e.getNack().getNackReasonCode();
+                if (reason == LynxNack.ReasonCode.MOTOR_NOT_CONFIG_BEFORE_ENABLED)
+                    {
+                    throw new TargetPositionNotSetException();
+                    }
+                else
+                    {
+                    handleException(e);
+                    }
+                }
+            catch (InterruptedException|RuntimeException e)
+                {
                 handleException(e); 
                 }
             }

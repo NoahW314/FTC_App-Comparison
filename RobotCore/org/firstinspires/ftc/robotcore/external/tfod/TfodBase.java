@@ -24,7 +24,7 @@ import org.firstinspires.ftc.robotcore.external.tfod.TFObjectDetector;
 import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 
 /**
- * An abstract base class that provides simplified access to Tensor Flow Object Detection.
+ * An abstract base class that provides simplified access to TensorFlow Object Detection.
  *
  * @author lizlooney@google.com (Liz Looney)
  */
@@ -40,7 +40,7 @@ public abstract class TfodBase {
   }
 
   /**
-   * Initializes Tensor Flow Object Detection.
+   * Initializes TensorFlow Object Detection.
    */
   public void initialize(VuforiaBase vuforiaBase, float minimumConfidence, boolean useObjectTracker,
       boolean enableCameraMonitoring) {
@@ -79,6 +79,18 @@ public abstract class TfodBase {
       throw new IllegalStateException("You forgot to call Tfod.initialize!");
     }
     tfod.deactivate();
+  }
+
+  /**
+   * Sets the number of pixels to obscure on the left, top, right, and bottom edges of each image
+   * passed to the TensorFlow object detector. The size of the images are not changed, but the
+   * pixels in the margins are colored black.
+   */
+  public void setClippingMargins(int left, int top, int right, int bottom) {
+    if (tfod == null) {
+      throw new IllegalStateException("You forgot to call Tfod.initialize!");
+    }
+    tfod.setClippingMargins(left, top, right, bottom);
   }
 
   /**

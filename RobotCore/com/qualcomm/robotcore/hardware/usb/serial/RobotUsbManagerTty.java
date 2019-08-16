@@ -21,7 +21,7 @@ written permission.
 NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS
 LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
 "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESSFOR A PARTICULAR PURPOSE
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
 ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
 FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
 DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
@@ -41,8 +41,9 @@ import com.qualcomm.robotcore.hardware.configuration.LynxConstants;
 import com.qualcomm.robotcore.hardware.usb.RobotUsbDevice;
 import com.qualcomm.robotcore.hardware.usb.RobotUsbDeviceImplBase;
 import com.qualcomm.robotcore.hardware.usb.RobotUsbManager;
+
+import org.firstinspires.ftc.robotcore.internal.hardware.android.AndroidBoard;
 import org.firstinspires.ftc.robotcore.internal.usb.exception.RobotUsbException;
-import com.qualcomm.robotcore.util.RobotLog;
 import com.qualcomm.robotcore.util.SerialNumber;
 
 import java.io.File;
@@ -100,7 +101,7 @@ public class RobotUsbManagerTty implements RobotUsbManager
                 {
                 if (!RobotUsbDeviceImplBase.isOpen(serialNumber))
                     {
-                    File file = findSerialDevTty();
+                    File file = AndroidBoard.getInstance().getUartLocation();
                     SerialPort serialPort = null;
                     try {
                         serialPort = new SerialPort(file, LynxConstants.SERIAL_MODULE_BAUD_RATE);
@@ -123,35 +124,4 @@ public class RobotUsbManagerTty implements RobotUsbManager
             throw new RobotCoreException(TAG, "%s not found", serialNumber);
             }
         }
-
-    //----------------------------------------------------------------------------------------------
-    // Utility
-    //----------------------------------------------------------------------------------------------
-
-    private static File findSerialDevTty()
-        {
-        // Older versions of Dragonboard software have the serial port named “/dev/ttyHS0”, while new
-        // versions have the name “/dev/ttyHS4”. Try that guy explicitly, first.
-        File result = new File("/dev/ttyHS4");
-        if (result.exists())
-            {
-            RobotLog.vv(RobotUsbDeviceTty.TAG, "using serial tty=" + result.getAbsolutePath());
-            return result;
-            }
-
-        // If we can't find that guy, that'd be odd, but let's just see who we *can* find
-        // and hope for the best.
-        for (int i = 0; i <= 255; i++) // per AOSP\kernel\Documentation\devicetree\bindings\tty\serial\msm_serial_hs.txt
-            {
-            String path = "/dev/ttyHS" + i;
-            result = new File(path);
-            if (result.exists())
-                {
-                RobotLog.vv(RobotUsbDeviceTty.TAG, "using serial tty=" + result.getAbsolutePath());
-                return result;
-                }
-            }
-        throw new RuntimeException("unable to locate Lynx serial /dev/ttyHSx");
-        }
-
     }

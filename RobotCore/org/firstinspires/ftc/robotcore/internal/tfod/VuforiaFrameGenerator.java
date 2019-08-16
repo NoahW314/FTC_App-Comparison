@@ -35,8 +35,9 @@ public class VuforiaFrameGenerator implements FrameGenerator {
 
   private final BlockingQueue<VuforiaLocalizer.CloseableFrame> frameQueue;
   private final CameraInformation cameraInformation;
+  private final ClippingMargins clippingMargins;
 
-  public VuforiaFrameGenerator(VuforiaLocalizer vuforia, int rotation) {
+  public VuforiaFrameGenerator(VuforiaLocalizer vuforia, int rotation, ClippingMargins clippingMargins) {
     // We only use RGB565, but if I don't include YUV, the Vuforia camera monitor looks crazy.
     boolean[] results = vuforia.enableConvertFrameToFormat(PIXEL_FORMAT.RGB565, PIXEL_FORMAT.YUV);
     if (!results[0]) { // Failed to get Vuforia to convert to RGB565.
@@ -61,6 +62,8 @@ public class VuforiaFrameGenerator implements FrameGenerator {
     */
 
     cameraInformation = new CameraInformation(rotation, focalLength[0], focalLength[1], (int) size[0], (int) size[1]);
+
+    this.clippingMargins = clippingMargins;
   }
 
   @Override
@@ -77,7 +80,8 @@ public class VuforiaFrameGenerator implements FrameGenerator {
     for (int i = 0; i < vuforiaFrame.getNumImages(); i++) {
       Image image = vuforiaFrame.getImage(i);
       if (image.getFormat() == PIXEL_FORMAT.RGB565) {
-        return new YuvRgbFrame(frameTimeNanos, cameraInformation.size, image.getPixels());
+        return new YuvRgbFrame(frameTimeNanos, cameraInformation.size, image.getPixels(),
+            clippingMargins);
       }
     }
 

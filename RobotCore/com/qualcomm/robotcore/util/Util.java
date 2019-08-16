@@ -132,4 +132,13 @@ public class Util {
     }
   }
 
+  public static boolean isGoodString(String string) {
+    if (string == null)
+      return false;
+    if (!string.trim().equals(string))
+      return false;
+    if (string.length() == 0)
+      return false;
+    return true;
+  }
 }

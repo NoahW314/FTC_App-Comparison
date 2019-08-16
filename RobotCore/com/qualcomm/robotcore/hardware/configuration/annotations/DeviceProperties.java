@@ -65,7 +65,7 @@ public @interface DeviceProperties {
     String name();
 
     /**
-     * Specifies a brief phrase that states the type of device.
+     * Specifies a brief phrase that states the type of device. For example "a REV color sensor".
      */
     String description() default "";
 

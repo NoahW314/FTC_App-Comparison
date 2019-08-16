@@ -291,7 +291,7 @@ public class FtcConfigurationActivity extends EditActivity implements RecvLoopRu
         }
       else {
         RobotLog.ee(TAG, "scan for devices on USB bus failed");
-        appUtil.showToast(UILocation.ONLY_LOCAL, context, getString(R.string.ftcConfigScanningFailed));
+        appUtil.showToast(UILocation.ONLY_LOCAL, getString(R.string.ftcConfigScanningFailed));
       }
 
     } catch (InterruptedException e) {
@@ -382,7 +382,7 @@ public class FtcConfigurationActivity extends EditActivity implements RecvLoopRu
     } catch (Exception e) {
       String message = String.format(getString(R.string.errorParsingConfiguration), currentCfgFile.getName());
       RobotLog.ee(TAG, e, message);
-      appUtil.showToast(UILocation.ONLY_LOCAL, context, message);
+      appUtil.showToast(UILocation.ONLY_LOCAL, message);
     }
   }
 
@@ -655,7 +655,7 @@ public class FtcConfigurationActivity extends EditActivity implements RecvLoopRu
         if (!checkResult.success) {
           // User hasn't given us file name that works
           String message = String.format(checkResult.errorFormat, newConfigurationName);
-          appUtil.showToast(UILocation.ONLY_LOCAL, context, String.format("%s %s", message, getString(R.string.configurationNotSaved)));
+          appUtil.showToast(UILocation.ONLY_LOCAL, String.format("%s %s", message, getString(R.string.configurationNotSaved)));
           return;
         }
 
@@ -675,7 +675,7 @@ public class FtcConfigurationActivity extends EditActivity implements RecvLoopRu
           RobotLog.ee(TAG, e.getMessage());
           return;
         } catch (RobotCoreException|IOException e) {
-          appUtil.showToast(UILocation.ONLY_LOCAL, context, e.getMessage());
+          appUtil.showToast(UILocation.ONLY_LOCAL, e.getMessage());
           RobotLog.ee(TAG, e.getMessage());
           return;
         }

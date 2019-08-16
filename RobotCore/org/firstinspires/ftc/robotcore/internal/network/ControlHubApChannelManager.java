@@ -10,6 +10,8 @@ import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 
 public final class ControlHubApChannelManager implements ApChannelManager
 {
+    public final static int[] FIVE_GHZ_WIFI_CHANNELS = {36,40,44,48,149,153,157,161,165};
+
     private final static String TAG = "ControlHubApChannelManager";
     private final static int FACTORY_DEFAULT_AP_CHANNEL = 0;
     private Context context;
@@ -22,10 +24,19 @@ public final class ControlHubApChannelManager implements ApChannelManager
     private int validateChannel(String channel) {
         try {
             final int toRtn = Integer.valueOf(channel);
-            return (toRtn >= 0 && toRtn <= 11) ? toRtn : -1;
+            boolean valid24GhzChannel = toRtn >= 0 && toRtn <= 11;
+            boolean valid5GhzChannel = isValid5GhzChannel(toRtn);
+            return (valid24GhzChannel || valid5GhzChannel) ? toRtn : -1;
         } catch (NumberFormatException nfe) {
             return -1;
         }
+    }
+
+    private boolean isValid5GhzChannel(int channel) {
+        for (int legalChannel : FIVE_GHZ_WIFI_CHANNELS) {
+            if (channel == legalChannel) return true;
+        }
+        return false;
     }
 
     @Override

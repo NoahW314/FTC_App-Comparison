@@ -21,7 +21,7 @@ written permission.
 NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS
 LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
 "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESSFOR A PARTICULAR PURPOSE
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
 ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
 FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
 DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
@@ -40,6 +40,7 @@ import android.os.BatteryManager;
 import android.os.Build;
 
 import com.qualcomm.robotcore.hardware.HardwareMap;
+import com.qualcomm.robotcore.hardware.LynxModuleMeta;
 import com.qualcomm.robotcore.hardware.RobotCoreLynxModule;
 import com.qualcomm.robotcore.hardware.RobotCoreLynxUsbDevice;
 import com.qualcomm.robotcore.util.Device;
@@ -74,6 +75,8 @@ public class InspectionState
     public static final String driverStationPackage = "com.qualcomm.ftcdriverstation";
 
     public static final String noPackageVersion = "";
+    private static String firmwareInspectionVersion = "N/A";
+
 
     public String manufacturer;
     public String model;
@@ -108,21 +111,21 @@ public class InspectionState
         {
         }
 
-    public void initializeLocal(HardwareMap hardwareMap)
+    public void initializeLocal()
         {
         DeviceNameManager nameManager = DeviceNameManagerFactory.getInstance();
         StartResult startResult = new StartResult();
         nameManager.start(startResult);
-        initializeLocal(nameManager, hardwareMap);
+        initializeLocal(nameManager);
         nameManager.stop(startResult);
         }
 
-    public void initializeLocal(DeviceNameManager nameManager, HardwareMap hardwareMap)
+    public void initializeLocal(DeviceNameManager nameManager)
         {
         this.manufacturer = Build.MANUFACTURER;
         this.model = Build.MODEL;
         this.osVersion = Build.VERSION.RELEASE;
-        this.firmwareVersion = getFirmwareDisplayVersion(hardwareMap);
+        this.firmwareVersion = firmwareInspectionVersion;
         this.sdkInt = Build.VERSION.SDK_INT;
         this.airplaneModeOn = WifiUtil.isAirplaneModeOn();
         this.bluetoothOn = WifiUtil.isBluetoothOn();
@@ -223,76 +226,6 @@ public class InspectionState
             }
         }
 
-    /*
-     * getFirmwareVersions
-     *
-     * Returns a list of firmware versions for all connected expansion/control hubs
-     */
-    protected List<String> getFirmwareVersions(HardwareMap hardwareMap)
-        {
-        List<String> versions = new ArrayList<String>();
-
-        if (hardwareMap == null)
-            {
-            return versions;
-            }
-
-        List<RobotCoreLynxModule> lynxModules = hardwareMap.getAll(RobotCoreLynxModule.class);
-
-        for (RobotCoreLynxModule lynxModule : lynxModules)
-            {
-            versions.add(lynxModule.getFirmwareVersionString());
-            }
-            return versions;
-        }
-
-    /*
-     * getFirmwareDisplayVersion
-     *
-     * Returns displayable text that we can use for firmware version on the Inspection activity.
-     * For simplification purposes, this will be either the firmware string, or in the case of multiple
-     * hubs and mismatched firmare, the text "Mismatched".  This eliminates the need to have an arbitrary
-     * number of firmware entries but prompts the user to go look at the firmware on the user's hubs.
-     */
-    protected String getFirmwareDisplayVersion(HardwareMap hardwareMap)
-        {
-        List<String> versions = getFirmwareVersions(hardwareMap);
-        String first;
-
-        if (versions.isEmpty())
-            {
-            return "N/A";
-            }
-
-        if (versions.size() == 1)
-            {
-            return formatFirmwareVersion(versions.get(0));
-            }
-            else
-            {
-            first = versions.get(0);
-            for (String version : versions)
-                {
-                if (!version.equals(first))
-                    {
-                    return "Mismatched";
-                    }
-                }
-            return formatFirmwareVersion(first);
-            }
-        }
-
-    /*
-     * formatFirmwareVersion
-     *
-     * Strip the leading hardware revision, and all alphabetic chars.
-     */
-    protected String formatFirmwareVersion(String version)
-        {
-        String tmp = version.substring(version.indexOf(',')+1).replaceAll("[a-zA-Z: ]*", "").replaceAll(",", ".");
-        return tmp;
-        }
-
     protected boolean isAppInventorLocallyInstalled()
         {
         final PackageManager pm = AppUtil.getDefContext().getPackageManager();
@@ -321,8 +254,88 @@ public class InspectionState
         return SimpleGson.getInstance().toJson(this);
         }
 
+    //----------------------------------------------------------------------------------------------
+    // Firmware determination
+    //----------------------------------------------------------------------------------------------
+
     public static InspectionState deserialize(String serialized)
         {
         return SimpleGson.getInstance().fromJson(serialized, InspectionState.class);
         }
+
+    /*
+     * getFirmwareVersions
+     *
+     * Returns a list of firmware versions for all connected expansion/control hubs
+     */
+    protected static List<String> getFirmwareVersions(HardwareMap hardwareMap)
+        {
+        List<String> versions = new ArrayList<String>();
+
+        if (hardwareMap == null)
+            {
+            return versions;
+            }
+
+        List<RobotCoreLynxModule> lynxModules = hardwareMap.getAll(RobotCoreLynxModule.class);
+
+        for (RobotCoreLynxModule lynxModule : lynxModules)
+            {
+            versions.add(lynxModule.getFirmwareVersionString());
+            }
+        return versions;
+        }
+
+    /*
+     * getFirmwareDisplayVersion
+     *
+     * Returns displayable text that we can use for firmware version on the Inspection activity.
+     * For simplification purposes, this will be either the firmware string, or in the case of multiple
+     * hubs and mismatched firmare, the text "Mismatched".  This eliminates the need to have an arbitrary
+     * number of firmware entries but prompts the user to go look at the firmware on the user's hubs.
+     */
+    public static String getFirmwareInspectionVersion(HardwareMap hardwareMap)
+        {
+        List<String> versions = getFirmwareVersions(hardwareMap);
+        String first;
+
+        if (versions.isEmpty())
+            {
+            return "N/A";
+            }
+
+        if (versions.size() == 1)
+            {
+            return formatFirmwareVersion(versions.get(0));
+            }
+        else
+            {
+            first = versions.get(0);
+            for (String version : versions)
+                {
+                if (!version.equals(first))
+                    {
+                    return "Mismatched";
+                    }
+                }
+            return formatFirmwareVersion(first);
+            }
+        }
+
+    public static void cacheFirmwareInspectionVersion(HardwareMap hardwareMap)
+        {
+        firmwareInspectionVersion = getFirmwareInspectionVersion(hardwareMap);
+        }
+
+    /*
+     * formatFirmwareVersion
+     *
+     * Strip the leading hardware revision, and all alphabetic chars.
+     */
+    protected static String formatFirmwareVersion(String version)
+        {
+        String tmp = version.substring(version.indexOf(',')+1).replaceAll("[a-zA-Z: ]*", "").replaceAll(",", ".");
+        return tmp;
+        }
+
     }

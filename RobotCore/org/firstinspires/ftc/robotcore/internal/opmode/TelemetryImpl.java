@@ -21,7 +21,7 @@ written permission.
 NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS
 LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
 "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESSFOR A PARTICULAR PURPOSE
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
 ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
 FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
 DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
@@ -35,12 +35,12 @@ package org.firstinspires.ftc.robotcore.internal.opmode;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 
-import com.android.internal.util.Predicate;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.robocol.TelemetryMessage;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
 import org.firstinspires.ftc.robotcore.external.Func;
+import org.firstinspires.ftc.robotcore.external.Predicate;
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 
 import java.util.ArrayList;
@@ -246,7 +246,7 @@ public class TelemetryImpl implements Telemetry, TelemetryInternal
                         }
                     else if (cur instanceof ItemImpl)
                         {
-                        if (predicate.apply((ItemImpl)cur))
+                        if (predicate.test((ItemImpl)cur))
                             {
                             list.remove(i);
                             result = true;
@@ -922,7 +922,7 @@ public class TelemetryImpl implements Telemetry, TelemetryInternal
             //
             this.lines.removeAllRecurse(new Predicate<ItemImpl>()
                 {
-                @Override public boolean apply(ItemImpl item)
+                @Override public boolean test(ItemImpl item)
                     {
                     return !item.isRetained();
                     }
@@ -940,7 +940,7 @@ public class TelemetryImpl implements Telemetry, TelemetryInternal
             this.actions.clear();
             this.lines.removeAllRecurse(new Predicate<ItemImpl>()
                 {
-                @Override public boolean apply(ItemImpl item)
+                @Override public boolean test(ItemImpl item)
                     {
                     return true;
                     }

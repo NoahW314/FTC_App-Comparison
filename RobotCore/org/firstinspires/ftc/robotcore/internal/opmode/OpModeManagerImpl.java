@@ -487,7 +487,7 @@ public class OpModeManagerImpl implements OpModeServices, OpModeManagerNotifier 
             }
 
             // Wait a touch for message to be seen
-            AppUtil.getInstance().showToast(UILocation.BOTH, context, String.format(context.getString(R.string.toastOpModeStuck), method));
+            AppUtil.getInstance().showToast(UILocation.BOTH, String.format(context.getString(R.string.toastOpModeStuck), method));
             Thread.sleep(1000);
 
             // Restart

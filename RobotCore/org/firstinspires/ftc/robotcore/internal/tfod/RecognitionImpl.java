@@ -59,7 +59,7 @@ class RecognitionImpl implements Recognition {
     updatedLocation = new RectF(location);
     switch (cameraInformation.rotation) {
       default:
-        throw new IllegalArgumentException("CameraInformation.rotation must be 0, 90, 180, or 2700.");
+        throw new IllegalArgumentException("CameraInformation.rotation must be 0, 90, 180, or 270.");
       case 0:
         frameHorizontalFocalLength = cameraInformation.horizontalFocalLength;
         frameWidth = cameraInformation.size.width;

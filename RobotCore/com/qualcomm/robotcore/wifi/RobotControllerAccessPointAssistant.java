@@ -21,7 +21,7 @@ written permission.
 NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS
 LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
 "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESSFOR A PARTICULAR PURPOSE
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
 ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
 FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
 DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
@@ -36,23 +36,27 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.net.wifi.WifiManager;
+import android.widget.Toast;
 
+import com.qualcomm.robotcore.hardware.configuration.LynxConstants;
+import com.qualcomm.robotcore.robocol.Command;
 import com.qualcomm.robotcore.util.Intents;
 import com.qualcomm.robotcore.util.RobotLog;
 
+import org.firstinspires.ftc.robotcore.internal.hardware.android.AndroidBoard;
 import org.firstinspires.ftc.robotcore.internal.network.ApChannelManager;
 import org.firstinspires.ftc.robotcore.internal.network.ApChannelManagerFactory;
 import org.firstinspires.ftc.robotcore.internal.network.DeviceNameManager;
 import org.firstinspires.ftc.robotcore.internal.network.DeviceNameManagerFactory;
+import org.firstinspires.ftc.robotcore.internal.network.NetworkConnectionHandler;
 import org.firstinspires.ftc.robotcore.internal.network.PasswordManager;
 import org.firstinspires.ftc.robotcore.internal.network.PasswordManagerFactory;
-import org.firstinspires.ftc.robotcore.internal.network.StartResult;
+import org.firstinspires.ftc.robotcore.internal.network.RobotCoreCommandList;
+import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
+import org.firstinspires.ftc.robotcore.internal.ui.UILocation;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
 
 public class RobotControllerAccessPointAssistant extends AccessPointAssistant {
 
@@ -67,6 +71,8 @@ public class RobotControllerAccessPointAssistant extends AccessPointAssistant {
     private PasswordManager passwordManager = PasswordManagerFactory.getInstance();
     private ApChannelManager apChannelManager = ApChannelManagerFactory.getInstance();
 
+    private final Object enableDisableLock = new Object();
+
     public static final int WIFI_AP_STATE_DISABLED = 11;
     public static final int WIFI_AP_STATE_ENABLED = 13;
 
@@ -76,7 +82,7 @@ public class RobotControllerAccessPointAssistant extends AccessPointAssistant {
 
         intentFilter = new IntentFilter();
         intentFilter.addAction(Intents.ANDROID_ACTION_WIFI_STATE_CHANGED);
-        intentFilter.addAction(Intents.ACTION_FTC_FACTORY_RESET);
+        intentFilter.addAction(Intents.ACTION_FTC_WIFI_FACTORY_RESET);
     }
 
     /**
@@ -119,6 +125,13 @@ public class RobotControllerAccessPointAssistant extends AccessPointAssistant {
     private void handleFactoryReset()
     {
         RobotLog.ww(TAG, "Received request to do access point factory reset");
+        AppUtil.getInstance().showToast(UILocation.BOTH, "Resetting access point to default name and password", Toast.LENGTH_LONG);
+        NetworkConnectionHandler.getInstance().injectReceivedCommand(new Command(RobotCoreCommandList.CMD_VISUALLY_CONFIRM_WIFI_RESET));
+        try {
+            Thread.sleep(400); // Make sure the Driver Station gets the toast
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
         nameManager.resetDeviceName();
         passwordManager.resetPassword();
         apChannelManager.resetChannel();
@@ -134,19 +147,21 @@ public class RobotControllerAccessPointAssistant extends AccessPointAssistant {
     @Override
     public void enable()
     {
-        if (receiver == null) {
-            RobotLog.ii(TAG, "Enabling network services");
-            receiver = new BroadcastReceiver() {
-                @Override
-                public void onReceive(Context context, Intent intent) {
-                    if (intent.getAction().equals(Intents.ANDROID_ACTION_WIFI_STATE_CHANGED)) {
-                        handleWifiStateChange(intent);
-                    } else if (intent.getAction().equals(Intents.ACTION_FTC_FACTORY_RESET)) {
-                        handleFactoryReset();
+        synchronized (enableDisableLock) {
+            if (receiver == null) {
+                RobotLog.ii(TAG, "Enabling network services");
+                receiver = new BroadcastReceiver() {
+                    @Override
+                    public void onReceive(Context context, Intent intent) {
+                        if (intent.getAction().equals(Intents.ANDROID_ACTION_WIFI_STATE_CHANGED)) {
+                            handleWifiStateChange(intent);
+                        } else if (intent.getAction().equals(Intents.ACTION_FTC_WIFI_FACTORY_RESET)) {
+                            handleFactoryReset();
+                        }
                     }
-                }
-            };
-            context.registerReceiver(receiver, intentFilter);
+                };
+                context.registerReceiver(receiver, intentFilter);
+            }
         }
     }
 
@@ -158,8 +173,11 @@ public class RobotControllerAccessPointAssistant extends AccessPointAssistant {
     @Override
     public void disable()
     {
-        if (receiver != null) {
-            context.unregisterReceiver(receiver);
+        synchronized (enableDisableLock) {
+            if (receiver != null) {
+                context.unregisterReceiver(receiver);
+                receiver = null;
+            }
         }
     }
 
@@ -211,9 +229,44 @@ public class RobotControllerAccessPointAssistant extends AccessPointAssistant {
         }
     }
 
+    /**
+     * createConnection
+     *
+     * Sends the correct username and password info to the AP service
+     */
+    @Override
+    public void createConnection()
+    {
+        RobotLog.ii(TAG, "Sending SSID and password to AP service");
+        nameManager.setDeviceName(nameManager.getDeviceName());
+        passwordManager.setPassword(passwordManager.getPassword());
+    }
+
+    /**
+     * detectWifiReset
+     *
+     * Sends a WiFi factory reset intent if the Control Hub's button is being held down
+     */
+    @Override
+    public void detectWifiReset() {
+        RobotLog.dd("Noah", "detectWifiReset button=%b", AndroidBoard.getInstance().getUserButtonPin().getState());
+        if (LynxConstants.isRevControlHub() && AndroidBoard.getInstance().getUserButtonPin().getState()) {
+            RobotLog.ii(TAG, "Wifi settings reset requested through the Control Hub button");
+            Intent wifiResetIntent = new Intent(Intents.ACTION_FTC_WIFI_FACTORY_RESET);
+            context.sendBroadcast(wifiResetIntent);
+        }
+    }
+
     @Override
     public String getPassphrase()
     {
        return PasswordManagerFactory.getInstance().getPassword();
+    }
+
+    @Override
+    public void onWaitForConnection()
+    {
+        // While the AP is not yet started, we need to keep telling the AP service what the correct credentials are
+        createConnection();
     }
 }

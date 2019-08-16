@@ -21,7 +21,7 @@ written permission.
 NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS
 LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
 "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESSFOR A PARTICULAR PURPOSE
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
 ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
 FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
 DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
@@ -32,8 +32,12 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package com.qualcomm.hardware.lynx;
 
+import com.qualcomm.hardware.R;
 import com.qualcomm.hardware.lynx.commands.standard.LynxNack;
+import com.qualcomm.robotcore.exception.TargetPositionNotSetException;
 import com.qualcomm.robotcore.util.RobotLog;
+
+import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 
 /**
  * Created by bob on 2016-12-11.
@@ -84,6 +88,8 @@ public class LynxCommExceptionHandler
                 commandIsSupported = false;
                 }
             }
+        else if (e instanceof TargetPositionNotSetException) // Must be checked before RuntimeException
+            handleSpecificException((TargetPositionNotSetException)e);
         else if (e instanceof RuntimeException)
             handleSpecificException((RuntimeException)e);
         else
@@ -96,6 +102,12 @@ public class LynxCommExceptionHandler
     protected void handleSpecificException(InterruptedException e)
         {
         Thread.currentThread().interrupt();
+        }
+
+    protected void handleSpecificException(TargetPositionNotSetException e)
+        {
+        // We want TargetPositionNotSetExceptions to stop the OpMode and be seen by the user, so we re-throw
+        throw e;
         }
 
     protected void handleSpecificException(RuntimeException e)
@@ -122,6 +134,12 @@ public class LynxCommExceptionHandler
                 break;
             case PACKET_TYPE_ID_UNKNOWN:
                 RobotLog.ee(getTag(), "%s not supported by module mod#=%d cmd#=%d", nackException.getCommand().getClass().getSimpleName(), nackException.getNack().getModuleAddress(), nackException.getNack().getCommandNumber());
+                break;
+            case BATTERY_TOO_LOW_TO_RUN_MOTOR:
+                RobotLog.setGlobalWarningMessage(AppUtil.getDefContext().getString(R.string.lynxBatteryToLowMotor));
+                break;
+            case BATTERY_TOO_LOW_TO_RUN_SERVO:
+                RobotLog.setGlobalWarningMessage(AppUtil.getDefContext().getString(R.string.lynxBatteryToLowServo));
                 break;
             default:
                 RobotLog.ee(getTag(), nackException, "exception thrown during lynx communication");

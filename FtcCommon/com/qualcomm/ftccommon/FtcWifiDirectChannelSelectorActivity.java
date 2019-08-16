@@ -50,7 +50,7 @@ written permission.
 NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS
 LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
 "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESSFOR A PARTICULAR PURPOSE
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
 ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
 FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
 DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
@@ -84,6 +84,7 @@ import com.qualcomm.robotcore.util.RobotLog;
 
 import org.firstinspires.ftc.robotcore.internal.network.WifiDirectChannelAndDescription;
 import org.firstinspires.ftc.robotcore.internal.network.WifiDirectChannelChanger;
+import org.firstinspires.ftc.robotcore.internal.network.WifiUtil;
 import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 import org.firstinspires.ftc.robotcore.internal.system.PreferencesHelper;
 import org.firstinspires.ftc.robotcore.internal.ui.ThemedActivity;
@@ -130,7 +131,37 @@ public class FtcWifiDirectChannelSelectorActivity extends ThemedActivity impleme
     protected void onStart()
         {
         super.onStart();
-        // To do: select the current channel in the liast
+
+        // Since is the WiFi Direct Channel Selector activity, we assume this is a WiFi Direct connection.
+        // Check to see if a preferred channel has already been defined.
+        int prefChannel = preferencesHelper.readInt(getString(com.qualcomm.ftccommon.R.string.pref_wifip2p_channel), -1);
+        if (prefChannel == -1)
+            {
+            prefChannel = 0;
+            RobotLog.vv(TAG, "pref_wifip2p_channel: No preferred channel defined. Will use a default value of %d", prefChannel);
+            }
+        else
+            {
+            RobotLog.vv(TAG, "pref_wifip2p_channel: Found existing preferred channel (%d).", prefChannel);
+            }
+
+        ListView channelPickList = (ListView) findViewById(R.id.channelPickList);
+        ArrayAdapter<WifiDirectChannelAndDescription> adapter = getAdapter(channelPickList);
+
+        int index = -1;
+        for (int i = 0; i < adapter.getCount(); i++)
+            {
+            // does the select channel match one of the list items?
+            WifiDirectChannelAndDescription item = adapter.getItem(i);
+            if (prefChannel == item.getChannel())
+                {
+                // set index then exit loop.
+                index = i;
+                channelPickList.setItemChecked(index, true);
+                RobotLog.vv(TAG, "preferred channel matches ListView index %d (%d).", index, item.getChannel());
+                i = adapter.getCount();
+                }
+            }
         }
 
     @Override protected void onDestroy()
@@ -153,7 +184,7 @@ public class FtcWifiDirectChannelSelectorActivity extends ThemedActivity impleme
         Arrays.sort(items);
 
         // if 5GHz is not available, then truncate list of available channels.
-        if (is5GHzAvailable() == false)
+        if (WifiUtil.is5GHzAvailable() == false)
             {
             items = Arrays.copyOf(items, INDEX_AUTO_AND_2_4_ITEMS);
             RobotLog.vv(TAG, "5GHz radio not available.");
@@ -237,20 +268,5 @@ public class FtcWifiDirectChannelSelectorActivity extends ThemedActivity impleme
     // Additional variables and methods
     //----------------------------------------------------------------------------------------------
     private final int INDEX_AUTO_AND_2_4_ITEMS = 12;
-
-    private boolean is5GHzAvailable()
-        {
-        if (android.os.Build.VERSION.SDK_INT <= Build.VERSION_CODES.KITKAT)
-            {
-            // it's a kit kat device or lower.
-            // assume 5GHz is not available;
-            return false;
-            }
-        else
-            {
-            WifiManager wifiManager = (WifiManager) this.getApplicationContext().getSystemService(WIFI_SERVICE);
-            return wifiManager.is5GHzBandSupported();
-            }
-        }
 
     }

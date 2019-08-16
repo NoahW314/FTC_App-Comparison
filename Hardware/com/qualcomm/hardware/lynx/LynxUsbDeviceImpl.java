@@ -21,7 +21,7 @@ written permission.
 NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS
 LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
 "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESSFOR A PARTICULAR PURPOSE
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
 ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
 FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
 DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
@@ -59,13 +59,11 @@ import com.qualcomm.robotcore.util.TypeConversion;
 import com.qualcomm.robotcore.util.Util;
 import com.qualcomm.robotcore.util.WeakReferenceSet;
 
-import org.firstinspires.ftc.robotcore.internal.hardware.DragonboardLynxDragonboardIsPresentPin;
-import org.firstinspires.ftc.robotcore.internal.hardware.DragonboardLynxProgrammingPin;
-import org.firstinspires.ftc.robotcore.internal.hardware.DragonboardLynxResetPin;
-import org.firstinspires.ftc.robotcore.internal.hardware.TimeWindow;
-import org.firstinspires.ftc.robotcore.internal.hardware.usb.ArmableUsbDevice;
+import org.firstinspires.ftc.robotcore.internal.hardware.android.AndroidBoard;
 import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 import org.firstinspires.ftc.robotcore.internal.system.Assert;
+import org.firstinspires.ftc.robotcore.internal.hardware.TimeWindow;
+import org.firstinspires.ftc.robotcore.internal.hardware.usb.ArmableUsbDevice;
 import org.firstinspires.ftc.robotcore.internal.usb.exception.RobotUsbDeviceClosedException;
 import org.firstinspires.ftc.robotcore.internal.usb.exception.RobotUsbException;
 import org.firstinspires.ftc.robotcore.internal.usb.exception.RobotUsbFTDIException;
@@ -73,9 +71,7 @@ import org.firstinspires.ftc.robotcore.internal.usb.exception.RobotUsbUnspecifie
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Iterator;
 import java.util.List;
-import java.util.ListIterator;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -1048,26 +1044,26 @@ public class LynxUsbDeviceImpl extends ArmableUsbDevice implements LynxUsbDevice
         try {
             if (LynxConstants.isEmbeddedSerialNumber(robotUsbDevice.getSerialNumber()))
                 {
-                boolean prevState = DragonboardLynxDragonboardIsPresentPin.getInstance().getState();
+                boolean prevState = AndroidBoard.getInstance().getAndroidBoardIsPresentPin().getState();
                 RobotLog.vv(LynxModule.TAG, "resetting embedded usb device: isPresent: was=%s", prevState);
 
                 // Make sure we're 'present'. Our reset pin won't operate unless we are
                 if (!prevState)
                     {
-                    DragonboardLynxDragonboardIsPresentPin.getInstance().setState(true);
+                    AndroidBoard.getInstance().getAndroidBoardIsPresentPin().setState(true);
                     Thread.sleep(msDelay);
                     }
 
-                DragonboardLynxResetPin.getInstance().setState(true);
+                AndroidBoard.getInstance().getLynxModuleResetPin().setState(true);
                 Thread.sleep(msDelay);
 
-                DragonboardLynxResetPin.getInstance().setState(false);
+                AndroidBoard.getInstance().getLynxModuleResetPin().setState(false);
                 Thread.sleep(msDelay);
 
                 // ALWAYS remain 'present' unless we're explicitly configured not to
-                if (LynxConstants.isRevControlHub() && LynxConstants.disableDragonboard())
+                if (LynxConstants.isRevControlHub() && LynxConstants.shouldDisableAndroidBoard())
                     {
-                    DragonboardLynxDragonboardIsPresentPin.getInstance().setState(false);
+                    AndroidBoard.getInstance().getAndroidBoardIsPresentPin().setState(false);
                     Thread.sleep(msDelay);
                     }
                 }
@@ -1154,43 +1150,43 @@ public class LynxUsbDeviceImpl extends ArmableUsbDevice implements LynxUsbDevice
         }
 
     /**
-     * If we are a Dragonboard/Lynx combo, then this causes the combo-Lynx to enter firmware update mode.
+     * If we are a Control Hub, then this causes the combo-Lynx to enter firmware update * mode.
      * We will be updating the firmware using the 'serial' connection, not the USB connection. So
-     * after this function exits, the Dragonboard must be asserting its presence.
+     * after this function exits, the Android board must be asserting its presence.
      */
-    public static boolean enterFirmwareUpdateModeDragonboardCombo()
+    public static boolean enterFirmwareUpdateModeControlHub()
         {
-        RobotLog.vv(LynxModule.TAG, "enterFirmwareUpdateModeDragonboardCombo()");
+        RobotLog.vv(LynxModule.TAG, "enterFirmwareUpdateModeControlHub()");
 
         if (LynxConstants.isRevControlHub())
             {
             try {
                 int msDelay = msCbusWiggle;
 
-                boolean prevState = DragonboardLynxDragonboardIsPresentPin.getInstance().getState();
+                boolean prevState = AndroidBoard.getInstance().getAndroidBoardIsPresentPin().getState();
                 RobotLog.vv(LynxModule.TAG, "fw update embedded usb device: isPresent: was=%s", prevState);
 
                 // Assert Dragonboard presence to ensure we can manipulate the programming and reset lines
                 if (!prevState)
                     {
-                    DragonboardLynxDragonboardIsPresentPin.getInstance().setState(true);
+                    AndroidBoard.getInstance().getAndroidBoardIsPresentPin().setState(true);
                     Thread.sleep(msDelay);
                     }
 
                 // Assert programming
-                DragonboardLynxProgrammingPin.getInstance().setState(true);
+                AndroidBoard.getInstance().getProgrammingPin().setState(true);
                 Thread.sleep(msDelay);
 
                 // Assert reset
-                DragonboardLynxResetPin.getInstance().setState(true);
+                AndroidBoard.getInstance().getLynxModuleResetPin().setState(true);
                 Thread.sleep(msDelay);
 
                 // Deassert reset
-                DragonboardLynxResetPin.getInstance().setState(false);
+                AndroidBoard.getInstance().getLynxModuleResetPin().setState(false);
                 Thread.sleep(msDelay);
 
                 // Deassert programming
-                DragonboardLynxProgrammingPin.getInstance().setState(false);
+                AndroidBoard.getInstance().getProgrammingPin().setState(false);
                 Thread.sleep(msDelay);
 
                 return true;
@@ -1202,7 +1198,7 @@ public class LynxUsbDeviceImpl extends ArmableUsbDevice implements LynxUsbDevice
             }
         else
             {
-            RobotLog.ee(TAG, "enterFirmwareUpdateModeDragonboardCombo() issued on non-Control Hub");
+            RobotLog.ee(TAG, "enterFirmwareUpdateModeControlHub() issued on non-Control Hub");
             }
 
         return false;

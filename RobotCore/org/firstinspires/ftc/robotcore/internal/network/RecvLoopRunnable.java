@@ -201,6 +201,11 @@ public class RecvLoopRunnable implements Runnable {
                                 case EMPTY:
                                     callback.emptyEvent(packet);
                                     break;
+                                case KEEPALIVE:
+                                    /*
+                                     * Intentionally swallow.
+                                     */
+                                    break;
                                 default:
                                     RobotLog.ee(TAG, "Unhandled message type: " + packet.getMsgType().name());
                                     break;

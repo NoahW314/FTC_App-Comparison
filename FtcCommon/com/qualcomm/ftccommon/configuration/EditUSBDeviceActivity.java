@@ -21,7 +21,7 @@ written permission.
 NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS
 LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
 "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESSFOR A PARTICULAR PURPOSE
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
 ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
 FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
 DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
@@ -142,7 +142,7 @@ public class EditUSBDeviceActivity extends EditActivity
             String format = getString(R.string.fixFailNoneAvailable);
             String name   = controllerConfiguration.getName();
             String type   = displayNameOfConfigurationType(ConfigurationType.DisplayNameFlavor.Normal, controllerConfiguration.getConfigurationType());
-            appUtil.showToast(UILocation.ONLY_LOCAL, context, String.format(format, name, type));
+            appUtil.showToast(UILocation.ONLY_LOCAL, String.format(format, name, type));
             }
 
         refreshAfterFix();

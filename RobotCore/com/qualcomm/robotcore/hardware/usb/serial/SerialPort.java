@@ -21,7 +21,7 @@ written permission.
 NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS
 LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
 "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESSFOR A PARTICULAR PURPOSE
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
 ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
 FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
 DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
@@ -32,6 +32,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 package com.qualcomm.robotcore.hardware.usb.serial;
 
+import com.qualcomm.robotcore.hardware.configuration.LynxConstants;
 import com.qualcomm.robotcore.util.RobotLog;
 
 import java.io.File;
@@ -70,7 +71,7 @@ public class SerialPort
         ensureReadWriteable(file);
 
         this.baudRate = baudRate;
-        this.fileDescriptor = open(file.getAbsolutePath(), baudRate);
+        this.fileDescriptor = open(file.getAbsolutePath(), baudRate, isDragonboard());
         if (this.fileDescriptor==null)
             throw new IOException(String.format("SerialPort.SerialPort: failed: path=%s", file.getAbsolutePath()));
 
@@ -91,6 +92,11 @@ public class SerialPort
             close(this.fileDescriptor);
             this.fileDescriptor = null;
             }
+        }
+
+    private boolean isDragonboard()
+        {
+        return LynxConstants.getControlHubVersion() == LynxConstants.DRAGONBOARD_CH_VERSION;
         }
 
     /**
@@ -145,7 +151,7 @@ public class SerialPort
     // Native methods
     //----------------------------------------------------------------------------------------------
 
-    private native static FileDescriptor open(String path, int baudrate);
+    private native static FileDescriptor open(String path, int baudrate, boolean isDragonboard);
 
     public native static void close(FileDescriptor fileDescriptor);
 

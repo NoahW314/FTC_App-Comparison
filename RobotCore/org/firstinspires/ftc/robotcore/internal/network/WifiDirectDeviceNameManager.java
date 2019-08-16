@@ -21,7 +21,7 @@ written permission.
 NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS
 LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
 "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESSFOR A PARTICULAR PURPOSE
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
 ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
 FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
 DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
@@ -138,6 +138,7 @@ public class WifiDirectDeviceNameManager extends WifiStartStoppable implements D
         // Always make sure they see an initial value
         callback.onDeviceNameChanged(getDeviceName());
         }
+
     @Override
     public void unregisterCallback(DeviceNameListener callback)
         {
@@ -186,7 +187,36 @@ public class WifiDirectDeviceNameManager extends WifiStartStoppable implements D
     @Override
     public synchronized void setDeviceName(@NonNull String deviceName)
         {
+        if (!validDeviceName(deviceName))
+            {
+            RobotLog.ee(TAG, "setDeviceName(%s): failed; invalid WiFi-Direct name", deviceName);
+            return;
+            }
         internalSetDeviceName(deviceName);
+        }
+
+    // The official rules of the FIRST Tech Challenge require that you
+    // change the Wi-Fi name of your smartphones to include your team
+    // number and “-RC” if the phone is a Robot Controller or “-DS” if
+    // it is a Driver Station. A team can insert an additional dash and
+    // a letter (starting with 'B' and continuing up the alphabet) if
+    // the team has more than one set of Android phones.
+    //
+    // Note: The error checking is is done in the exposed public method,
+    // since otherwise we could get into a weird state if the android
+    // device already has the wrong name from setting it using the
+    // Android Settings menu, and validating in the internal method may
+    // not be allow us to to recover from it/change it.
+    //
+    // Also, we are allowing non-numeric prefix's for testing, but the
+    // suffix must be DS and RC.
+    //
+    // Ex:
+    //  first set of phones for a team;     9999-RC, 9999-DS
+    //  next set of phones on team;         9999-B-RC, 9999-B-DS
+    public static boolean validDeviceName(@NonNull String deviceName)
+        {
+        return deviceName.matches("[a-zA-Z0-9]+(-[B-Z])?-(DS|RC)");
         }
 
     /**
@@ -249,7 +279,6 @@ public class WifiDirectDeviceNameManager extends WifiStartStoppable implements D
         }
 
 
-
     protected void initializeDeviceNameFromWifiDirect()
         {
         RobotLog.vv(TAG, "initializeDeviceNameFromWifiDirect()...");
@@ -296,6 +325,7 @@ public class WifiDirectDeviceNameManager extends WifiStartStoppable implements D
         {
         return DeviceNameTracking.valueOf(preferencesHelper.readString(context.getString(R.string.pref_device_name_tracking), DeviceNameTracking.UNINITIALIZED.toString()));
         }
+
     protected void setDeviceNameTracking(DeviceNameTracking tracking)
         {
         preferencesHelper.writeStringPrefIfDifferent(context.getString(R.string.pref_device_name_tracking), tracking.toString());
@@ -467,7 +497,7 @@ public class WifiDirectDeviceNameManager extends WifiStartStoppable implements D
                         WifiP2pManager.Channel.class,
                         String.class,
                         WifiP2pManager.ActionListener.class);
-                
+
                 ClassUtil.invoke(wifiDirectAgent.getWifiP2pManager(), method, wifiDirectAgent.getWifiP2pChannel(), deviceName, new WifiP2pManager.ActionListener()
                     {
                     @Override public void onSuccess()

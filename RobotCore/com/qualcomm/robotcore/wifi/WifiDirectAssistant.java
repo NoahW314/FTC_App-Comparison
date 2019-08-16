@@ -51,6 +51,7 @@ import com.qualcomm.robotcore.R;
 import com.qualcomm.robotcore.util.RobotLog;
 
 import org.firstinspires.ftc.robotcore.internal.network.WifiDirectAgent;
+import org.firstinspires.ftc.robotcore.internal.network.WifiUtil;
 import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 import org.firstinspires.ftc.robotcore.internal.system.PreferencesHelper;
 import org.firstinspires.ftc.robotcore.internal.network.WifiDirectInviteDialogMonitor;
@@ -111,10 +112,15 @@ public class WifiDirectAssistant extends NetworkConnection {
     @Override
     public void onPeersAvailable(WifiP2pDeviceList peerList) {
 
+
       peers.clear();
       peers.addAll(peerList.getDeviceList());
 
       RobotLog.vv(TAG, "peers found: " + peers.size());
+      if (peers.size() == 0) {
+        WifiUtil.doLocationServicesCheck();
+      }
+
       for (WifiP2pDevice peer : peers) {
         // deviceAddress is the MAC address, deviceName is the human readable name
         String s = "    peer: " + peer.deviceAddress + " " + peer.deviceName;
@@ -208,7 +214,6 @@ public class WifiDirectAssistant extends NetworkConnection {
 
       } else if (WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION.equals(action)) {
         RobotLog.dd(TAG, "broadcast: peers changed");
-        // TODO(Permissions): We probably need to request location permission before scanning
         wifiP2pManager.requestPeers(wifiP2pChannel, peerListListener);
 
       } else if (WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION.equals(action)) {
@@ -614,4 +619,13 @@ public class WifiDirectAssistant extends NetworkConnection {
       if (callback != null) callback.onNetworkConnectionEvent(event);
     }
   }
+
+  /**
+   * Degenerate implementations
+   */
+  @Override
+  public void onWaitForConnection() { }
+
+  @Override
+  public void detectWifiReset() { }
 }

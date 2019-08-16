@@ -528,6 +528,7 @@ public abstract class NanoHTTPD {
     protected static class ContentType {
 
         private static final String ASCII_ENCODING = "US-ASCII";
+        private static final String UTF8_ENCODING = "UTF-8";
 
         private static final String MULTIPART_FORM_DATA_HEADER = "multipart/form-data";
 
@@ -555,10 +556,14 @@ public abstract class NanoHTTPD {
             this.contentTypeHeader = contentTypeHeader;
             if (contentTypeHeader != null) {
                 contentType = getDetailFromContentHeader(contentTypeHeader, MIME_PATTERN, "", 1);
-                encoding = getDetailFromContentHeader(contentTypeHeader, CHARSET_PATTERN, null, 2);
+                String charsetFromHeader = getDetailFromContentHeader(contentTypeHeader, CHARSET_PATTERN, null, 2);
+                if (charsetFromHeader != null && !charsetFromHeader.equals(UTF8_ENCODING)) {
+                    NanoHTTPD.LOG.log(Level.WARNING, "A charset other than UTF-8 was specified in the server response, however the server will respond with UTF-8");
+                }
+                encoding = UTF8_ENCODING;
             } else {
                 contentType = "";
-                encoding = "UTF-8";
+                encoding = UTF8_ENCODING;
             }
             if (MULTIPART_FORM_DATA_HEADER.equalsIgnoreCase(contentType)) {
                 boundary = getDetailFromContentHeader(contentTypeHeader, BOUNDARY_PATTERN, null, 2);
@@ -581,7 +586,7 @@ public abstract class NanoHTTPD {
         }
 
         public String getEncoding() {
-            return encoding == null ? ASCII_ENCODING : encoding;
+            return encoding == null ? UTF8_ENCODING : encoding;
         }
 
         public String getBoundary() {
@@ -2198,13 +2203,9 @@ public abstract class NanoHTTPD {
         } else {
             byte[] bytes;
             try {
-                CharsetEncoder newEncoder = Charset.forName(contentType.getEncoding()).newEncoder();
-                if (!newEncoder.canEncode(txt)) {
-                    contentType = contentType.tryUTF8();
-                }
                 bytes = txt.getBytes(contentType.getEncoding());
             } catch (UnsupportedEncodingException e) {
-                NanoHTTPD.LOG.log(Level.SEVERE, "encoding problem, responding nothing", e);
+                NanoHTTPD.LOG.log(Level.SEVERE, "UTF-8 encoding problem, responding nothing", e);
                 bytes = new byte[0];
             }
             return newFixedLengthResponse(status, contentType.getContentTypeHeader(), new ByteArrayInputStream(bytes), bytes.length);

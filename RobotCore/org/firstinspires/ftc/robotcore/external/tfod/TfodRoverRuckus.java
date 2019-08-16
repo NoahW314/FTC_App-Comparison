@@ -17,7 +17,7 @@
 package org.firstinspires.ftc.robotcore.external.tfod;
 
 /**
- * A class that provides simplified access to Tensor Flow Object Detection for the Rover Ruckus game (2018-2019).
+ * A class that provides simplified access to TensorFlow Object Detection for the Rover Ruckus game (2018-2019).
  *
  * @author lizlooney@google.com (Liz Looney)
  */

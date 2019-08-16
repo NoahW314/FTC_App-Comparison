@@ -332,15 +332,6 @@ public class HardwareFactory {
     }
   }
 
-  private void buildLynxDevices(List<DeviceConfiguration> list, HardwareMap map, DeviceManager deviceMgr, PWMOutputController lynxModule) {
-    for (DeviceConfiguration deviceConfiguration : list) {
-      ConfigurationType devType = deviceConfiguration.getConfigurationType();
-      if (devType==BuiltInConfigurationType.PULSE_WIDTH_DEVICE) {
-        mapPwmOutputDevice(map, deviceMgr, lynxModule, deviceConfiguration);
-      }
-    }
-  }
-
   private void buildLynxDevices(List<DeviceConfiguration> list, HardwareMap map, DeviceManager deviceMgr, AnalogInputController lynxModule) {
     for (DeviceConfiguration deviceConfiguration : list) {
       ConfigurationType devType = deviceConfiguration.getConfigurationType();
@@ -806,11 +797,6 @@ public class HardwareFactory {
       // And a voltage sensor
       LynxVoltageSensor voltageSensor = new LynxVoltageSensor(context, module);
       map.voltageSensor.put(moduleConfiguration.getName(), voltageSensor);
-
-      // Also a PWM Output Controller
-      LynxPwmOutputController pwmOutputController = new LynxPwmOutputController(context, module);
-      map.put(moduleConfiguration.getName(), pwmOutputController);
-      buildLynxDevices(lynxModuleConfiguration.getPwmOutputs(), map, deviceMgr, pwmOutputController);
 
       // Also an AnalogInputController
       LynxAnalogInputController analogInputController = new LynxAnalogInputController(context, module);

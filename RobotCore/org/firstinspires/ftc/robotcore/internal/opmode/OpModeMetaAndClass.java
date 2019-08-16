@@ -52,6 +52,6 @@ public class OpModeMetaAndClass
 
     public boolean isOnBotJava()
         {
-        return OnBotJavaClassLoader.isOnBotJava(clazz);
+        return OnBotJavaDeterminer.isOnBotJava(clazz);
         }
     }

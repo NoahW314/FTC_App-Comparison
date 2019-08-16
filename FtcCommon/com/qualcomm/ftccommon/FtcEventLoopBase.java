@@ -81,7 +81,7 @@ written permission.
 NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS
 LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
 "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESSFOR A PARTICULAR PURPOSE
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
 ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
 FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
 DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
@@ -93,12 +93,14 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 package com.qualcomm.ftccommon;
 
 import android.app.Activity;
+import android.graphics.Color;
 import android.support.annotation.CallSuper;
 import android.support.annotation.NonNull;
 
 import com.qualcomm.ftccommon.configuration.FtcConfigurationActivity;
 import com.qualcomm.ftccommon.configuration.RobotConfigFile;
 import com.qualcomm.ftccommon.configuration.RobotConfigFileManager;
+import com.qualcomm.robotcore.hardware.Blinker;
 import com.qualcomm.robotcore.hardware.VisuallyIdentifiableHardwareDevice;
 import com.qualcomm.robotcore.hardware.ScannedDevices;
 import com.qualcomm.ftccommon.configuration.USBScanManager;
@@ -128,6 +130,7 @@ import com.qualcomm.robotcore.util.ReadWriteFile;
 import com.qualcomm.robotcore.util.RobotLog;
 import com.qualcomm.robotcore.util.SerialNumber;
 import com.qualcomm.robotcore.util.ThreadPool;
+import com.qualcomm.robotcore.util.WebServer;
 
 import org.firstinspires.ftc.robotcore.external.Consumer;
 import org.firstinspires.ftc.robotcore.external.function.Supplier;
@@ -139,7 +142,7 @@ import org.firstinspires.ftc.robotcore.internal.network.RobotCoreCommandList;
 import org.firstinspires.ftc.robotcore.internal.network.WifiDirectAgent;
 import org.firstinspires.ftc.robotcore.internal.network.WifiDirectGroupName;
 import org.firstinspires.ftc.robotcore.internal.network.WifiDirectPersistentGroupManager;
-import org.firstinspires.ftc.robotcore.internal.opmode.OnBotJavaManager;
+import org.firstinspires.ftc.robotcore.internal.opmode.OnBotJavaBuildLocker;
 import org.firstinspires.ftc.robotcore.internal.opmode.RegisteredOpModes;
 import org.firstinspires.ftc.robotcore.internal.stellaris.FlashLoaderManager;
 import org.firstinspires.ftc.robotcore.internal.stellaris.FlashLoaderProtocolException;
@@ -147,7 +150,6 @@ import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
 import org.firstinspires.ftc.robotcore.internal.system.Assert;
 import org.firstinspires.ftc.robotcore.internal.ui.ProgressParameters;
 import org.firstinspires.ftc.robotcore.internal.ui.UILocation;
-import org.firstinspires.ftc.robotcore.internal.webserver.WebServer;
 import org.firstinspires.inspection.InspectionState;
 
 import java.io.File;
@@ -158,7 +160,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeoutException;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 /**
@@ -361,6 +363,10 @@ public abstract class FtcEventLoopBase implements EventLoop
             {
             result = handleCommandVisuallyIdentify(command);
             }
+        else if (name.equals(CommandList.CMD_VISUALLY_CONFIRM_WIFI_RESET))
+            {
+            result = handleCommandVisuallyConfirmWifiReset();
+            }
         else
             {
             result = CallbackResult.NOT_HANDLED;
@@ -400,7 +406,7 @@ public abstract class FtcEventLoopBase implements EventLoop
         {
         if (registeredOpModes.getOnBotJavaChanged())
             {
-            OnBotJavaManager.lockBuildExclusiveWhile(new Runnable()
+            OnBotJavaBuildLocker.lockBuildExclusiveWhile(new Runnable()
                 {
                     @Override public void run()
                         {
@@ -659,7 +665,7 @@ public abstract class FtcEventLoopBase implements EventLoop
         if (LynxConstants.isEmbeddedSerialNumber(robotUsbDevice.getSerialNumber()))
             {
             RobotLog.vv(TAG, "putting embedded lynx into firmware update mode");
-            result = LynxUsbDeviceImpl.enterFirmwareUpdateModeDragonboardCombo();
+            result = LynxUsbDeviceImpl.enterFirmwareUpdateModeControlHub();
             }
         else
             {
@@ -1147,14 +1153,7 @@ public abstract class FtcEventLoopBase implements EventLoop
     protected void handleCommandRequestInspectionReport()
         {
         InspectionState inspectionState = new InspectionState();
-        try
-            {
-            inspectionState.initializeLocal(ftcEventLoopHandler.getHardwareMap());
-            }
-            catch (RobotCoreException | InterruptedException e)
-            {
-            e.printStackTrace();
-            }
+        inspectionState.initializeLocal();
         String serialized = inspectionState.serialize();
         networkConnectionHandler.sendCommand(new Command(CommandList.CMD_REQUEST_INSPECTION_REPORT_RESP, serialized));
         }
@@ -1198,6 +1197,80 @@ public abstract class FtcEventLoopBase implements EventLoop
                     });
                 if (visuallyIdentifiable != null) {
                     visuallyIdentifiable.visuallyIdentify(cmdVisuallyIdentify.shouldIdentify);
+                    }
+                }
+            });
+        return CallbackResult.HANDLED;
+        }
+
+     // TODO: Find/create a less verbose way to get the LynxModule integrated into the Control Hub
+    protected  CallbackResult handleCommandVisuallyConfirmWifiReset()
+        {
+        if (!LynxConstants.isRevControlHub()) return CallbackResult.HANDLED;
+
+        ThreadPool.getDefault().execute(new Runnable()
+            {
+            @Override
+            public void run()
+                {
+                try
+                    {
+                    LynxUsbDevice embeddedPortal = ftcEventLoopHandler.getHardwareDevice(LynxUsbDevice.class, LynxConstants.SERIAL_NUMBER_EMBEDDED, new Supplier<USBScanManager>()
+                        {
+                        @Override
+                        public USBScanManager get()
+                            {
+                            try
+                                {
+                                return startUsbScanMangerIfNecessary();
+                                } catch (RobotCoreException e)
+                                {
+                                RobotLog.ee(TAG, e, "exception scanning USB in handleCommandVisuallyConfirmWifiReset");
+                                }
+                            return null;
+                            }
+                        });
+                    if (embeddedPortal == null)
+                        {
+                        RobotLog.ee(TAG, "Failed to find embedded Lynx portal in handleCommandVisuallyConfirmWifiReset");
+                        return;
+                        }
+                    LynxModuleMetaList moduleMetaList;
+
+                     try
+                        {
+                        moduleMetaList = embeddedPortal.discoverModules();
+                        } catch (RobotCoreException e)
+                        {
+                        RobotLog.ee(TAG, e, "exception discovering modules in handleCommandVisuallyConfirmWifiReset");
+                        return;
+                        }
+
+                     LynxModule embeddedModule = null;
+                    for (LynxModuleMeta meta : moduleMetaList.modules)
+                        {
+                        if (meta.isParent())
+                            {
+                            embeddedModule = embeddedPortal.getConfiguredModule(meta.getModuleAddress());
+                            }
+                        }
+                    if (embeddedModule != null)
+                        {
+                        List<Blinker.Step> confirmButtonPressPattern = new ArrayList<>();
+                        confirmButtonPressPattern.add(new Blinker.Step(Color.MAGENTA, 100, TimeUnit.MILLISECONDS));
+                        confirmButtonPressPattern.add(new Blinker.Step(Color.YELLOW, 100, TimeUnit.MILLISECONDS));
+                        confirmButtonPressPattern.add(new Blinker.Step(Color.CYAN, 100, TimeUnit.MILLISECONDS));
+                        confirmButtonPressPattern.add(new Blinker.Step(Color.RED, 100, TimeUnit.MILLISECONDS));
+
+                         embeddedModule.pushPattern(confirmButtonPressPattern);
+                        Thread.sleep(4000);
+                        embeddedModule.popPattern();
+                        }
+                    }
+                catch (InterruptedException e)
+                    {
+                        RobotLog.ee(TAG, e, "thread interrupted in handleCommandVisuallyConfirmWifiReset");
+                        Thread.currentThread().interrupt();
                     }
                 }
             });

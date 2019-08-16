@@ -79,11 +79,14 @@ public class ClassManager {
     }
 
     private static final String TAG = "ClassManager";
+    private final boolean DEBUG = false;
 
     private List<String> packagesAndClassesToIgnore;
     private List<ClassFilter> filters;
     private Context context;
     private DexFile dexFile;
+    private OnBotJavaHelper onBotJavaHelper = null;
+    private ClassLoader classLoader = null;
 
     //----------------------------------------------------------------------------------------------
     // Construction
@@ -117,12 +120,23 @@ public class ClassManager {
                 "io.netty",
                 "javax.tools",
                 "kawa",
-                "org.firstinspires.ftc.robotcore.internal.android"
+                "org.firstinspires.ftc.robotcore.internal.android",
+                "android.support.v4"
         ));
     }
 
     protected void clearOnBotJava()
     {
+    }
+
+    public void setOnBotJavaClassHelper(OnBotJavaHelper helper)
+    {
+        this.onBotJavaHelper = helper;
+    }
+
+    protected void setClassLoader(ClassLoader classLoader)
+    {
+        this.classLoader = classLoader;
     }
 
     //----------------------------------------------------------------------------------------------
@@ -154,7 +168,10 @@ public class ClassManager {
         classNames.addAll(InstantRunHelper.getAllClassNames(context));
 
         // Load classes from OnBotJava
-        classNames.addAll(getOnBotJavaClassNames());
+        if (onBotJavaHelper != null) {
+            classNames.addAll(onBotJavaHelper.getOnBotJavaClassNames());
+            setClassLoader(onBotJavaHelper.getOnBotJavaClassLoader());
+        }
 
         return classNames;
     }
@@ -162,7 +179,6 @@ public class ClassManager {
     protected List<Class> classNamesToClasses(Collection<String> classNames)
     {
         List<Class> result = new LinkedList<Class>();
-        OnBotJavaClassLoader classLoader = new OnBotJavaClassLoader();
         try
         {
             for (String className : classNames)
@@ -184,8 +200,12 @@ public class ClassManager {
                 Class clazz;
                 try
                 {
-                    clazz = Class.forName(className, false, classLoader);
-                    // RobotLog.dd(TAG, "class %s: loader=%s", className, clazz.getClassLoader().getClass().getSimpleName());
+                    if (classLoader == null) {
+                        clazz = Class.forName(className, false, this.getClass().getClassLoader());
+                    } else {
+                        clazz = Class.forName(className, false, classLoader);
+                    }
+                    if (DEBUG) RobotLog.ii(TAG, "class %s: loader=%s", className, clazz.getClassLoader().getClass().getSimpleName());
                 }
                 catch (NoClassDefFoundError|ClassNotFoundException ex)
                 {
@@ -209,25 +229,7 @@ public class ClassManager {
         }
         finally
         {
-            classLoader.close();
-        }
-    }
-
-    protected Set<String> getOnBotJavaClassNames()
-    {
-        Set<String> classNames = new HashSet<String>();
-        OnBotJavaClassLoader onBotJavaClassLoader = new OnBotJavaClassLoader();
-        try
-        {
-            for (DexFile dexFile : onBotJavaClassLoader.getDexFiles())
-            {
-                 classNames.addAll(Collections.list(dexFile.entries()));
-            }
-            return classNames;
-        }
-        finally
-        {
-            onBotJavaClassLoader.close();
+            if (onBotJavaHelper != null) onBotJavaHelper.close(classLoader);
         }
     }
 
@@ -265,15 +267,21 @@ public class ClassManager {
 
     public void processOnBotJavaClasses()
     {
+        if (onBotJavaHelper == null) {
+            return;
+        }
+
         clearIgnoredList();
-        List<Class> onBotJavaClasses = classNamesToClasses(getOnBotJavaClassNames());
+        Set<String> classNames = onBotJavaHelper.getOnBotJavaClassNames();
+        setClassLoader(onBotJavaHelper.getOnBotJavaClassLoader());
+        List<Class> onBotJavaClasses = classNamesToClasses(classNames);
 
         for (ClassFilter f : filters)
         {
             f.filterOnBotJavaClassesStart();
             for (Class clazz : onBotJavaClasses)
             {
-                Assert.assertTrue(OnBotJavaClassLoader.isOnBotJava(clazz), "class %s isn't OnBotJava: loader=%s", clazz.getSimpleName(), clazz.getClassLoader().getClass().getSimpleName());
+                Assert.assertTrue(OnBotJavaDeterminer.isOnBotJava(clazz), "class %s isn't OnBotJava: loader=%s", clazz.getSimpleName(), clazz.getClassLoader().getClass().getSimpleName());
                 f.filterOnBotJavaClass(clazz);
             }
             f.filterOnBotJavaClassesComplete();

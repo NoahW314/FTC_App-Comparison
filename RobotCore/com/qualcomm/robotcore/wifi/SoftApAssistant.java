@@ -385,4 +385,12 @@ public class SoftApAssistant extends NetworkConnection {
     }
   }
 
+  /**
+   * Degenerate implementations
+   */
+  @Override
+  public void onWaitForConnection() { }
+
+  @Override
+  public void detectWifiReset() { }
 }

@@ -336,7 +336,7 @@ public class FtcLoadFileActivity extends EditActivity implements RecvLoopRunnabl
           // all is well
         } else {
           String filenameWExt = file.getName();
-          appUtil.showToast(UILocation.ONLY_LOCAL, context, String.format(getString(R.string.configToDeleteDoesNotExist), filenameWExt));
+          appUtil.showToast(UILocation.ONLY_LOCAL, String.format(getString(R.string.configToDeleteDoesNotExist), filenameWExt));
           RobotLog.ee(TAG, "Tried to delete a file that does not exist: " + filenameWExt);
         }
       }

@@ -17,6 +17,10 @@
 package org.firstinspires.ftc.robotcore.internal.tfod;
 
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.Region;
 import android.support.annotation.NonNull;
 import android.util.Log;
 import com.google.ftcresearch.tfod.util.ImageUtils;
@@ -37,6 +41,12 @@ import java.nio.IntBuffer;
 class YuvRgbFrame {
   private static final String TAG = "YuvRgbFrame";
 
+  private static final Paint paint = new Paint(); // Used to paint clipped edges.
+  static {
+    paint.setColor(Color.BLACK);
+    paint.setStyle(Paint.Style.FILL);
+  }
+
   private final long frameTimeNanos;
 
   private final String tag;
@@ -54,7 +64,8 @@ class YuvRgbFrame {
   /**
    * Construct a YuvRgbFrame from RGB565 data.
    */
-  YuvRgbFrame(long frameTimeNanos, Size size, @NonNull ByteBuffer rgb565ByteBuffer) {
+  YuvRgbFrame(long frameTimeNanos, Size size, @NonNull ByteBuffer rgb565ByteBuffer,
+      ClippingMargins clippingMargins) {
 
     this.frameTimeNanos = frameTimeNanos;
     this.size = size;
@@ -63,6 +74,16 @@ class YuvRgbFrame {
 
     rgb565Bitmap = Bitmap.createBitmap(size.width, size.height, Bitmap.Config.RGB_565);
     rgb565Bitmap.copyPixelsFromBuffer(rgb565ByteBuffer.duplicate());
+
+    synchronized (clippingMargins) {
+      if (clippingMargins.left > 0 || clippingMargins.top > 0 || clippingMargins.right > 0 || clippingMargins.bottom > 0) {
+        Canvas canvas = new Canvas(rgb565Bitmap);
+        canvas.clipRect(clippingMargins.left, clippingMargins.top,
+            size.width - clippingMargins.right, size.height - clippingMargins.bottom,
+            Region.Op.DIFFERENCE);
+        canvas.drawPaint(paint);
+      }
+    }
   }
 
   /**

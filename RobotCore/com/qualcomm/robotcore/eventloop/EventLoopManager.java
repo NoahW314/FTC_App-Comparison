@@ -45,22 +45,18 @@ import com.qualcomm.robotcore.robocol.PeerDiscovery;
 import com.qualcomm.robotcore.robocol.RobocolDatagram;
 import com.qualcomm.robotcore.robocol.TelemetryMessage;
 import com.qualcomm.robotcore.robot.RobotState;
-import com.qualcomm.robotcore.util.ElapsedTime;
-import com.qualcomm.robotcore.util.Range;
-import com.qualcomm.robotcore.util.RobotLog;
-import com.qualcomm.robotcore.util.ThreadPool;
+import com.qualcomm.robotcore.util.*;
 import com.qualcomm.robotcore.wifi.NetworkConnection;
 import com.qualcomm.robotcore.wifi.NetworkType;
 
 import org.firstinspires.ftc.robotcore.internal.network.CallbackResult;
 import org.firstinspires.ftc.robotcore.internal.network.NetworkConnectionHandler;
+import org.firstinspires.ftc.robotcore.internal.network.PeerStatusCallback;
 import org.firstinspires.ftc.robotcore.internal.network.RecvLoopRunnable;
 import org.firstinspires.ftc.robotcore.internal.network.RobotCoreCommandList;
-import org.firstinspires.ftc.robotcore.internal.network.SendOnceRunnable;
 import org.firstinspires.ftc.robotcore.internal.network.SocketConnect;
 import org.firstinspires.ftc.robotcore.internal.opmode.OpModeManagerImpl;
 import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
-import org.firstinspires.ftc.robotcore.internal.webserver.WebServer;
 
 import java.net.InetAddress;
 import java.util.Set;
@@ -76,7 +72,7 @@ import java.util.concurrent.TimeUnit;
  * to the current EventLoop.
  */
 @SuppressWarnings("unused,WeakerAccess")
-public class EventLoopManager implements RecvLoopRunnable.RecvLoopCallback, NetworkConnection.NetworkConnectionCallback, SendOnceRunnable.ClientCallback, SyncdDevice.Manager {
+public class EventLoopManager implements RecvLoopRunnable.RecvLoopCallback, NetworkConnection.NetworkConnectionCallback, PeerStatusCallback, SyncdDevice.Manager {
 
   //------------------------------------------------------------------------------------------------
   // Types
@@ -88,7 +84,7 @@ public class EventLoopManager implements RecvLoopRunnable.RecvLoopCallback, Netw
   public interface EventLoopMonitor {
     void onStateChange(@NonNull RobotState state);
     void onTelemetryTransmitted();
-    void onPeerConnected(boolean peerLikelyChanged);
+    void onPeerConnected();
     void onPeerDisconnected();
   }
 
@@ -112,7 +108,6 @@ public class EventLoopManager implements RecvLoopRunnable.RecvLoopCallback, Netw
   private static final  double                SECONDS_UNTIL_FORCED_SHUTDOWN = 2.0;
   private final         EventLoop             idleEventLoop;
   public                RobotState            state                     = RobotState.NOT_STARTED;
-  protected             boolean               isPeerConnected           = false;
   private               ExecutorService       executorEventLoop         = ThreadPool.newSingleThreadExecutor("executorEventLoop");
   private               ElapsedTime           lastHeartbeatReceived     = new ElapsedTime();
   private               EventLoop             eventLoop                 = null;
@@ -147,23 +142,33 @@ public class EventLoopManager implements RecvLoopRunnable.RecvLoopCallback, Netw
     this.idleEventLoop = idleEventLoop;
     this.eventLoop = idleEventLoop;
     changeState(RobotState.NOT_STARTED);
+    NetworkConnectionHandler.getInstance().registerPeerStatusCallback(this);
   }
 
   //------------------------------------------------------------------------------------------------
   // Accessors
   //------------------------------------------------------------------------------------------------
 
-  public @NonNull WebServer getWebServer() {
+  public @NonNull
+  WebServer getWebServer() {
     return eventLoopManagerClient.getWebServer();
   }
 
   /**
-   * Set a monitor for this event loop
+   * Set a monitor for this event loop, which will immediately have the appropriate method called to
+   * indicate the current peer status.
    *
    * @param monitor event loop monitor
    */
   public void setMonitor(EventLoopMonitor monitor) {
     callback = monitor;
+
+    // Alert the callback to the current peer status
+    if (NetworkConnectionHandler.getInstance().isPeerConnected()) {
+      callback.onPeerConnected();
+    } else {
+      callback.onPeerDisconnected();
+    }
   }
 
   /** return any event loop monitor previously set */
@@ -681,34 +686,30 @@ public class EventLoopManager implements RecvLoopRunnable.RecvLoopCallback, Netw
     return CallbackResult.HANDLED;
   }
 
-  @Override public void peerConnected(boolean peerLikelyChanged) {
-    this.isPeerConnected = true;
+  @Override public void onPeerConnected() {
     if (callback != null) {
-      callback.onPeerConnected(peerLikelyChanged);
+      callback.onPeerConnected();
     }
   }
 
-  @Override public void peerDisconnected() {
+  @Override public void onPeerDisconnected() {
     if (callback != null) {
       callback.onPeerDisconnected();
     }
 
-    if (this.isPeerConnected) {
-      // If we lose contact with the DS, then we auto-stop the robot
-      OpModeManagerImpl opModeManager = eventLoop.getOpModeManager();
+    // If we lose contact with the DS, then we auto-stop the robot
+    OpModeManagerImpl opModeManager = eventLoop.getOpModeManager();
 
-      // opModeManager will be null if not running FtcEventLoop right now
-      if (opModeManager != null) {
-        String msg = "Lost connection while running op mode: " + opModeManager.getActiveOpModeName();
-        opModeManager.initActiveOpMode(OpModeManager.DEFAULT_OP_MODE_NAME);
-        RobotLog.i(msg);
-      }
-      else {
-        RobotLog.i("Lost connection while main event loop not active");
-      }
-
-      this.isPeerConnected = false;
+    // opModeManager will be null if not running FtcEventLoop right now
+    if (opModeManager != null) {
+      String msg = "Lost connection while running op mode: " + opModeManager.getActiveOpModeName();
+      opModeManager.initActiveOpMode(OpModeManager.DEFAULT_OP_MODE_NAME);
+      RobotLog.i(msg);
     }
+    else {
+      RobotLog.i("Lost connection while main event loop not active");
+    }
+
     remoteAddr = null;
     lastHeartbeatReceived = new ElapsedTime(0);
   }
@@ -716,7 +717,7 @@ public class EventLoopManager implements RecvLoopRunnable.RecvLoopCallback, Netw
   public CallbackResult peerDiscoveryEvent(RobocolDatagram packet) throws RobotCoreException {
 
     try {
-      networkConnectionHandler.updateConnection(packet, null, this);
+      networkConnectionHandler.updateConnection(packet);
     } catch (RobotProtocolException e) {
       RobotLog.ee(TAG, e.getMessage());
     }

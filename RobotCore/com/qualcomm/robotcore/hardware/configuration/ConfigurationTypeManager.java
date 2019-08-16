@@ -21,7 +21,7 @@ written permission.
 NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS
 LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
 "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESSFOR A PARTICULAR PURPOSE
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
 ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
 FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
 DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
@@ -59,6 +59,7 @@ import com.qualcomm.robotcore.hardware.configuration.typecontainers.UserConfigur
 import com.qualcomm.robotcore.robocol.Command;
 import com.qualcomm.robotcore.util.ClassUtil;
 import com.qualcomm.robotcore.util.RobotLog;
+import com.qualcomm.robotcore.util.Util;
 
 import org.firstinspires.ftc.robotcore.external.Predicate;
 import org.firstinspires.ftc.robotcore.internal.network.NetworkConnectionHandler;
@@ -691,28 +692,17 @@ public final class ConfigurationTypeManager implements ClassFilter
 
     private boolean isLegalDeviceTypeName(String name)
         {
-        return isGoodString(name);
+        return Util.isGoodString(name);
         }
 
     //----------------------------------------------------------------------------------------------
     // Utility
     //----------------------------------------------------------------------------------------------
-
     public static String getXmlTag(Class clazz)
         {
         DeviceProperties devicePropertiesAnnotation = (DeviceProperties) clazz.getAnnotation(DeviceProperties.class);
         return getXmlTag(devicePropertiesAnnotation);
         }
-
-    private boolean isGoodString(String string)
-        {
-        if (string == null)
-            return false;
-        if (!string.trim().equals(string))
-            return false;
-        return string.length() != 0;
-        }
-
     private void reportConfigurationError(String format, Object... args)
         {
         String message = String.format(format, args);
@@ -727,7 +717,7 @@ public final class ConfigurationTypeManager implements ClassFilter
 
     private boolean isLegalXmlTag(String xmlTag)
         {
-        if (!isGoodString(xmlTag))
+        if (!Util.isGoodString(xmlTag))
             return false;
 
         // For simplicity, we only allow a restricted subset of what XML allows

@@ -46,7 +46,6 @@ import com.qualcomm.robotcore.robocol.Command;
 import com.qualcomm.robotcore.robocol.PeerDiscovery;
 import com.qualcomm.robotcore.robocol.RobocolDatagram;
 import com.qualcomm.robotcore.robocol.RobocolDatagramSocket;
-import com.qualcomm.robotcore.robot.Robot;
 import com.qualcomm.robotcore.util.Device;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.RobotLog;
@@ -56,8 +55,12 @@ import com.qualcomm.robotcore.wifi.NetworkType;
 import com.qualcomm.robotcore.wifi.SoftApAssistant;
 import com.qualcomm.robotcore.wifi.WifiDirectAssistant;
 
+import org.firstinspires.ftc.robotcore.internal.system.AppUtil;
+import org.firstinspires.ftc.robotcore.internal.ui.RobotCoreGamepadManager;
+
 import java.net.InetAddress;
 import java.net.SocketException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
@@ -92,7 +95,6 @@ public class NetworkConnectionHandler {
     protected volatile RobocolDatagramSocket socket;
     protected ScheduledExecutorService sendLoopService = null;
     protected ScheduledFuture<?> sendLoopFuture;
-    protected volatile SendOnceRunnable sendOnceRunnable;
     protected volatile SetupRunnable setupRunnable;
     protected @Nullable String connectionOwner;
     protected @Nullable String connectionOwnerPassword;
@@ -103,13 +105,33 @@ public class NetworkConnectionHandler {
     protected final RecvLoopCallbackChainer theRecvLoopCallback = new RecvLoopCallbackChainer();
     protected final Object callbackLock = new Object(); // paranoia more than reality, but better safe than sorry. Guards the..Callback vars
 
+    protected static WifiManager wifiManager = null;
+
+    private boolean isPeerConnected = false;
+    private final List<PeerStatusCallback> peerStatusCallbacks = new ArrayList<>();
+    private final Object peerStatusLock = new Object();
+
+    private final SendOnceRunnable.DisconnectionCallback disconnectionCallback = new SendOnceRunnable.DisconnectionCallback() {
+        @Override public void disconnected() {
+            updatePeerStatus(false, false);
+        }
+    };
+
+    protected final SendOnceRunnable sendOnceRunnable = new SendOnceRunnable(disconnectionCallback, lastRecvPacket);
+
     //----------------------------------------------------------------------------------------------
     // Construction
     //----------------------------------------------------------------------------------------------
 
+    protected static WifiManager getWifiManager(Context context) {
+        if (wifiManager == null) {
+            wifiManager = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+        }
+        return wifiManager;
+    }
+
     public static WifiManager.WifiLock newWifiLock(Context context) {
-        WifiManager wifiManager = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-        return wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "");
+        return getWifiManager(context).createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "");
     }
 
     /**
@@ -133,11 +155,12 @@ public class NetworkConnectionHandler {
      *
      * The driver station version.
      */
-    public void init(@NonNull WifiManager.WifiLock wifiLock, @NonNull NetworkType networkType, @NonNull String owner, @NonNull String password, @NonNull Context context) {
+    public void init(@NonNull WifiManager.WifiLock wifiLock, @NonNull NetworkType networkType, @NonNull String owner, @NonNull String password, @NonNull Context context, @NonNull RobotCoreGamepadManager gamepadManager) {
         this.wifiLock = wifiLock;
         this.connectionOwner = owner;
         this.connectionOwnerPassword = password;
         this.context = context;
+        sendOnceRunnable.parameters.gamepadManager = gamepadManager;
 
         shutdown();
         this.networkConnection = null;
@@ -156,6 +179,9 @@ public class NetworkConnectionHandler {
         initNetworkConnection(networkType);
     }
 
+    /**
+     * This method is idempotent.
+     */
     private void initNetworkConnection(NetworkType networkType) {
         if (this.networkConnection != null && this.networkConnection.getNetworkType() != networkType) {
             // We're switching network types
@@ -186,6 +212,18 @@ public class NetworkConnectionHandler {
             return NetworkType.UNKNOWN_NETWORK_TYPE;
         } else {
             return networkConnection.getNetworkType();
+        }
+    }
+
+    public void startKeepAlives() {
+        if (sendOnceRunnable != null) {
+            sendOnceRunnable.parameters.originateKeepAlives = AppUtil.getInstance().isDriverStation() && Device.phoneImplementsAggressiveWifiScanning();
+        }
+    }
+
+    public void stopKeepAlives() {
+        if (sendOnceRunnable != null) {
+            sendOnceRunnable.parameters.originateKeepAlives = false;
         }
     }
 
@@ -264,6 +302,50 @@ public class NetworkConnectionHandler {
 
     public boolean connectionMatches(String name) {
         return connectionOwner != null && connectionOwner.equals(name);
+    }
+
+    /**
+     * @return whether or not there is currently a peer connected via the network
+     */
+    public boolean isPeerConnected() {
+        synchronized (peerStatusLock) {
+            return isPeerConnected;
+        }
+    }
+
+    /**
+     * Register a callback that will notify you when a peer connects, disconnects, or is replaced
+     *
+     * @return true if a peer was connected at the time of registration
+     */
+    @SuppressWarnings("UnusedReturnValue")
+    public boolean registerPeerStatusCallback(PeerStatusCallback callback) {
+        synchronized (peerStatusLock) {
+            peerStatusCallbacks.add(callback);
+            return isPeerConnected;
+        }
+    }
+
+    private void updatePeerStatus(boolean newIsConnected, boolean forceUpdateCallbacks) {
+        synchronized (peerStatusLock) {
+            boolean statusChanged = (newIsConnected != this.isPeerConnected);
+            this.isPeerConnected = newIsConnected;
+
+            if (statusChanged || forceUpdateCallbacks) {
+                for (PeerStatusCallback callback : peerStatusCallbacks) {
+                    if (isPeerConnected) {
+                        callback.onPeerConnected();
+                    } else {
+                        callback.onPeerDisconnected();
+                    }
+                }
+            }
+
+            if (statusChanged) {
+                if (isPeerConnected) RobotLog.vv(TAG, "Peer connection established");
+                else RobotLog.vv(TAG, "Peer connection lost");
+            }
+        }
     }
 
     /**
@@ -354,27 +436,18 @@ public class NetworkConnectionHandler {
      * this endpoint knows who our peer is and start the service that will
      * send datagrams back to the peer.  This is symmetric vis-a-vis the RC and DS.
      */
-    public synchronized void updateConnection(@NonNull RobocolDatagram packet, @Nullable SendOnceRunnable.Parameters parameters,
-                                              SendOnceRunnable.ClientCallback clientCallback ) throws RobotCoreException, RobotProtocolException {
+    public synchronized void updateConnection(@NonNull RobocolDatagram packet)
+            throws RobotCoreException, RobotProtocolException {
+
+        lastRecvPacket.reset();
 
         if (packet.getAddress().equals(remoteAddr)) {
             /*
-             * We already received a peer discovery packet.  Don't do all the setup below.
+             * We already received a peer discovery packet. Notify connection callbacks if
+             * appropriate, but don't do the rest of the setup.
              */
-            if (sendOnceRunnable != null) sendOnceRunnable.onPeerConnected(false);
-            if (clientCallback != null) clientCallback.peerConnected(false);
+            updatePeerStatus(true, false);
             return;
-        }
-
-        if (parameters==null) parameters = new SendOnceRunnable.Parameters();
-
-        // Actually parse the packet in order to verify Robocol version compatibility
-        try {
-            PeerDiscovery peerDiscovery = PeerDiscovery.forReceive();
-            peerDiscovery.fromByteArray(packet.getData());
-        } catch (RobotProtocolException e) {
-            RobotLog.ee(TAG, e.getMessage());
-            throw e;
         }
 
         // update remoteAddr with latest address
@@ -395,16 +468,26 @@ public class NetworkConnectionHandler {
                 throw RobotCoreException.createChained(e, "unable to connect to %s", remoteAddr.toString());
             }
 
+            sendOnceRunnable.updateSocket(socket);
+
+            // Actually parse the packet in order to verify Robocol version compatibility
+            try {
+                PeerDiscovery peerDiscovery = PeerDiscovery.forReceive();
+                peerDiscovery.fromByteArray(packet.getData());
+            } catch (RobotProtocolException e) {
+                RobotLog.ee(TAG, e.getMessage());
+                throw e;
+            }
+
             // start send loop, if needed
             if (sendLoopFuture == null || sendLoopFuture.isDone()) {
                 RobotLog.vv(TAG, "starting sending loop");
-                sendOnceRunnable = new SendOnceRunnable(context, clientCallback,  socket, lastRecvPacket, parameters);
+
                 sendLoopService = Executors.newSingleThreadScheduledExecutor();
                 sendLoopFuture = sendLoopService.scheduleAtFixedRate(sendOnceRunnable, 0, 40, TimeUnit.MILLISECONDS);
             }
-
-            if (sendOnceRunnable != null) sendOnceRunnable.onPeerConnected(true);
-            if (clientCallback != null) clientCallback.peerConnected(true);
+            // force update the callbacks, since this we either were previously disconnected, or this is a different peer.
+            updatePeerStatus(true, true);
         }
     }
 
@@ -473,7 +556,6 @@ public class NetworkConnectionHandler {
 
         if (sendLoopFuture != null) {
             sendLoopFuture.cancel(true);
-            sendOnceRunnable = null;
             sendLoopFuture = null;
         }
 
@@ -526,7 +608,7 @@ public class NetworkConnectionHandler {
         return networkConnection.getWifiChannel();
     }
 
-//----------------------------------------------------------------------------------------------
+    //----------------------------------------------------------------------------------------------
     // Callback chainers
     // Here we find the *actual* classes we register for callback notifications of various
     // forms. Internally, they maintain chains of external, registered callbacks, to whom they

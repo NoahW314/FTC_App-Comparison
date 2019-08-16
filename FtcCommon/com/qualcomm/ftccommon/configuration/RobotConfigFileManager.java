@@ -128,7 +128,7 @@ public class RobotConfigFileManager {
 
         if (!createdDir){
             RobotLog.ee(TAG, "Can't create the Robot Config Files directory!");
-            appUtil.showToast(UILocation.BOTH, context, context.getString(R.string.toastCantCreateRobotConfigFilesDir));
+            appUtil.showToast(UILocation.BOTH, context.getString(R.string.toastCantCreateRobotConfigFilesDir));
         }
     }
 
@@ -588,7 +588,7 @@ public class RobotConfigFileManager {
         try {
             output = writer.toXml(deviceList, RobotConfigResFilter.robotConfigRootTypeAttribute, RobotConfigFileManager.getRobotConfigTypeAttribute());
         } catch (DuplicateNameException e) {
-            appUtil.showToast(UILocation.BOTH, context, String.format(context.getString(R.string.toastDuplicateName), e.getMessage()));
+            appUtil.showToast(UILocation.BOTH, String.format(context.getString(R.string.toastDuplicateName), e.getMessage()));
             RobotLog.ee(TAG, "Found " + e.getMessage());
             output = null;
         } catch (RuntimeException e) {

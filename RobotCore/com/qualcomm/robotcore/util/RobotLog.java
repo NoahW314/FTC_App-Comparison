@@ -291,7 +291,9 @@ public class RobotLog {
   }
 
   public static void logStackTrace(String tag, Throwable e) {
-    e.printStackTrace(LogOutputStream.printStream(tag));
+    if (e != null) {
+      e.printStackTrace(LogOutputStream.printStream(tag));
+    }
   }
 
   private static void logStackFrames(StackTraceElement[] stackTrace) {

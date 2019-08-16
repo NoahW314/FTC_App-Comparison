@@ -64,6 +64,11 @@ import java.util.Set;
  * Buttons are boolean values. They will be true if the button is pressed, otherwise they will be
  * false.
  * <p>
+ * The codes KEYCODE_BUTTON_SELECT and KEYCODE_BACK are both be handled as a "back" button event.
+ * Older Android devices (Kit Kat) map a Logitech F310 "back" button press to a KEYCODE_BUTTON_SELECT event.
+ * Newer Android devices (Marshmallow or greater) map this "back" button press to a KEYCODE_BACK event.
+ * Also, the REV Robotics Gamepad (REV-31-1159) has a "select" button instead of a "back" button on the gamepad.
+ * <p>
  * The dpad is represented as 4 buttons, dpad_up, dpad_down, dpad_left, and dpad_right
  */
 @SuppressWarnings("unused")
@@ -385,7 +390,10 @@ public class Gamepad extends RobocolParsableBase {
     else if (key == KeyEvent.KEYCODE_BUTTON_Y) y = pressed(event);
     else if (key == KeyEvent.KEYCODE_BUTTON_MODE) guide = pressed(event);
     else if (key == KeyEvent.KEYCODE_BUTTON_START) start = pressed(event);
-    else if (key == KeyEvent.KEYCODE_BUTTON_SELECT) back = pressed(event);
+
+    // Handle "select" and "back" key codes as a "back" button event.
+    else if (key == KeyEvent.KEYCODE_BUTTON_SELECT || key == KeyEvent.KEYCODE_BACK) back = pressed(event);
+
     else if (key == KeyEvent.KEYCODE_BUTTON_R1) right_bumper = pressed(event);
     else if (key == KeyEvent.KEYCODE_BUTTON_L1) left_bumper = pressed(event);
     else if (key == KeyEvent.KEYCODE_BUTTON_THUMBL) left_stick_button = pressed(event);

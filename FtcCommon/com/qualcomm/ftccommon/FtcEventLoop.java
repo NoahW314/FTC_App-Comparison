@@ -92,6 +92,7 @@ import org.firstinspires.ftc.robotcore.internal.ftdi.FtDeviceIOException;
 import org.firstinspires.ftc.robotcore.internal.ftdi.FtDeviceManager;
 import org.firstinspires.ftc.robotcore.internal.network.CallbackResult;
 import org.firstinspires.ftc.robotcore.internal.opmode.OpModeManagerImpl;
+import org.firstinspires.inspection.InspectionState;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -184,6 +185,7 @@ public class FtcEventLoop extends FtcEventLoopBase {
 
     opModeManager.setHardwareMap(hardwareMap);
     hardwareMap.logDevices();
+    InspectionState.cacheFirmwareInspectionVersion(hardwareMap);
 
     RobotLog.ii(TAG, "======= INIT FINISH =======");
   }

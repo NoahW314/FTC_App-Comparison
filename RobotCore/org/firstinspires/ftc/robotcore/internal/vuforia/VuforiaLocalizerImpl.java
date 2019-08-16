@@ -21,7 +21,7 @@ written permission.
 NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS
 LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
 "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESSFOR A PARTICULAR PURPOSE
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
 ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
 FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
 DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
@@ -608,9 +608,15 @@ public class VuforiaLocalizerImpl implements VuforiaLocalizer
         try {
             success = supplier.get();
             }
+        catch (VuforiaException e)
+            {
+            tracer.traceError(e, "exception in vuforia initialization: phase:%s", vuforiaInitPhase);
+            throw e;
+            }
         catch (Exception e)
             {
             tracer.traceError(e, "exception in vuforia initialization: phase:%s", vuforiaInitPhase);
+            throw e;
             }
         finally
             {
@@ -626,6 +632,7 @@ public class VuforiaLocalizerImpl implements VuforiaLocalizer
         catch (Exception e)
             {
             tracer.traceError(e, "exception in vuforia deinitialization: phase:%s", vuforiaInitPhase);
+            throw e;
             }
         finally
             {
@@ -655,7 +662,12 @@ public class VuforiaLocalizerImpl implements VuforiaLocalizer
                         {
                         @Override public Boolean get()
                             {
-                            return vuforiaWebcam == null || vuforiaWebcam.preVuforiaInit();
+                            boolean ret = vuforiaWebcam == null || vuforiaWebcam.preVuforiaInit();
+                            if (!ret)
+                                {
+                                throwFailure(getInitializationErrorString(Vuforia.INIT_NO_CAMERA_ACCESS));
+                                }
+                            return ret;
                             }
                         });
                     }
@@ -678,7 +690,10 @@ public class VuforiaLocalizerImpl implements VuforiaLocalizer
                                 });
                             }
                             while (initProgress >= 0 && initProgress < 100);
-                            return initProgress >= 0;
+                            if (initProgress < 0) {
+                                throwFailure(getInitializationErrorString(initProgress));
+                            }
+                            return true;
                             }
                         });
                     }

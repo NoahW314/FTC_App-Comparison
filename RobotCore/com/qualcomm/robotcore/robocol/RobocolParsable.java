@@ -68,7 +68,8 @@ public interface RobocolParsable {
     GAMEPAD(2),
     PEER_DISCOVERY(3),
     COMMAND(4),
-    TELEMETRY(5);
+    TELEMETRY(5),
+    KEEPALIVE(6);
 
     private static final MsgType[] VALUES_CACHE = MsgType.values();
     private final int type;

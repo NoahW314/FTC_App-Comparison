@@ -21,7 +21,7 @@ written permission.
 NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS
 LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
 "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESSFOR A PARTICULAR PURPOSE
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
 ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
 FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
 DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
@@ -70,17 +70,17 @@ public abstract class ClassFactory
     public abstract VuforiaLocalizer createVuforia(VuforiaLocalizer.Parameters parameters);
 
     /**
-     * Return true if this device is compatible with Tensor Flow Object Detection, false otherwise.
+     * Return true if this device is compatible with TensorFlow Object Detection, false otherwise.
      */
     public abstract boolean canCreateTFObjectDetector();
 
     /**
      * {@link #createTFObjectDetector(TFObjectDetector.Parameters) createTFObjectDetector} returns
-     * an instance of the Tensor Flow object detector engine configured with the indicated set of parameters.
+     * an instance of the TensorFlow object detector engine configured with the indicated set of parameters.
      *
      * @param parameters the parameters used to configure the instance of the engine
      * @param vuforiaLocalizer the VuforiaLocalizer that will be used to obtain camera frames
-     * @return an instance of the Tensor Flow object detector engine.
+     * @return an instance of the TensorFlow object detector engine.
      *
      * @see TFObjectDetector
      */

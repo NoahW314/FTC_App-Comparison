@@ -3,15 +3,14 @@ package org.firstinspires.ftc.robotcore.internal.network;
 import android.content.Context;
 import android.os.SystemClock;
 import android.support.annotation.NonNull;
-import android.support.annotation.Nullable;
 
 import com.qualcomm.robotcore.R;
 import com.qualcomm.robotcore.hardware.Gamepad;
 import com.qualcomm.robotcore.robocol.Command;
 import com.qualcomm.robotcore.robocol.Heartbeat;
+import com.qualcomm.robotcore.robocol.KeepAlive;
 import com.qualcomm.robotcore.robocol.RobocolDatagram;
 import com.qualcomm.robotcore.robocol.RobocolDatagramSocket;
-import com.qualcomm.robotcore.robot.Robot;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.RobotLog;
 
@@ -23,6 +22,11 @@ import java.util.List;
 import java.util.TimeZone;
 import java.util.concurrent.CopyOnWriteArrayList;
 
+/**
+ * Handles data transmission to the remote device.
+ *
+ * Creating a new instance implies that a network connection has already been established.
+ */
 @SuppressWarnings("WeakerAccess")
 public class SendOnceRunnable implements Runnable {
 
@@ -30,32 +34,20 @@ public class SendOnceRunnable implements Runnable {
     // Types
     //----------------------------------------------------------------------------------------------
 
-    public interface ClientCallback {
-
+    public interface DisconnectionCallback {
         /**
-         * Notifies that the peer is currently connected. Note: this is a level-state
-         * notification, not a transition notification from disconnected to connected,
-         * though the peerLikelyChanged parameter provides an indication of the latter.
-         * @param peerLikelyChanged if false, then the peer is the same as the last notification.
+         * Will be called periodically while the peer is disconnected
          */
-        void peerConnected(boolean peerLikelyChanged);
-
-        /**
-         * Notifies that the peer is currently disconnected. Note: this is a level-state
-         * notification, not a transition notification from connected to disconnected.
-         */
-        void peerDisconnected();
+        void disconnected();
     }
 
     public static class Parameters {
-        public boolean                 disconnectOnTimeout = true;
-        public boolean                 originateHeartbeats = AppUtil.getInstance().isDriverStation();
-        public RobotCoreGamepadManager gamepadManager      = null;
+        public boolean                          disconnectOnTimeout = true;
+        public boolean                          originateHeartbeats = AppUtil.getInstance().isDriverStation();
+        public boolean                          originateKeepAlives = false;
+        public volatile RobotCoreGamepadManager gamepadManager      = null;
 
         public Parameters() { }
-        public Parameters(RobotCoreGamepadManager gamepadManager) {
-            this.gamepadManager = gamepadManager;
-        }
     }
 
     //----------------------------------------------------------------------------------------------
@@ -69,32 +61,26 @@ public class SendOnceRunnable implements Runnable {
     public static final int             MAX_COMMAND_ATTEMPTS = 10;
     public static final long            GAMEPAD_UPDATE_THRESHOLD = 1000; // in milliseconds
     public static final int             MS_HEARTBEAT_TRANSMISSION_INTERVAL = 100;
+    public static final int             MS_KEEPALIVE_TRANSMISSION_INTERVAL = 20;
 
-    protected ElapsedTime               lastRecvPacket;
-    protected List<Command>             pendingCommands = new CopyOnWriteArrayList<Command>();
-    protected Heartbeat                 heartbeatSend = new Heartbeat();
-    protected RobocolDatagramSocket     socket;
-    protected ClientCallback            clientCallback;
-    protected Context                   context;
-    protected final Parameters          parameters;
-    protected final Object              issuedDisconnectLogMessageLock = new Object();
-    protected boolean                   issuedDisconnectLogMessage;
+
+    @NonNull protected ElapsedTime                      lastRecvPacket;
+    @NonNull protected volatile List<Command>           pendingCommands = new CopyOnWriteArrayList<Command>();
+    @NonNull protected Heartbeat                        heartbeatSend = new Heartbeat();
+    @NonNull protected KeepAlive                        keepAliveSend = new KeepAlive();
+    @NonNull protected volatile RobocolDatagramSocket   socket;
+    @NonNull protected DisconnectionCallback            disconnectionCallback;
+    @NonNull protected final Parameters                 parameters;
 
     //----------------------------------------------------------------------------------------------
     // Construction
     //----------------------------------------------------------------------------------------------
 
-    public SendOnceRunnable(@NonNull  Context context,
-                            @Nullable ClientCallback clientCallback,
-                            @NonNull  RobocolDatagramSocket socket,
-                            @Nullable ElapsedTime lastRecvPacket,
-                            @NonNull  Parameters parameters) {
-        this.context            = context;
-        this.clientCallback     = clientCallback;
-        this.socket             = socket;
-        this.lastRecvPacket     = lastRecvPacket;
-        this.parameters         = parameters;
-        this.issuedDisconnectLogMessage = false;
+    public SendOnceRunnable(@NonNull  DisconnectionCallback disconnectionCallback,
+                            @NonNull  ElapsedTime lastRecvPacket) {
+        this.disconnectionCallback  = disconnectionCallback;
+        this.lastRecvPacket         = lastRecvPacket;
+        this.parameters             = new Parameters();
 
         RobotLog.vv(TAG, "SendOnceRunnable created");
     }
@@ -103,39 +89,34 @@ public class SendOnceRunnable implements Runnable {
     // Operations
     //----------------------------------------------------------------------------------------------
 
-    public void onPeerConnected(boolean peerLikelyChanged) {
-        synchronized (issuedDisconnectLogMessageLock) {
-            if (this.issuedDisconnectLogMessage) {
-                RobotLog.vv(TAG, "SendOnce Runnable detected a peer, resetting peerDisconnected()");
-                this.issuedDisconnectLogMessage = false;
-            }
-        }
-
-        lastRecvPacket.reset();
+    public void updateSocket(RobocolDatagramSocket socket) {
+        this.socket = socket;
     }
 
     @Override
     public void run() {
         AppUtil appUtil = AppUtil.getInstance();
+        boolean sentPacket;
         try {
             // skip if we haven't received a packet in a while. The RC is the center
             // of the world and never disconnects from anyone.
             double seconds = lastRecvPacket.seconds();
             if (parameters.disconnectOnTimeout && seconds > ASSUME_DISCONNECT_TIMER) {
-                if (clientCallback != null ) {
-                    synchronized (issuedDisconnectLogMessageLock) {
-                        if (!issuedDisconnectLogMessage) {
-                            issuedDisconnectLogMessage = true;
-                            RobotLog.vv(TAG, "issuing peerDisconnected(): lastRecvPacket=%.3f s", seconds);
-                        }
-                    }
-                    clientCallback.peerDisconnected();
-                }
+                disconnectionCallback.disconnected();
                 return;
             }
 
-            // send heartbeat if we're on the driver station, as heartbeats are
-            // originated by the DS and merely echoed by the RC.
+            /*
+             * If we are on the DriverStation then send heartbeats at a specific rate.  Heartbeats
+             * originate on the DriverStation and are echoed by the RobotController.
+             *
+             * If we have fresh GamePad data from the DriverStation, then send it.
+             *
+             * If, through this invocation of SendOnceRunnable we sent neither GamePad data, nor
+             * a Heartbeat, then send a KeepAlive if configured to do so.  This ensures a minimum
+             * packet rate for devices for which this is necessary to prevent disconnects.
+             */
+            sentPacket = false;
             if (parameters.originateHeartbeats && heartbeatSend.getElapsedSeconds() > 0.001 * MS_HEARTBEAT_TRANSMISSION_INTERVAL) {
                 // generate a new heartbeat packet and send it
                 heartbeatSend = Heartbeat.createWithTimeStamp();
@@ -145,10 +126,10 @@ public class SendOnceRunnable implements Runnable {
                 heartbeatSend.t0 = appUtil.getWallClockTime();
                 RobocolDatagram packetHeartbeat = new RobocolDatagram(heartbeatSend);
                 send(packetHeartbeat);
+                sentPacket = true;
                 // Do any logging after the transmission so as to minimize disruption of timing calculation
             }
 
-            // send gamepads if we have the info to do so (which will only be on the DS)
             if (parameters.gamepadManager != null) {
                 long now = SystemClock.uptimeMillis();
 
@@ -161,8 +142,16 @@ public class SendOnceRunnable implements Runnable {
                     gamepad.setSequenceNumber();
                     RobocolDatagram packetGamepad = new RobocolDatagram(gamepad);
                     send(packetGamepad);
+                    sentPacket = true;
                 }
             }
+
+            if ((!sentPacket) && (parameters.originateKeepAlives) && (keepAliveSend.getElapsedSeconds() > 0.001 * MS_KEEPALIVE_TRANSMISSION_INTERVAL)) {
+                keepAliveSend = KeepAlive.createWithTimeStamp();
+                RobocolDatagram packetKeepAlive = new RobocolDatagram(keepAliveSend);
+                send(packetKeepAlive);
+            }
+
 
             long nanotimeNow = System.nanoTime();
 
@@ -172,7 +161,7 @@ public class SendOnceRunnable implements Runnable {
 
                 // if this command has exceeded max attempts or is no longer worth transmitting, give up
                 if (command.getAttempts() > MAX_COMMAND_ATTEMPTS || command.hasExpired()) {
-                    String msg = String.format(context.getString(R.string.configGivingUpOnCommand), command.getName(), command.getSequenceNumber(), command.getAttempts());
+                    String msg = String.format(AppUtil.getDefContext().getString(R.string.configGivingUpOnCommand), command.getName(), command.getSequenceNumber(), command.getAttempts());
                     RobotLog.vv(TAG, msg);
                     commandsToRemove.add(command);
                     continue;

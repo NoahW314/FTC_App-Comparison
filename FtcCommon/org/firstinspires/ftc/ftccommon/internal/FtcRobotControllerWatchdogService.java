@@ -21,7 +21,7 @@ written permission.
 NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS
 LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
 "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESSFOR A PARTICULAR PURPOSE
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
 ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
 FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
 DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
@@ -112,13 +112,29 @@ public class FtcRobotControllerWatchdogService extends Service
     // Accessing
     //----------------------------------------------------------------------------------------------
 
-    public static boolean isFtcRobotControllerActivity(Activity activity)
-        {
-        return activity!= null && isFtcRobotControllerActivity(activity.getClass());
+    public static boolean isFtcRobotControllerActivity(Activity activity) {
+        try {
+            if (Class.forName("org.firstinspires.ftc.robotcontroller.internal.FtcRobotControllerActivity") == activity.getClass()) {
+                return true;
+            } else {
+                return false;
+            }
+        } catch (ClassNotFoundException|RuntimeException e) {
+            return false;
         }
-    public static boolean isFtcRobotControllerActivity(Class clazz)
+    }
+
+    public static boolean isLaunchActivity(Activity activity)
+        {
+        return activity!= null && isLaunchActivity(activity.getClass());
+        }
+    public static boolean isLaunchActivity(Class clazz)
         {
         return clazz==ActivityFinder.launchActivityClass;
+        }
+    public static Class launchActivity()
+        {
+        return ActivityFinder.launchActivityClass;
         }
 
     //----------------------------------------------------------------------------------------------
@@ -174,7 +190,7 @@ public class FtcRobotControllerWatchdogService extends Service
             if (LynxConstants.isRevControlHub())
                 {
                 // But we might be asked to pretend we're not there
-                if (!LynxConstants.disableDragonboard())
+                if (!LynxConstants.shouldDisableAndroidBoard())
                     {
                     // We examine the policy flag
                     if (LynxConstants.autorunRobotController())

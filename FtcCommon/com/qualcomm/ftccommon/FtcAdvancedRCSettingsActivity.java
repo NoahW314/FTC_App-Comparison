@@ -21,7 +21,7 @@ written permission.
 NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS
 LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
 "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESSFOR A PARTICULAR PURPOSE
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
 ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
 FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
 DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
@@ -83,6 +83,8 @@ public class FtcAdvancedRCSettingsActivity extends ThemedActivity
             Preference prefEditClearRememberedGroups = findPreference(getString(R.string.pref_launch_wifi_remembered_groups_edit));
             Preference prefChangeChannel = findPreference(getString(R.string.pref_launch_wifi_channel_edit));
             Preference prefLynxFirmwareUpdateMode = findPreference(getString(R.string.pref_launch_lynx_firmware_update));
+
+            // TODO(CHv1): Update this channel changer to work for both Wifi Direct and the CH
 
             // If we're not connected to RC, then disable controls that edit same
             prefChangeChannel.setEnabled(!remoteConfigure ||

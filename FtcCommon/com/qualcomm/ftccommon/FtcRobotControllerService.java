@@ -55,20 +55,23 @@ import com.qualcomm.robotcore.robot.Robot;
 import com.qualcomm.robotcore.robot.RobotState;
 import com.qualcomm.robotcore.robot.RobotStatus;
 import com.qualcomm.robotcore.util.Device;
+import com.qualcomm.robotcore.util.Intents;
 import com.qualcomm.robotcore.util.RobotLog;
 import com.qualcomm.robotcore.util.ThreadPool;
+import com.qualcomm.robotcore.util.WebServer;
 import com.qualcomm.robotcore.wifi.NetworkConnection;
 import com.qualcomm.robotcore.wifi.NetworkConnectionFactory;
 import com.qualcomm.robotcore.wifi.NetworkType;
 
-import org.firstinspires.ftc.robotcore.internal.hardware.DragonboardIndicatorLED;
+import org.firstinspires.ftc.robotcore.internal.hardware.android.AndroidBoard;
+import org.firstinspires.ftc.robotcore.internal.hardware.android.DragonboardIndicatorLED;
 import org.firstinspires.ftc.robotcore.internal.network.CallbackResult;
 import org.firstinspires.ftc.robotcore.internal.network.NetworkConnectionHandler;
 import org.firstinspires.ftc.robotcore.internal.network.PeerStatus;
 import org.firstinspires.ftc.robotcore.internal.network.PreferenceRemoterRC;
 import org.firstinspires.ftc.robotcore.internal.network.WifiDirectAgent;
 import org.firstinspires.ftc.robotcore.internal.system.PreferencesHelper;
-import org.firstinspires.ftc.robotcore.internal.webserver.WebServer;
+import org.firstinspires.ftc.robotserver.internal.webserver.CoreRobotWebServer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -89,6 +92,8 @@ public class FtcRobotControllerService extends Service implements NetworkConnect
   private final IBinder binder = new FtcRobotControllerBinder();
   private final PreferencesHelper preferencesHelper = new PreferencesHelper(TAG);
 
+  private volatile boolean robotSetupHasBeenStarted = false;
+
   private NetworkConnection networkConnection;
   private EventLoopManager  eventLoopManager;
   private Robot             robot;
@@ -97,7 +102,6 @@ public class FtcRobotControllerService extends Service implements NetworkConnect
 
   private NetworkConnection.NetworkEvent networkConnectionStatus = NetworkConnection.NetworkEvent.UNKNOWN;
   private RobotStatus       robotStatus = RobotStatus.NONE;
-  private PeerStatus        peerStatus = PeerStatus.DISCONNECTED;
 
   private UpdateUI.Callback callback = null;
   private final EventLoopMonitor eventLoopMonitor = new EventLoopMonitor();
@@ -136,27 +140,21 @@ public class FtcRobotControllerService extends Service implements NetworkConnect
     }
   }
 
-  @Override public void onPeerConnected(boolean peerLikelyChanged) {
-    if (callback==null) return;
+  @Override public void onPeerConnected() {
     updatePeerStatus(PeerStatus.CONNECTED);
+
+    // When we connect, send useful info to the driver station
+    RobotLog.dd(TAG, "Sending user device types and preferences to driver station");
+    ConfigurationTypeManager.getInstance().sendUserDeviceTypes();
+    PreferenceRemoterRC.getInstance().sendAllPreferences(); // TODO: We should probably also do this periodically later in case this initial version didn't get through
   }
 
   @Override public void onPeerDisconnected() {
-    if (callback==null) return;
     updatePeerStatus(PeerStatus.DISCONNECTED);
   }
 
   private void updatePeerStatus(PeerStatus peerStatus) {
-    // Update internal information
-    if (FtcRobotControllerService.this.peerStatus != peerStatus) {
-      FtcRobotControllerService.this.peerStatus = peerStatus;
-      // When we connect, send useful info to the driver station
-      if (peerStatus == PeerStatus.CONNECTED) {
-        ConfigurationTypeManager.getInstance().sendUserDeviceTypes();
-        PreferenceRemoterRC.getInstance().sendAllPreferences(); // TODO: We should probably also do this periodically later in case this initial version didn't get through
-      }
-    }
-    // Do the UI stuff as well
+    if (callback == null) return;
     callback.updatePeerStatus(peerStatus);
   }
 
@@ -164,8 +162,9 @@ public class FtcRobotControllerService extends Service implements NetworkConnect
   public void onTelemetryTransmitted() {
     if (callback == null) return;
     callback.refreshErrorTextOnUiThread();
-    }
   }
+
+  } // End EventLoopMonitor inner class
 
   /** RobotSetupRunnable is run on a worker thread, and carries out the process of
    * getting the robot ready to run. If interrupted, it should return quickly and promptly. */
@@ -241,8 +240,11 @@ public class FtcRobotControllerService extends Service implements NetworkConnect
       updateRobotStatus(RobotStatus.WAITING_ON_NETWORK_CONNECTION);
       boolean waited = false;
       for (;;) {
-        if (networkConnection.isConnected()) return waited;
+        if (networkConnection.isConnected()) {
+          return waited;
+        }
         waited = true;
+        networkConnection.onWaitForConnection();
         Thread.sleep(NETWORK_WAIT);
       }
     }
@@ -272,6 +274,8 @@ public class FtcRobotControllerService extends Service implements NetworkConnect
     //----------------------------------------------------------------------------------------------
 
     @Override public void run() {
+      final boolean isFirstRun = !robotSetupHasBeenStarted;
+      robotSetupHasBeenStarted = true;
       ThreadPool.logThreadLifeCycle("RobotSetupRunnable.run()", new Runnable() { @Override public void run() {
 
         RobotLog.vv(TAG, "Processing robot setup");
@@ -294,6 +298,10 @@ public class FtcRobotControllerService extends Service implements NetworkConnect
           }
         }
 
+        if (isFirstRun) {
+          RobotLog.dd("Noah", "Detecting WiFi reset");
+          networkConnection.detectWifiReset();
+        }
       }});
     }
   }
@@ -365,7 +373,7 @@ public class FtcRobotControllerService extends Service implements NetworkConnect
     FtcLynxFirmwareUpdateActivity.initializeDirectories();
 
     NetworkType networkType = (NetworkType) intent.getSerializableExtra(NetworkConnectionFactory.NETWORK_CONNECTION_TYPE);
-    webServer = new WebServer(networkType);
+    webServer = new CoreRobotWebServer(networkType);
 
     networkConnection = NetworkConnectionFactory.getNetworkConnection(networkType, getBaseContext());
     networkConnection.setCallback(this);
@@ -441,6 +449,8 @@ public class FtcRobotControllerService extends Service implements NetworkConnect
 
   public synchronized void setCallback(UpdateUI.Callback callback) {
     this.callback = callback;
+    // Ensure that the callback starts with the correct peer status
+    callback.updatePeerStatus(NetworkConnectionHandler.getInstance().isPeerConnected() ? PeerStatus.CONNECTED : PeerStatus.DISCONNECTED);
   }
 
   public synchronized void setupRobot(EventLoop eventLoop, EventLoop idleEventLoop, @Nullable Runnable runOnComplete) {

@@ -21,7 +21,7 @@ written permission.
 NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS
 LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
 "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESSFOR A PARTICULAR PURPOSE
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
 ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
 FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
 DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
@@ -42,7 +42,7 @@ import com.qualcomm.robotcore.hardware.configuration.ConfigurationTypeManager;
 import com.qualcomm.robotcore.hardware.configuration.annotations.DeviceProperties;
 import com.qualcomm.robotcore.util.ClassUtil;
 
-import org.firstinspires.ftc.robotcore.internal.opmode.OnBotJavaClassLoader;
+import org.firstinspires.ftc.robotcore.internal.opmode.OnBotJavaDeterminer;
 
 import java.io.InvalidObjectException;
 import java.io.ObjectInputStream;
@@ -81,7 +81,7 @@ public abstract class UserConfigurationType implements ConfigurationType, Serial
         {
         this.flavor = flavor;
         this.xmlTag = xmlTag;
-        this.isOnBotJava = OnBotJavaClassLoader.isOnBotJava(clazz);
+        this.isOnBotJava = OnBotJavaDeterminer.isOnBotJava(clazz);
         this.isDeprecated = clazz.isAnnotationPresent(Deprecated.class);
         }
 

@@ -75,6 +75,8 @@ public class TFObjectDetectorImpl implements TFObjectDetector {
   private final List<Interpreter> interpreters = new ArrayList<>();
   private final List<String> labels = new ArrayList<>();
 
+  private final ClippingMargins clippingMargins = new ClippingMargins();
+
   // Parameters passed in through the constructor.
   private TfodParameters params;
   private VuforiaLocalizer vuforiaLocalizer;
@@ -99,7 +101,7 @@ public class TFObjectDetectorImpl implements TFObjectDetector {
   private long lastReturnedFrameTime = 0;
 
   /**
-   * Return true if this device is compatible with Tensor Flow Object Detection, false otherwise.
+   * Return true if this device is compatible with TensorFlow Object Detection, false otherwise.
    */
   public static boolean isDeviceCompatible() {
     // Requires Android 6.0+
@@ -118,7 +120,7 @@ public class TFObjectDetectorImpl implements TFObjectDetector {
         : appUtil.getRootActivity();
 
     rotation = getRotation(activity, vuforiaLocalizer.getCameraName());
-    frameGenerator = new VuforiaFrameGenerator(vuforiaLocalizer, rotation);
+    frameGenerator = new VuforiaFrameGenerator(vuforiaLocalizer, rotation, clippingMargins);
 
     createImageViewIfRequested(activity, parameters);
 
@@ -339,6 +341,40 @@ public class TFObjectDetectorImpl implements TFObjectDetector {
   public void deactivate() {
     if (frameManager != null) {
       frameManager.deactivate();
+    }
+  }
+
+  @Override
+  public void setClippingMargins(int left, int top, int right, int bottom) {
+    synchronized (clippingMargins) {
+      switch (rotation) {
+        default:
+          throw new IllegalStateException("rotation must be 0, 90, 180, or 270.");
+        case 0:
+          clippingMargins.left = left;
+          clippingMargins.top = top;
+          clippingMargins.right = right;
+          clippingMargins.bottom = bottom;
+          break;
+        case 90:
+          clippingMargins.left = bottom;
+          clippingMargins.top = left;
+          clippingMargins.right = top;
+          clippingMargins.bottom = right;
+          break;
+        case 180:
+          clippingMargins.left = right;
+          clippingMargins.top = bottom;
+          clippingMargins.right = left;
+          clippingMargins.bottom = top;
+          break;
+        case 270:
+          clippingMargins.left = top;
+          clippingMargins.top = right;
+          clippingMargins.right = bottom;
+          clippingMargins.bottom = left;
+          break;
+      }
     }
   }
 

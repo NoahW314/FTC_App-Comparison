@@ -21,7 +21,7 @@ written permission.
 NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY THIS
 LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
 "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESSFOR A PARTICULAR PURPOSE
+THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
 ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE
 FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
 DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
@@ -77,6 +77,7 @@ public class PreferenceRemoterRC extends PreferenceRemoter
         rcPrefsOfInterestToDS.add(context.getString(R.string.pref_app_theme));
         rcPrefsOfInterestToDS.add(context.getString(R.string.pref_sound_on_off));
         rcPrefsOfInterestToDS.add(context.getString(R.string.pref_wifip2p_remote_channel_change_works));
+        rcPrefsOfInterestToDS.add(context.getString(R.string.pref_wifip2p_channel));
         rcPrefsOfInterestToDS.add(context.getString(R.string.pref_has_independent_phone_battery));
         rcPrefsOfInterestToDS.add(context.getString(R.string.pref_has_speaker));
         }

@@ -42,7 +42,7 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import junit.framework.Assert;
+import org.firstinspires.ftc.robotcore.internal.system.Assert;
 
 /**
  * {@link Utility} is an <em>old</em> general purpose utility class.
